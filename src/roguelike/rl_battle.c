@@ -34,6 +34,17 @@ static int rl_valid_team(const RlMon* team, int count) {
         if (!has_move) {
             return 0;
         }
+        for (j = 0; j < 11; j++) {
+            if (team[i].nickname[j] == 0) {
+                break;
+            }
+            if ((unsigned char)team[i].nickname[j] > 127) {
+                return 0;
+            }
+        }
+        if (j == 11) {
+            return 0;
+        }
     }
     return 1;
 }
