@@ -1,0 +1,12 @@
+{
+  "description": "Boot to title, pass Game Pak Check, and display Menu Select.",
+  "actions": [
+    {"op": "state", "value": 2, "frames": 3600},
+    {"op": "step", "frames": 120},
+    {"op": "press", "buttons": ["START"], "frames": 12, "after": 30},
+    {"op": "state", "value": 4, "frames": 1200},
+    {"op": "step", "frames": 60},
+    {"op": "press", "buttons": ["N64_A"], "frames": 12, "after": 45},
+    {"op": "screenshot", "path": ".local/rltest/menu-select.png"}
+  ]
+}
