@@ -25,7 +25,7 @@ s32 rl_ui_init(void) {
     } else {
         func_8001E9F0(0x1C);
     }
-    sIconArchive = ASSET_LOAD2(pokemon_icons, 1, 1);
+    sIconArchive = ASSET_LOAD2(pokemon_icons, 1, 0);
     if (D_800AC870 == NULL || sIconArchive == NULL || sIconArchive->num_files < 151) {
         HAL_Printf(8, 8, "RL UI: resources unavailable");
         return RL_UI_INVALID;
