@@ -105,6 +105,16 @@ not a modified battle's runtime behavior. The fallback cannot infer arbitrary la
 inside an input section containing raw pointers; convert those pointers to named symbols
 before changing that section's internal layout.
 
+Two more points:
+- Header metadata words (offsets 0x10–0x1F) are linker constants, so they are excluded from all tables.
+- With `RL_REGEN_FRAGMENTS=62`, the real RL build's fragment 62 table matches the original set exactly (27,903 entries).
+
+Some fragments' original tables leave out relocations to resident (0x80…) targets. For fragment 57,
+the regenerated table has 1,417 entries against the original 608, and the original is a strict subset. The
+extra entries are no-ops: the loader passes non-fragment addresses through unchanged, and the HI/LO
+recompute gives the same `lui` value. Runtime check: `make rl RL_REGEN_FRAGMENTS="57 62"` followed by
+`tools/rl/boot_test.py` passes, and fragment 57 (Menu Select) is loaded on every cycle.
+
 ### ROM
 
 Fragments and assets after main shift by the growth. Loads use linker symbols
