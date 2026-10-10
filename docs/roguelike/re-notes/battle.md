@@ -3,7 +3,7 @@
 ## Verification status
 
 Static US source and matching assembly evidence is identified below. **Dynamic
-HP/PP validation is pending**, not implied by source reads or a matching build.
+HP/PP validation passed** with an actual Body Slam hit; measurements are below.
 No runtime hooks or vanilla renames are introduced by this work. Typed views
 are in `include/rl_battle.h`; they alias existing native types instead of
 introducing potentially incompatible overlay struct definitions.
@@ -216,3 +216,58 @@ on a confirmed hit, maxHP unchanged, and party HP eventually converges to live
 HP after animation. Account for core word-swapped RAM; never use raw host casts.
 Also cover miss, switching, residuals, faint, each winner, and teardown before
 runtime integration. Never commit ROMs, savestates, or game screenshots.
+
+### Emulator-verified observations
+
+Used W1 frontend commit `3265d4d`, system
+`/usr/lib/libretro/mupen64plus_next_libretro.so`, Angrylion software RDP,
+Parallel RSP fallback, dynamic recompiler, and word-swapped RDRAM helpers.
+Vanilla ROM MD5: `ed1378bc12115f71209a77844965ba50`; SHA256:
+`502f6082a6436012a8b61419435dec1388869a90ed870e87e2d7bee88f831519`.
+Core SHA256:
+`1e5674de118b8cb3621a16402ecdd3d509591700c35e98943e8bb32906342263`.
+
+Poke Cup Poke Ball battle against Biker, rental Bulbasaur level 50 versus
+Mankey level 50. These are loaded addresses for this run only:
+
+| Measurement | Address | Before frame 11950 | After frame 12520 |
+| --- | --- | --- | --- |
+| Player live HP | `0x802850F8` | 132 | 121 |
+| Opponent live HP | `0x80285B18` | 112 | 9 |
+| Player packed PP slots | `0x8028511E` | 10, 10, 15, 25 | 10, 10, 14, 25 |
+| Opponent packed PP slots | `0x80285B3E` | 25, 20, 10, 15 | 25, 20, 10, 14 |
+| Player/opponent max HP | `side+0x6B4` | 132 / 112 | 132 / 112 |
+
+Player move IDs were 73, 92, **34 (Body Slam)**, 75. At frame 11962 the
+CPU action had reduced player HP and CPU slot-3 PP. At frame 12520 the
+player Body Slam debited slot-2 PP and reduced opponent HP by 103; opponent
+status became paralysis (`0x40`). Both original-party HP values converged
+to live HP after animation. PP-Up bits remained unchanged (all zero in
+this fixture; nonzero PP-Up persistence is not dynamically established).
+No RAM writes were used to induce the hit or satisfy assertions.
+
+Reproduce with a local fixture (never commit it):
+
+```
+python3 -m tools.rltest.battle_probe
+python3 -m tools.rltest.verify_battle --state build/rl-battle-probe/moves.state
+```
+
+The interactive probe writes its current screen only under ignored `build/`.
+Wait until the title settles (`wait 180`), press START, then use **B** for
+native A and **Y** for native B in this core. Enter Stadium, Poke Cup,
+Poke Ball, Battle, Rental Only. Choose six rentals, confirming each details
+dialog; include Bulbasaur, Ivysaur and Squirtle. Confirm the team and opponent,
+select Bulbasaur first with Y and the other two with `c left` / `c up`.
+Confirm with START and B; wait for the battle menu, open Attack with B,
+settle its animation, then `save moves.state`. The verification command
+selects Body Slam using `c down`, observes 2100 frames, and fails explicitly
+if the move misses or the fixture is incompatible. Native time-based RNG
+means fresh runs need not reproduce identical damage.
+
+Numerical event/ROM/core metadata is written to
+`build/rl-battle-verification/result.json`. This test needs the local fixture;
+it is not a fresh-boot CI navigation test. Full-turn special-case cadence,
+nonzero PP Ups, switching, transformed PP, each result and teardown remain
+static evidence/proposals, not emulator-verified claims. No unproven hook
+was inserted.
