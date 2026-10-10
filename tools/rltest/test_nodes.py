@@ -11,6 +11,7 @@ from tools.rltest.test_play_run import (
     SCENE_MAP, SCENE_MENU, SCENE_PARTY, SCENE_BATTLE,
     press, read_run, reenter_roguelike, require, scene,
     start_new_run, wait_scene,
+    enter_roguelike_from_menu,
 )
 from tools.rltest.test_custom_battle import Mon
 
@@ -19,7 +20,7 @@ SCENE_NODE = 8
 EVENT_ROUTES = {
     0: (71, 1), 1: (10, 1), 2: (4, 0), 3: (16, 0),
     4: (21, 2), 5: (50, 1), 6: (8, 1), 7: (121, 1),
-    8: (99, 3), 9: (2, 1), 10: (15, 0), 11: (15, 3),
+    8: (99, 3), 9: (2, 1), 10: (61, 0), 11: (15, 3),
 }
 
 
@@ -351,11 +352,7 @@ def boot(emu):
     emu.step(120)
     result = native_command(emu, 4, create=1)
     require(result[1] == 0, "explicit unlocked-profile fixture creation failed")
-    emu.hold("L")
-    emu.press("N64_A", frames=6, after=120)
-    emu.wait_state(0x30, frames=600)
-    emu.release("L")
-    wait_scene(emu, SCENE_MENU)
+    enter_roguelike_from_menu(emu)
 
 
 def main():

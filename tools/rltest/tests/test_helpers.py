@@ -25,6 +25,7 @@ class HelperTests(unittest.TestCase):
         with patch.object(test_nodes, "reenter_roguelike"), \
                 patch.object(test_nodes, "press"), \
                 patch.object(test_nodes, "wait_scene"), \
+                patch("tools.rltest.test_play_run.wait_scene"), \
                 patch.object(test_nodes, "native_command", side_effect=create_fixture):
             test_nodes.boot(emu)
         self.assertEqual(emu.mock_calls[-4:], [

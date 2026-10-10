@@ -259,6 +259,10 @@ def start_new_run(emu, seed, test_mode):
 def reenter_roguelike(emu):
     emu.press("N64_A", frames=6, after=120)
     emu.step(120)
+    enter_roguelike_from_menu(emu)
+
+
+def enter_roguelike_from_menu(emu):
     emu.hold("L")
     emu.press("N64_A", frames=6, after=120)
     emu.wait_state(0x30, frames=600)
