@@ -239,7 +239,9 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     func_8002B5EC(0xA, rules->stadium, rules->gym);
     player = func_8002B700(rules->player_cpu ? -1 : 0, 0, "1P", func_8002311C(1));
     opponent = func_8002B700(-1, 0, "COM", func_8002311C(3));
-    player->unk_018 = rules->ai_level;
+    if (rules->player_cpu) {
+        player->unk_018 = rules->ai_level;
+    }
     opponent->unk_018 = rules->ai_level;
     func_8002B840(0, player);
     func_8002B840(1, opponent);

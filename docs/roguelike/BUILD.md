@@ -5,7 +5,7 @@
 | Command | Result |
 |---|---|
 | `make` | Vanilla build, unchanged. Must print `build/pokestadium-us.z64: OK` (md5 `ed1378bc12115f71209a77844965ba50`). |
-| `make rl` | Builds vanilla first (its map drives the RL layout), then `ROGUELIKE=1 COMPARE=0` into `build_rl/`. Produces `build_rl/pokestadium-rl.z64` with fixed header CRCs. |
+| `make rl` | Builds vanilla first (its map drives the RL layout), then `ROGUELIKE=1 COMPARE=0` into `build_rl/`. If the RL image exceeds 32 MiB, pads it to 64 MiB for emulator/flashcart compatibility, then writes and checks the header CRCs. |
 | `make rlclean` | Deletes `build_rl/`. |
 | `tools/rl/boot_test.py` | Headless smoke test using W1's `tools/rltest` frontend and a mupen64plus_next libretro core (`RL_CORE=` overrides the path). It goes title → Menu Select → RL scene → B → Menu Select, three times. |
 | `scripts/rl-gate.sh` | Runs the vanilla match, `make rl`, the RL boot test (when `tools/rltest` exists), host tests and smoke tests. |
@@ -79,7 +79,9 @@ Format (`src/memmap.h`):
   ID = `((vram & 0x0FF00000) >> 20) - 0x10`, which must be < 240;
 - the table is zeroed after relocation, and that zeroing also clears bss.
 
-`fragmentRL` uses VRAM **0x8F800000** (ID 232, unused). Its sources are `src/fragments/rl/*.c`/`.s`;
+`fragmentRL` uses VRAM **0x8F800000** (ID 232, unused). Its ROM payload and relocation table are
+appended after all fixed-address game data so growth cannot cross the GB Tower ROM boundary.
+Its sources are `src/fragments/rl/*.c`/`.s`;
 `rl_header.s` must stay first. Relocations come from a **two-pass link**:
 1. Pass 1 links with an empty table and `--emit-relocs`.
 2. `gen_rl_relocs.py` collects every REL entry for `.fragmentRL`, in ELF order, because HI16/LO16 pairing is order-dependent.
@@ -188,13 +190,14 @@ Hardcoded ROM/RAM assumptions checked while shifting:
   (except `rl_rosters.o`, linked into fragmentRL).
   - Pure host-testable files must not include libultra headers.
   - W5 owns `rl_core.{c,h}`. W0's glue is `rl_main.{c,h}`.
-- **Overlay code:** drop files into `src/fragments/rl/`. If `rl_ui.c` exists, `rl_fragment.c` uses the W4
-  demo API:
+- **Overlay code:** drop files into `src/fragments/rl/`. If `rl_play.c` exists, `rl_fragment.c` uses
+  the W7 scene API; otherwise, if `rl_ui.c` exists, it uses the W4 demo API:
   - init runs after the display context is created;
   - update runs after the controller read, and the overlay exits on -2/-3;
   - draw runs between `func_800079C4` and `func_80007778`, after a 640x480 ortho is set up every frame.
-- **Battle test (state 0x31):** define `void rl_battle_test_entry(void)` in `src/roguelike/rl_battle.c`.
-  It must set `gCurrentGameState`.
+- **Battle state (0x31):** `rl_main_state_battle_test()` dispatches the guarded W3 adapter fixture.
+  Playable runs queue battles in resident state; `rl_main_state_roguelike()` launches them after
+  fragmentRL exits, then reloads the UI to render the result.
 - **Extra make rules** (generated tables etc.): put a `src/roguelike/*.mk` or `src/fragments/rl/*.mk`
   in place. It's included only when `ROGUELIKE=1`. Write outputs under `$(BUILD_DIR)` (= `build_rl`).
 - **Debug:** `gRlMain` (resident) has these fields:

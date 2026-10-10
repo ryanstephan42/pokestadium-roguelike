@@ -15,6 +15,7 @@ new worktree with `scripts/rl-worktree-setup.sh`, then run:
 tools/rltest/run_smoke.sh
 python3 -m unittest tools.rltest.tests.test_helpers
 python3 -m tools.rltest.run battle-fixture
+python3 -m tools.rltest.test_play_run
 ```
 
 The smoke runner builds nothing. It steps past the intro, asserts
@@ -107,8 +108,66 @@ against `build_rl/pokestadium-us.z64` and `build_rl/pokestadium-us.map`. It uses
 `gRlBattleTestRequest` at a dispatcher boundary and can combine the frontend's
 `battle_mons()` live-state inspection with the run's counters/results. Those
 symbols are intentionally not available in the vanilla map.
+The exact-team scenario uses a guarded CPU-vs-CPU fixture to exercise native
+result capture and carryover without driving the playable battle menu.
 
 The JSON runner supports `step`, `press`, `hold`, `release`, `state`, `assert`,
 `write32`, `snapshot`, `screenshot`, `save`, and `load` operations. Each
 generated ROM-derived artifact and metadata file remains in ignored
 `.local/rltest/`.
+
+## Playable run scenario
+
+`python3 -m tools.rltest.test_play_run` boots `build_rl/pokestadium-rl.z64` and
+drives the real L+A entry and run UI. It checks draft cancellation/re-entry,
+the free reroll and a deterministic seed, selects three rentals, chooses a
+trainer route, rejects an empty active team, and verifies B returns to the map
+without advancing it. Guarded test fixtures boost the party for the win path
+and start its lead at full HP in the first battle; all run-battle decisions
+remain human-controlled. The scenario requires actual native HP damage, then
+checks that the damaged lead's exact HP, moves, and PP are passed into the next
+battle. It also covers reward selection, three chained wins, summary, exit and
+roguelike re-entry. A separate UI-only regression fixture injects an all-fainted
+run state to check the loss-summary and exit UI; this is not a native battle
+loss.
+
+The same scenario includes a distinct human-controlled native-loss test. Its
+guarded pre-battle fixture starts the three selected active Pokemon at 1 HP and
+gives them Growl, then lets native opponents faint them. The test reads the
+adapter's actual battle result and requires those three KOs to produce
+`RL_LOST`; it does not write HP or battle results after the fight. A seed-8 UI
+suspend/resume check exercises the Controller Pak path. Host coverage performs
+save roundtrips across 1,000 generated seeds after map preparation and each
+battle/reward transition. Generated screenshots and savestates remain local
+under `.local/rltest/play-run/`.
+
+Run just the native-loss path while debugging battle input with:
+
+```sh
+python3 -m tools.rltest.test_play_run --native-loss-only
+```
+
+The complete scenario and `scripts/rl-gate.sh` were verified with
+Mupen64Plus-Next's libretro core; the complete run reached frame 51937 and
+reported three native wins plus the separate native loss summary. The
+all-fainted UI-only fixture remains separate from that native-loss result.
+
+The current playable milestone intentionally exposes only the first three map
+rows, with reachable trainer-battle routes. Other node types are not presented
+as selectable choices: event, shop, center, elite, and boss scenes/content
+remain follow-on work. The generic map and save invariants are preserved, and
+unreachable lanes are disabled. Recruit rewards come from the defeated
+trainer's canonical roster; other rewards use the existing core generator.
+The summary marks the three-battle route as the current milestone.
+
+For a visible test, build with `make rl` and run `scripts/rl-preview.sh`.
+This uses isolated Angrylion/Parallel-RSP options, X11/XWayland keyboard input,
+SDL2 controller mappings, and local saves; it does not reuse your global
+RetroArch profile. See [PREVIEW.md](PREVIEW.md) for the renderer comparison,
+local evidence paths and physical-controller checklist. At the title, press N64 Start and
+pass Game Pak Check with N64 A. In Menu Select, hold L and press N64 A to open
+Roguelike. N64 A confirms, N64 B backs out, the D-pad moves through lists, and
+the C-buttons (right stick on the configured preview controller) navigate
+battle moves. With the preview script, keyboard Enter is Start, Z is N64 A,
+X is N64 B and Q is L (hold Q through the Menu Select fade while pressing Z).
+Arrow keys navigate; I/K/J/L are C-up/down/left/right.

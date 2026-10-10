@@ -139,10 +139,13 @@ ifeq ($(ROGUELIKE),1)
   ifneq ($(wildcard src/fragments/rl/rl_ui.c),)
     BUILD_DEFINES += -DRL_HAVE_UI_DEMO
   endif
+  ifneq ($(wildcard src/fragments/rl/rl_play.c),)
+    BUILD_DEFINES += -DRL_HAVE_PLAY
+  endif
   ifneq ($(wildcard src/roguelike/rl_battle.c),)
     BUILD_DEFINES += -DRL_HAVE_BATTLE
   endif
-$(BUILD_DIR)/src/fragments/rl/rl_fragment.o: $(wildcard src/fragments/rl/rl_ui.c)
+$(BUILD_DIR)/src/fragments/rl/rl_fragment.o: $(wildcard src/fragments/rl/rl_ui.c src/fragments/rl/rl_play.c)
 $(BUILD_DIR)/src/roguelike/rl_main.o: $(wildcard src/roguelike/rl_battle.c)
 endif
 
@@ -437,6 +440,7 @@ $(RL_GEN_DIR)/rl_rosters.h: $(BASEROM) tools/rl_extract_rosters.py
 rl-rosters: $(RL_GEN_DIR)/rl_rosters.h
 ifeq ($(ROGUELIKE),1)
 $(BUILD_DIR)/src/roguelike/rl_rosters.o: $(RL_GEN_DIR)/rl_rosters.h
+$(BUILD_DIR)/src/fragments/rl/rl_play.o: $(RL_GEN_DIR)/rl_rosters.h
 endif
 
 .PHONY: all rom clean libclean distclean venv setup extract lib diff-init init run rl-rosters

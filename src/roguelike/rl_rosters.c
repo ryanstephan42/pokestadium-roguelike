@@ -44,6 +44,14 @@ int rl_load_rental_pool(unsigned int set, RlMon* output, int capacity) {
     return pool->count;
 }
 
+int rl_trainer_count(unsigned int set) {
+    if (set >= RL_NUM_TRAINER_SETS) {
+        osSyncPrintf("rl_trainer_count: invalid set\n");
+        return -1;
+    }
+    return gRlTrainerSets[set].count;
+}
+
 int rl_load_trainer(unsigned int set, unsigned int trainer, RlMon* output,
                     int capacity, unsigned char* ai) {
     unsigned int i;

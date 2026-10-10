@@ -567,6 +567,44 @@ static void test_save(void) {
     assert(rl_save_decode(&loaded, &restored, &has_run, buffer, length) == RL_CORRUPT);
 }
 
+static void test_bounded_battle_route_suspends(void) {
+    RunState run;
+    RlU32 seed;
+    unsigned row, lane, next_lane;
+    int found;
+
+    for (seed = 1; seed <= 1000; seed++) {
+        rl_run_new(&run, seed, 0);
+        assert(rl_party_recruit(&run, &rl_placeholder_pool.mons[0]) == RL_OK);
+        assert_suspend_roundtrip(&run);
+        assert(rl_map_prepare_battle_route(&run.map, 3) == RL_OK);
+        assert(rl_map_valid(&run.map));
+        run.phase = RL_MAP;
+        assert_suspend_roundtrip(&run);
+        for (row = 0; row < 3; row++) {
+            next_lane = 0;
+            if (row > 0) {
+                found = 0;
+                for (lane = 0; lane < run.map.lanes[row]; lane++) {
+                    if (run.map.nodes[row - 1][run.lane].edges & (1U << lane)) {
+                        next_lane = lane;
+                        found = 1;
+                        break;
+                    }
+                }
+                assert(found);
+            }
+            assert(rl_run_advance(&run, next_lane) == RL_OK);
+            assert(rl_run_on_battle_result(&run, 1, 1) == RL_OK);
+            assert(run.phase == RL_REWARD);
+            assert_suspend_roundtrip(&run);
+            assert(rl_run_finish_node(&run) == RL_OK);
+            assert(run.phase == RL_MAP);
+            assert_suspend_roundtrip(&run);
+        }
+    }
+}
+
 int main(void) {
     test_rng_and_map();
     test_enemy_scaling();
@@ -579,6 +617,7 @@ int main(void) {
     test_small_shop_catalog();
     test_native_stat_equivalence();
     test_save();
+    test_bounded_battle_route_suspends();
     puts("roguelike core tests passed");
     return 0;
 }
