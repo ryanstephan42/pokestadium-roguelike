@@ -26,7 +26,7 @@ RL_LD_ARGS = $(foreach f,$(RL_SYM_OUT),-T $f)
 $(VANILLA_MAP):
 	$(error $(VANILLA_MAP) missing: build the vanilla ROM first (`make rl` does this))
 
-$(LDSCRIPT) $(RL_SYM_OUT) &: linker_scripts/$(VERSION)/$(TARGET).ld $(VANILLA_MAP) $(RL_SYM_PP) tools/rl/gen_rl_ld.py $(MAKEFILE_LIST)
+$(LDSCRIPT) $(RL_SYM_OUT) &: linker_scripts/$(VERSION)/$(TARGET).ld $(VANILLA_MAP) $(RL_SYM_PP) tools/rl/gen_rl_ld.py $(MAKEFILE_LIST) $(RL_MAIN_O) $(RL_FRAG_O)
 	$(call print,Generating RL linker script:,$<,$(LDSCRIPT))
 	$(V)$(PYTHON) tools/rl/gen_rl_ld.py --vanilla-ld $< --vanilla-map $(VANILLA_MAP) --build-dir $(BUILD_DIR) \
 		--out-ld $(LDSCRIPT) --out-sym-dir $(RL_DIR) --out-anchors $(RL_DIR)/anchors.txt \

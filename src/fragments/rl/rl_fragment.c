@@ -11,6 +11,7 @@
 #include "src/controller.h"
 #include "src/memory.h"
 #include "src/stage_loader.h"
+#include "src/roguelike/rl_main.h"
 #ifdef RL_HAVE_UI_DEMO
 #include "rl_ui.h"
 #endif
@@ -41,7 +42,7 @@ static void rl_fragment_set_ortho(void) {
 #ifndef RL_HAVE_UI_DEMO
 static void rl_fragment_draw_fallback(void) {
     func_8001F3F4();
-    func_8001EBE0(2, 0);
+    func_8001EBE0(8, 0);
     func_8001F324(0xFF, 0xFF, 0xFF, 0xFF);
     func_8001F1E8(0x60, 0x50, "ROGUELIKE MODE");
     func_8001F324(0xC8, 0xC8, 0xFF, 0xFF);
@@ -49,6 +50,18 @@ static void rl_fragment_draw_fallback(void) {
     func_8001F444();
 }
 #endif
+
+static void rl_fragment_draw_frame(void) {
+    func_800079C4();
+    rl_fragment_set_ortho();
+#ifdef RL_HAVE_UI_DEMO
+    rl_ui_demo_draw();
+#else
+    rl_fragment_draw_fallback();
+#endif
+    func_80007778();
+    gRlMain.frames++;
+}
 
 s32 rl_fragment_entry(UNUSED s32 arg0, UNUSED s32 arg1) {
     unk_func_80007444* ctx;
@@ -69,6 +82,8 @@ s32 rl_fragment_entry(UNUSED s32 arg0, UNUSED s32 arg1) {
 #endif
 
     func_80007678(ctx);
+    /* Fade in from the previous scene's fade-out (0 = fully visible). */
+    func_80006C6C(0xA);
 
     while (running) {
         rl_fragment_read_input();
@@ -87,14 +102,17 @@ s32 rl_fragment_entry(UNUSED s32 arg0, UNUSED s32 arg1) {
         }
 #endif
 
-        func_800079C4();
-        rl_fragment_set_ortho();
-#ifdef RL_HAVE_UI_DEMO
-        rl_ui_demo_draw();
-#else
-        rl_fragment_draw_fallback();
-#endif
-        func_80007778();
+        rl_fragment_draw_frame();
+    }
+
+    /* Fade out (screen context unk_11 returns to 1 when fully faded). */
+    if (func_80006CB4(0xA) != 0) {
+        s32 i;
+
+        for (i = 0; (i < 60) && (func_80007604() != 1); i++) {
+            rl_fragment_read_input();
+            rl_fragment_draw_frame();
+        }
     }
 
     func_800076C0();

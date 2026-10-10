@@ -17,7 +17,8 @@ typedef struct RlMainState {
     /* 0x04 */ u32 visits;      /* times the RL overlay was entered */
     /* 0x08 */ s32 lastResult;  /* last value returned by the overlay */
     /* 0x0C */ s32 returnState; /* game state to return to when leaving RL mode */
-} RlMainState; /* size = 0x10 */
+    /* 0x10 */ u32 frames;      /* frames drawn by the overlay (all visits) */
+} RlMainState; /* size = 0x14 */
 
 #define RL_MAIN_MAGIC 0x524C4D30 /* 'RLM0' */
 
