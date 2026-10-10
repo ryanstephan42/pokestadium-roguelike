@@ -30,9 +30,16 @@ static void test_initial_profile(void) {
     assert(rl_meta_permitted_events(&meta) == 0xffU);
     assert(meta.runs == 0 && meta.wins == 0);
     assert(meta.best_floor == 0 && meta.ascension == 0);
+    assert(meta.currency == 0 && meta.options == 0);
     assert(meta.hall_count == 0);
     assert(rl_meta_starter_unlocked(&meta, RL_META_POOL_STARTERS));
     assert(!rl_meta_starter_unlocked(&meta, RL_META_POOL_PRIME_CUP));
+    assert(rl_meta_species_unlocked(&meta, 1));
+    assert(rl_meta_species_unlocked(&meta, 25));
+    assert(!rl_meta_species_unlocked(&meta, 8));
+    assert(!rl_meta_species_unlocked(&meta, 151));
+    assert(!rl_meta_option_unlocked(&meta, RL_META_MOVESET_1));
+    assert(rl_meta_option_cost(RL_META_MOVESET_1) == 30);
     assert(!rl_meta_relic_unlocked(&meta, RL_RELIC_COUNT));
     assert(!rl_meta_event_unlocked(&meta, RL_EVENT_COUNT));
     selected = 77;
@@ -71,6 +78,7 @@ static void test_progression_and_roundtrip(void) {
         assert(meta.best_floor == 22);
     }
     assert(meta.ascension == 10);
+    assert(meta.currency == 325);
     assert(rl_meta_starter_unlocked(&meta, RL_META_POOL_PRIME_CUP));
     assert(rl_meta_starter_unlocked(&meta, RL_META_POOL_LITTLE_CUP));
     assert(rl_meta_permitted_pools(&meta) == 7U);
@@ -85,7 +93,7 @@ static void test_progression_and_roundtrip(void) {
     assert(meta.hall_count == 1);
     assert(meta.hall[0].species == run.party[0].species);
     assert(rl_save_encode(&meta, 0, buffer, sizeof(buffer), &length) == RL_OK);
-    assert(length == 361);
+    assert(length == 416);
     assert(rl_save_decode(&loaded, 0, &has_run, buffer, length) == RL_OK);
     assert(!has_run);
     assert(loaded.unlocked_pools == meta.unlocked_pools);
@@ -96,6 +104,95 @@ static void test_progression_and_roundtrip(void) {
     assert(loaded.ascension == meta.ascension);
     assert(loaded.hall_count == meta.hall_count);
     assert(loaded.hall[0].species == meta.hall[0].species);
+    assert(loaded.currency == meta.currency);
+    assert(loaded.pending_registration_run == 0);
+}
+
+static void test_options_species_and_currency(void) {
+    RlMeta meta, loaded;
+    RunState run;
+    RlU8 species[3], selected, buffer[RL_SAVE_MAX_SIZE], has_run;
+    RlU16 bst[3];
+    RlU32 rng, before_rng;
+    unsigned length, seed, low_bst_count, high_bst_count;
+
+    rl_meta_init(&meta);
+    meta.currency = 60;
+    assert(rl_meta_purchase_option(&meta, RL_META_MOVESET_1) == RL_OK);
+    assert(meta.currency == 30);
+    assert(rl_meta_purchase_option(&meta, RL_META_MOVESET_1) == RL_OK);
+    assert(meta.currency == 30);
+    assert(rl_meta_purchase_option(&meta, RL_META_THEME_1) == RL_FUNDS);
+    assert(rl_meta_purchase_option(&meta, RL_META_OPTION_COUNT) == RL_INVALID);
+    assert(rl_meta_option_unlocked(&meta, RL_META_MOVESET_1));
+
+    prepare_terminal_run(&run, 0, RL_LOST);
+    run.act = 2;
+    run.row = 6;
+    run.lane = 0;
+    run.party[0].species = 8;
+    run.stats.battles = 4;
+    run.stats.wins = 3;
+    rl_map_generate(&run.map, &run.rng, 2, 0);
+    assert(rl_meta_record_run(&meta, &run) == RL_OK);
+    assert(meta.currency == 65);
+    assert(meta.pending_registration_run == meta.runs);
+    assert(rl_meta_register_species(&meta, 9) == RL_INVALID);
+    assert(rl_meta_register_species(&meta, 8) == RL_OK);
+    assert(rl_meta_species_unlocked(&meta, 8));
+    assert(meta.last_registered_species == 8);
+    assert(meta.pending_registration_run == 0);
+    assert(rl_meta_register_species(&meta, 8) == RL_OK);
+    assert(rl_meta_register_species(&meta, 9) == RL_INVALID);
+
+    assert(rl_save_encode(&meta, 0, buffer, sizeof(buffer), &length) == RL_OK);
+    assert(rl_save_decode(&loaded, 0, &has_run, buffer, length) == RL_OK);
+    assert(loaded.currency == meta.currency);
+    assert(loaded.options == meta.options);
+    assert(loaded.last_registration_run == meta.last_registration_run);
+    assert(loaded.last_registered_species == 8);
+    assert(rl_meta_species_unlocked(&loaded, 8));
+
+    species[0] = 17;
+    species[1] = 18;
+    species[2] = 150;
+    bst[0] = 250;
+    bst[1] = 500;
+    bst[2] = 600;
+    low_bst_count = 0;
+    high_bst_count = 0;
+    for (seed = 1; seed <= 3000; seed++) {
+        rng = seed;
+        before_rng = rng;
+        selected = 0;
+        assert(rl_meta_choose_species(&meta, &rng, species, bst, 3,
+                                      &selected) == RL_OK);
+        assert(rng != before_rng);
+        if (selected == 17) low_bst_count++;
+        else if (selected == 18 || selected == 150) high_bst_count++;
+        else assert(0);
+    }
+    assert(low_bst_count > high_bst_count);
+    species[0] = 1;
+    rng = 99;
+    before_rng = rng;
+    selected = 77;
+    assert(rl_meta_choose_species(&meta, &rng, species, bst, 1,
+                                  &selected) == RL_EMPTY);
+    assert(rng == before_rng && selected == 77);
+
+    prepare_terminal_run(&run, 0, RL_WON);
+    run.party[0].species = 9;
+    run.stats.battles = 2;
+    run.stats.wins = 2;
+    assert(rl_meta_record_run(&loaded, &run) == RL_OK);
+    assert(loaded.pending_registration_run == loaded.runs);
+    assert(rl_save_encode(&loaded, 0, buffer, sizeof(buffer), &length) == RL_OK);
+    assert(rl_save_decode(&meta, 0, &has_run, buffer, length) == RL_OK);
+    assert(meta.pending_species[(9 - 1) >> 3] & (1U << ((9 - 1) & 7)));
+    assert(rl_meta_skip_species_registration(&meta) == RL_OK);
+    assert(meta.pending_registration_run == 0);
+    assert(rl_meta_skip_species_registration(&meta) == RL_INVALID);
 }
 
 static void test_loss_rejection_and_saturation(void) {
@@ -111,6 +208,7 @@ static void test_loss_rejection_and_saturation(void) {
     assert(rl_meta_record_run(&meta, &run) == RL_OK);
     assert(meta.runs == 1 && meta.wins == 0);
     assert(meta.best_floor == 21);
+    assert(meta.currency == 0);
     assert(meta.hall_count == 0);
     assert(!rl_meta_starter_unlocked(&meta, RL_META_POOL_PRIME_CUP));
     assert(!rl_meta_relic_unlocked(&meta, RL_META_INITIAL_RELICS));
@@ -140,6 +238,7 @@ static void test_loss_rejection_and_saturation(void) {
 int main(void) {
     test_initial_profile();
     test_progression_and_roundtrip();
+    test_options_species_and_currency();
     test_loss_rejection_and_saturation();
     return 0;
 }

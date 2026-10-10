@@ -52,10 +52,12 @@ native-import-test:
 save-test:
 	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \
-	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save; \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_save.c \
+	../src/roguelike/rl_pak.c -o test_save; \
 	./test_save; \
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_save.c $(CORE) \
-	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save_san; \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_save.c \
+	../src/roguelike/rl_pak.c -o test_save_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_save_san
 
 core-test:

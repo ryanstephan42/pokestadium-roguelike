@@ -138,9 +138,10 @@ at the unsigned 32-bit maximum rather than wrapping.
 
 ### Meta/unlock boundary
 
-`rl_meta.h` operates on the existing v3 `RlMeta` without touching storage or UI.
-Only initialize a profile with `rl_meta_init` after explicit new-profile
-creation, never as a fallback for a load error. Pool IDs are
+`rl_meta.h` operates on the current v4 `RlMeta` without touching storage or UI;
+the v4 codec migrates existing v3 profiles. Only initialize a profile with
+`rl_meta_init` after explicit new-profile creation, never as a fallback for a
+load error. Pool IDs are
 `RL_META_POOL_STARTERS` (Poke Cup), `RL_META_POOL_PRIME_CUP`, and
 `RL_META_POOL_LITTLE_CUP` (Stadium's Petit Cup). Use
 `rl_meta_select_ascension` before `rl_run_new` to enforce the saved maximum;
@@ -149,6 +150,14 @@ the low-level constructor's clamp alone does not enforce unlocks.
 `rl_meta_permitted_pools/relics/events` return catalog-bounded saved masks.
 `rl_meta_choose_event(meta, &run.rng, &event)` uniformly chooses an unlocked
 event, reporting `RL_EMPTY` without mutation if none are available.
+The base starter-species catalog contains first-stage species with base-stat
+totals at most 320. `rl_meta_choose_species` filters a caller-provided legal
+rental catalog to unlocked species and selects among distinct species with
+inverse-BST weights. Terminal recording stores the unregistered species on the
+final team as a pending profile choice; `rl_meta_register_species` or
+`rl_meta_skip_species_registration` consumes it, so the choice survives the
+terminal save clearing the suspend record. `rl_meta_purchase_option` spends
+saved currency once per option bit and is idempotent for already-owned options.
 `rl_rewards_generate_unlocked` and `rl_shop_generate_unlocked` take the
 permitted relic mask; their legacy counterparts intentionally expose all
 content for compatibility and fixtures. `rl_event_resolve_unlocked` also
@@ -163,9 +172,10 @@ each win adds one subsequent relic/event. Clearing the highest unlocked
 ascension unlocks the next, capped at 10. Call `rl_meta_record_run` only once
 after `RL_WON`/`RL_LOST`, then save its changed metadata with the existing
 Controller Pak API. It tracks saturated runs/wins, best floor (up to 22),
-and the latest winning team. Exactly-once summary ownership belongs to the
-integrator: v3 has no persistent run ID, and repeating this call would count
-the run twice. See `SAVES.md`.
+terminal-only currency and pending eligible species, and the latest winning
+team. The terminal-summary integrator caches this candidate metadata across
+uncertain writes and reloads to avoid applying a run's payout twice. See
+`SAVES.md` for proposed economy and price constants.
 
 ## Party, rewards, events, relics
 
@@ -206,29 +216,33 @@ base game unless its caller opts in.
 
 ## Save wire format
 
-`rl_save_format.h` exposes version-3 little-endian serialization and CRC-32
+`rl_save_format.h` exposes version-4 little-endian serialization and CRC-32
 (IEEE polynomial `0xedb88320`). The 8-byte prefix contains `RLSV` magic,
-version, suspend flag, and ascension. Fixed-width meta fields and six fixed
-Hall-of-Fame records serialize to **361 bytes** including checksum, under the
+version, suspend flag, and ascension. Fixed-width profile fields and six fixed
+Hall-of-Fame records serialize to **416 bytes** including checksum, under the
 512-byte meta budget. An optional fixed-layout run suspend record adds 556
-bytes, for a maximum current record size of **917 bytes**. The suspend record
-includes map encounter targets and stored TM move IDs; derived current stats
-are recalculated from serialized base data on decode. Buffer capacity is
+bytes, for a maximum current record size of **972 bytes** (992 bytes after
+storage-page padding). The profile extension stores currency, option ownership,
+registered species, and a pending terminal-team species choice. The suspend
+record includes map encounter targets and stored TM move IDs; derived current
+stats are recalculated from serialized base data on decode. Buffer capacity is
 provided by the caller; the serializer allocates nothing and rejects malformed
 species/PP/HP state, inconsistent derived HP, wrong-version, truncated,
 oversized, or CRC-invalid records. Future layout changes must increment the
 version and preserve explicit byte encoding rather than dumping compiler
 structs.
-Version 3 retains the byte layout and sizes but rejects the former seven-row
-act-3 representation; the finale is encoded in the first map cell with all
-unused cells zero. Round-trip regressions cover consumed TMs, completed daycare
-returns, every preceding boss-row width, and the finale's map/node/reward/won
-and lost states.
+The decoder migrates version-3 records (361 bytes meta-only or 917 bytes with a
+suspend) while preserving existing profile unlock bits and active-run seed,
+RNG, map, party, HP, PP, and status. New v4 fields default empty. Version 4
+also rejects the former seven-row act-3 representation; the finale is encoded
+in the first map cell with all unused cells zero. Round-trip regressions cover
+consumed TMs, completed daycare returns, every preceding boss-row width, and
+the finale's map/node/reward/won and lost states.
 
 ## Host validation
 
 Run `make -C host_tests test` for strict C89 compilation, seeded determinism,
-10,000 seeds across **all four acts**, each including v3 encode/decode, plus
+10,000 seeds across **all four acts**, each including v4 encode/decode, plus
 complete 22-node runs at all ascensions, monotonic scaling, unlocked
 rewards/shop/event choices, meta milestones, rewards/shop/TM detail, event
 pool and RNG behavior, healing/revive rules, relic math, Gen 1 XP, party

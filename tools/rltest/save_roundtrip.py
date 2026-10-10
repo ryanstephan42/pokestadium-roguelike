@@ -179,7 +179,7 @@ def phase(args):
         (directory / "evidence.json").write_text(json.dumps({
             "core": args.core, "save_ram_bytes": len(after), "pak_offset": base,
             "note_pages": pages, "unowned_bytes_unchanged": True,
-            "meta_bytes": 361, "suspend_bytes": 917,
+            "meta_bytes": 416, "suspend_bytes": 972,
         }, indent=2) + "\n")
         # Version/CRC failure fixtures go through the runtime API, not only the codec.
         data = bytearray(after)

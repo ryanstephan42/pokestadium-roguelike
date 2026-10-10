@@ -5,13 +5,21 @@
 
 #define RL_META_MAX_SIZE 512
 #define RL_SAVE_MAX_SIZE 1024
-#define RL_SAVE_VERSION 3
+#define RL_SAVE_VERSION 4
+#define RL_SAVE_LEGACY_VERSION 3
+#define RL_META_SPECIES_BYTES 19
+#define RL_META_OPTIONS_MASK 0x003fffffU
 
 typedef struct RlMeta {
     RlU32 unlocked_pools, unlocked_relics, unlocked_events;
     RlU32 runs, wins, best_floor;
     RlU8 ascension, hall_count;
     RlMon hall[RL_PARTY];
+    RlU32 currency, options, last_registration_run;
+    RlU32 pending_registration_run;
+    RlU8 registered_species[RL_META_SPECIES_BYTES];
+    RlU8 pending_species[RL_META_SPECIES_BYTES];
+    RlU8 last_registered_species;
 } RlMeta;
 
 /* Writes a versioned little-endian record; run may be NULL to omit suspension. */

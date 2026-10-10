@@ -93,6 +93,71 @@ static void read_mon(RlReader *r, RlMon *mon) {
     }
 }
 
+static void write_meta_extension(RlWriter *w, const RlMeta *meta) {
+    unsigned i;
+    put32(w, meta->currency);
+    put32(w, meta->options);
+    put32(w, meta->last_registration_run);
+    put32(w, meta->pending_registration_run);
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+        put8(w, meta->registered_species[i]);
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+        put8(w, meta->pending_species[i]);
+    put8(w, meta->last_registered_species);
+}
+
+static void read_meta_extension(RlReader *r, RlMeta *meta) {
+    unsigned i;
+    meta->currency = get32(r);
+    meta->options = get32(r);
+    meta->last_registration_run = get32(r);
+    meta->pending_registration_run = get32(r);
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+        meta->registered_species[i] = get8(r);
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+        meta->pending_species[i] = get8(r);
+    meta->last_registered_species = get8(r);
+}
+
+static int valid_species_bits(const RlU8 *bits) {
+    return (bits[RL_META_SPECIES_BYTES - 1] & 0x80) == 0;
+}
+
+static int species_bit(const RlU8 *bits, unsigned species) {
+    unsigned index;
+    if (!species || species > 151) return 0;
+    index = species - 1;
+    return (bits[index >> 3] & (1U << (index & 7))) != 0;
+}
+
+static int valid_meta_extension(const RlMeta *meta) {
+    unsigned i, has_pending;
+    if (meta->options & ~RL_META_OPTIONS_MASK ||
+        meta->last_registration_run > meta->runs ||
+        meta->pending_registration_run > meta->runs ||
+        !valid_species_bits(meta->registered_species) ||
+        !valid_species_bits(meta->pending_species) ||
+        meta->last_registered_species > 151)
+        return 0;
+    if ((meta->last_registration_run == 0) !=
+        (meta->last_registered_species == 0)) return 0;
+    if (meta->last_registered_species &&
+        !species_bit(meta->registered_species,
+                     meta->last_registered_species)) return 0;
+    has_pending = 0;
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+        if (meta->pending_species[i] & meta->registered_species[i])
+            return 0;
+        else if (meta->pending_species[i]) has_pending = 1;
+    if (meta->pending_registration_run) {
+        if (meta->pending_registration_run != meta->runs ||
+            !has_pending) return 0;
+    } else if (has_pending) return 0;
+    if (meta->last_registration_run == meta->runs &&
+        meta->pending_registration_run) return 0;
+    return 1;
+}
+
 static void write_run(RlWriter *w, const RunState *run) {
     unsigned i, j;
     put32(w, run->seed); put32(w, run->rng);
@@ -219,7 +284,8 @@ int rl_save_encode(const RlMeta *meta, const RunState *run, RlU8 *buffer,
     unsigned i;
     if (!meta || !buffer || !written || capacity < 32 ||
         meta->hall_count > RL_PARTY ||
-        meta->ascension > 10) return RL_INVALID;
+        meta->ascension > 10 || !valid_meta_extension(meta))
+        return RL_INVALID;
     for (i = 0; i < RL_PARTY; i++)
         if (!valid_mon(&meta->hall[i], i < meta->hall_count)) return RL_INVALID;
     if (run && !valid_run(run)) return RL_INVALID;
@@ -233,6 +299,7 @@ int rl_save_encode(const RlMeta *meta, const RunState *run, RlU8 *buffer,
     put32(&w, meta->wins); put32(&w, meta->best_floor);
     put8(&w, meta->hall_count);
     for (i = 0; i < RL_PARTY; i++) write_mon(&w, &meta->hall[i]);
+    write_meta_extension(&w, meta);
     if (run) write_run(&w, run);
     if (w.failed || w.pos + 4 > w.cap) return RL_FULL;
     put32(&w, rl_save_crc32(buffer, w.pos));
@@ -245,7 +312,7 @@ int rl_save_encode(const RlMeta *meta, const RunState *run, RlU8 *buffer,
 int rl_save_decode(RlMeta *meta, RunState *run, RlU8 *has_run,
                    const RlU8 *buffer, unsigned length) {
     RlReader r;
-    unsigned i, flag;
+    unsigned i, flag, version;
     RlU32 stored_crc;
     RlMeta decoded_meta;
     RunState decoded_run;
@@ -257,7 +324,10 @@ int rl_save_decode(RlMeta *meta, RunState *run, RlU8 *has_run,
         ((RlU32)buffer[length - 1] << 24);
     if (stored_crc != rl_save_crc32(buffer, length - 4)) return RL_CORRUPT;
     r.data = buffer; r.len = length - 4; r.pos = 0; r.failed = 0;
-    if (get32(&r) != RL_SAVE_MAGIC || get16(&r) != RL_SAVE_VERSION)
+    if (get32(&r) != RL_SAVE_MAGIC)
+        return RL_CORRUPT;
+    version = get16(&r);
+    if (version != RL_SAVE_VERSION && version != RL_SAVE_LEGACY_VERSION)
         return RL_CORRUPT;
     flag = get8(&r);
     decoded_meta.ascension = get8(&r);
@@ -270,6 +340,18 @@ int rl_save_decode(RlMeta *meta, RunState *run, RlU8 *has_run,
     if (flag > 1 || decoded_meta.ascension > 10 ||
         decoded_meta.hall_count > RL_PARTY) return RL_CORRUPT;
     for (i = 0; i < RL_PARTY; i++) read_mon(&r, &decoded_meta.hall[i]);
+    decoded_meta.currency = 0;
+    decoded_meta.options = 0;
+    decoded_meta.last_registration_run = 0;
+    decoded_meta.pending_registration_run = 0;
+    decoded_meta.last_registered_species = 0;
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++) {
+        decoded_meta.registered_species[i] = 0;
+        decoded_meta.pending_species[i] = 0;
+    }
+    if (version >= RL_SAVE_VERSION)
+        read_meta_extension(&r, &decoded_meta);
+    if (!valid_meta_extension(&decoded_meta)) return RL_CORRUPT;
     for (i = 0; i < RL_PARTY; i++)
         if (!valid_mon(&decoded_meta.hall[i], i < decoded_meta.hall_count))
             return RL_CORRUPT;
