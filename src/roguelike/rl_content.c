@@ -6,6 +6,7 @@ int rl_encounter_select(const RunState *run, RlEncounter *encounter) {
     unsigned type, roster, trainer;
     if (!run || !encounter || run->act > 3 || run->ascension > 10 ||
         run->row >= rl_map_rows(run->act) ||
+        run->lane >= RL_LANES || run->map.lanes[run->row] > RL_LANES ||
         run->lane >= run->map.lanes[run->row]) return RL_INVALID;
     type = run->map.nodes[run->row][run->lane].type;
     if (type != RL_BATTLE && type != RL_ELITE && type != RL_BOSS)
