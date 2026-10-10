@@ -701,6 +701,7 @@ static int rl_play_run_battle(void) {
         rules.player_cpu = gRlPlayTestMode == 1;
         rules.show_intro = 1;
         rules.use_state = 1;
+        rules.relics = gRlRun.relics;
         gRlPlayScene = RL_PLAY_BATTLE;
         if (!rl_main_queue_battle(player, sPlayActiveCount, enemy, enemy_count,
                                   &rules, sPlayActiveSlots, enemy,
@@ -991,6 +992,13 @@ static void rl_play_update_reward(u16 pressed) {
     if (result >= 0 && result < sPlayRewardCount) {
         if (rl_reward_apply(&gRlRun, &sPlayRewards[result]) != RL_OK) {
             sPlayMessage = "Could not apply selected reward";
+            return;
+        }
+        if (sPlayRewards[result].kind == RL_REWARD_RELIC &&
+            sPlayRewards[result].detail == RL_PP_POUCH &&
+            rl_battle_apply_pp_pouch(&gRlRun) < 0) {
+            sPlayMessage = "Could not apply PP Pouch";
+            gRlPlayScene = RL_PLAY_ERROR;
             return;
         }
         rl_play_after_reward();

@@ -1,5 +1,22 @@
 #include "fragment62.h"
 #include "src/2E110.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_native_relics.h"
+
+static int rl_status_immunity(unsigned int status, int primary) {
+    if (D_84390288 != 0 ||
+        !rl_native_relics_block_status(D_843C523C, status, D_843C5238->unk_44.unk_00)) {
+        return 0;
+    }
+    if (primary) {
+        D_843C4DA4 = 1;
+        D_843C4E44 = 0;
+        func_8002D5D4(0x19, func_8430862C(D_84390010[!D_84390240.unk_00->unk_2C]));
+        func_843179F4(D_843901A0->unk_088, -0x7F);
+    }
+    return 1;
+}
+#endif
 
 typedef void (*func_D_8438AE50)(void);
 
@@ -102,6 +119,11 @@ block_9:
                 var_v1 = func_8436F6D8() & 3;
             }
         } while (var_v1 == 0);
+#ifdef ROGUELIKE
+        if (rl_status_immunity(var_v1, 1)) {
+            return;
+        }
+#endif
         D_843C4DA4 = 0;
         D_843C523C->unk_15 = var_v1;
         func_8002D5D4(0x19, func_8430862C(D_84390010[!D_84390240.unk_00->unk_2C]));
@@ -148,6 +170,12 @@ void func_84373A30(void) {
                 break;
         }
 
+#ifdef ROGUELIKE
+        if (rl_status_immunity(8, D_843C5238->unk_44.unk_01 != 2 &&
+                                  D_843C5238->unk_44.unk_01 != 33)) {
+            return;
+        }
+#endif
         D_843C523C->unk_15 |= 8;
         if (D_843C5238->unk_44.unk_00 == 0x5C) {
             D_843C523C->unk_4E |= 1;
@@ -231,6 +259,11 @@ void func_84373E60(void) {
             return;
         }
 
+#ifdef ROGUELIKE
+        if (rl_status_immunity(0x70, 0)) {
+            return;
+        }
+#endif
         switch (D_843C5238->unk_44.unk_01) {
             case 4:
             case 34:
@@ -805,6 +838,11 @@ void func_84375700(void) {
         if ((D_843C5238->unk_44.unk_03 != 0x17) || ((D_843C523C->unk_16[6] != 4) && (D_843C523C->unk_16[7] != 4))) {
             func_843708CC();
             if (D_843C4DA4 == 0) {
+#ifdef ROGUELIKE
+                if (rl_status_immunity(0x40, 1)) {
+                    return;
+                }
+#endif
                 D_843C523C->unk_15 |= 0x40;
                 func_84370B0C(D_84390010[!D_84390240.unk_00->unk_2C]);
                 func_8002D5D4(0x19, func_8430862C(D_84390010[!D_84390240.unk_00->unk_2C]));

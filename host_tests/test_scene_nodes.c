@@ -16,8 +16,20 @@ static unsigned detail_count;
 static RlMon mons[4];
 static RlPool pool;
 static RlMeta profile;
+static unsigned pouch_calls;
+static int pouch_error;
 #define rl_scene_nodes_begin(run, rentals, mode) \
     (rl_scene_nodes_begin)(run, rentals, mode, &profile)
+
+int rl_battle_apply_pp_pouch(RunState* run) {
+    pouch_calls++;
+    assert(run->relics & (1U << RL_PP_POUCH));
+    assert(!(run->consumed_relics & (1U << RL_PP_POUCH)));
+    if (pouch_error) return -1;
+    run->consumed_relics |= 1U << RL_PP_POUCH;
+    run->party[0].max_pp[0]++;
+    return 1;
+}
 
 unk_D_80072B00* func_8002ED40(s32 move) {
     return move > 0 && move <= 165 ? &move_data : NULL;
@@ -414,6 +426,52 @@ static void test_shop(void) {
     assert(choose(14) == RL_SCENE_COMPLETED);
 }
 
+static void test_pouch_acquisition(void) {
+    RunState run, snapshot;
+    unsigned mode, fail, item, i, calls;
+    for (mode = 0; mode < 2; mode++) {
+        for (fail = 0; fail < 2; fail++) {
+            profile.unlocked_relics = 1U << RL_PP_POUCH;
+            profile.unlocked_events = 1U << 8;
+            init_run(&run, 99);
+            snapshot = run;
+            pouch_error = (int)fail;
+            calls = pouch_calls;
+            rl_scene_nodes_begin(&run, &pool, mode ? RL_EVENT : RL_MART);
+            draw();
+            item = 0;
+            if (!mode) {
+                item = shown->count;
+                for (i = 0; i < (unsigned)shown->count; i++)
+                    if (!strcmp(shown->items[i].text, rl_relic_defs[RL_PP_POUCH].name))
+                        item = i;
+                assert(item < (unsigned)shown->count);
+            }
+            assert(choose(item) == (mode && !fail ? RL_SCENE_COMPLETED : RL_SCENE_ONGOING));
+            assert(pouch_calls == calls + 1);
+            if (fail) {
+                assert(!memcmp(&run, &snapshot, sizeof(run)));
+                draw();
+                assert(message && message[0]);
+            } else {
+                assert(run.relics & (1U << RL_PP_POUCH));
+                assert(run.consumed_relics & (1U << RL_PP_POUCH));
+                assert(run.party[0].max_pp[0] == snapshot.party[0].max_pp[0] + 1);
+                assert(run.party[0].pp[0] == snapshot.party[0].pp[0]);
+                assert(!strcmp(rl_scene_relic_status(&run, RL_PP_POUCH),
+                               "PP Up applied to moves held at pickup."));
+                if (!mode) {
+                    assert(choose(item) == RL_SCENE_ONGOING);
+                    assert(pouch_calls == calls + 1);
+                }
+            }
+        }
+    }
+    pouch_error = 0;
+    profile.unlocked_events = (1U << RL_EVENT_COUNT) - 1;
+    profile.unlocked_relics = (1U << RL_RELIC_COUNT) - 1;
+}
+
 static void test_unavailable_relics(void) {
     RunState run;
     unsigned i, item, old_money;
@@ -519,6 +577,7 @@ int main(void) {
     test_bag_party();
     test_relic_inventory();
     test_shop();
+    test_pouch_acquisition();
     test_unavailable_relics();
     test_locked_profile();
     puts("Scene interactions: events, Center, recruit, shop, relic details, Bag, TM and Party passed");

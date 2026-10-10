@@ -12,9 +12,9 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test clean
+.PHONY: test core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test clean
 
-test: core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test nodes-test scene-nodes-test
+test: core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test
 	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance
 
 ido-test:
@@ -64,6 +64,18 @@ content-test:
 	./test_content; \
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_content.c $(CORE) -o test_content_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_content_san
+
+native-relic-test:
+	mkdir -p ../build/host_tests
+	$(CC) -std=gnu89 -m32 -funsigned-char -fno-builtin \
+	    -DROGUELIKE -DCC_CHECK -DNON_MATCHING -DAVOID_UB -D_LANGUAGE_C -DLANGUAGE_C \
+	    -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 \
+	    -I../include -I../src -I.. -I../build -I../assets/us \
+	    -I../lib/ultralib/include -I../lib/ultralib/include/PR \
+	    -I../lib/ultralib/include/ido \
+	    test_native_relics.c ../src/roguelike/rl_native_relics.c $(CORE) \
+	    -o ../build/host_tests/native-relics
+	../build/host_tests/native-relics
 
 native-import-test:
 	mkdir -p ../build/host_tests

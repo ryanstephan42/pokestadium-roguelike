@@ -6,22 +6,22 @@ const RlRelicDef rl_relic_defs[RL_RELIC_COUNT] = {
     {"Cascade Badge", "Water-type move damage is 15% higher in battle."},
     {"Thunder Badge", "Your Pokemon's Speed stat is 10% higher in battle."},
     {"Rainbow Badge", "After battle, each living party Pokemon heals 10% of max HP."},
-    {"Soul Badge", "Blocks status effects during the first two turns of battle."},
+    {"Soul Badge", "Blocks enemy-inflicted major status for the first two turns."},
     {"Marsh Badge", "Your Pokemon's Special stat is 10% higher in battle."},
     {"Volcano Badge", "Fire-type move damage is 15% higher in battle."},
     {"Earth Badge", "Offers one extra reward choice after battle."},
     {"Amulet Coin", "Increases run money rewards by 50%."},
     {"Exp. Share", "Bench Pokemon earn half of battle XP."},
     {"Lucky Egg", "Increases battle XP by 50%."},
-    {"Leftovers Charm", "At each turn end, recover 1/16 of max HP."},
-    {"Focus Band Charm", "Once per battle, survive a knockout at 1 HP."},
-    {"Scope Lens Charm", "Adds 1 critical-hit bonus to each battle check."},
+    {"Leftovers Charm", "Living active Pokemon heals 1/16 max HP at turn end (minimum 1)."},
+    {"Focus Band Charm", "Once per battle, survive a direct enemy hit at 1 HP; not residual damage."},
+    {"Scope Lens Charm", "Doubles your critical-hit chance, capped at the native limit."},
     {"Silph Scope", "Shows the opposing party before you choose your Pokemon."},
-    {"PP Up Pouch", "Move maximum PP increases by 20%, rounded to a whole point."},
+    {"PP Up Pouch", "On pickup, one PP Up per current move (cap 3); does not refill PP."},
     {"Old Amber", "One use: recruit an extra Pokemon; consumed only if recruitment succeeds."},
     {"Master Ball", "One use: recruit a boss Pokemon; consumed only if recruitment succeeds."},
     {"Ghost Relic", "Ghost-type move damage is 15% higher in battle."},
-    {"Cursed Power", "All damage is 10% higher; each Pokemon loses 1 HP at turn end."}
+    {"Cursed Power", "Direct damage +10%; active loses 1 HP after Leftovers each turn. Can KO."}
 };
 
 const char *rl_scene_relic_status(const RunState *run, unsigned relic) {
@@ -34,6 +34,10 @@ const char *rl_scene_relic_status(const RunState *run, unsigned relic) {
     case RL_LUCKY_EGG: return "Battle XP bonus is active after wins.";
     case RL_SILPH_SCOPE:
         return "Roster preview is always available; no extra effect.";
+    case RL_PP_POUCH:
+        if (run->consumed_relics & (1U << relic))
+            return "PP Up applied to moves held at pickup.";
+        return "One-time PP Up applies on pickup.";
     case RL_OLD_AMBER:
         if (run->consumed_relics & (1U << relic))
             return "Recruit use spent this run.";
@@ -42,7 +46,7 @@ const char *rl_scene_relic_status(const RunState *run, unsigned relic) {
         if (run->consumed_relics & (1U << relic))
             return "Recruit use spent this run.";
         return "Recruit UI missing; boss-only limit unenforced.";
-    default: return "Native battle effect not connected yet.";
+    default: return "Native battle effect is connected.";
     }
 }
 
@@ -142,7 +146,8 @@ unsigned rl_relic_crit_bonus(RlU32 relics) {
 }
 
 unsigned rl_relic_pp_max(RlU32 relics, unsigned base) {
-    if (relics & (1U << RL_PP_POUCH)) return (base * 120 + 50) / 100;
+    if (relics & (1U << RL_PP_POUCH))
+        return base + ((base >= 40) ? 7 : base / 5);
     return base;
 }
 

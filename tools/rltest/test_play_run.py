@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tools.rltest.frontend import Frontend, HarnessError
 from tools.rltest.run import default_core
-from tools.rltest.test_custom_battle import Mon, Result
+from tools.rltest.test_custom_battle import Mon, PendingBattle, Result
 
 
 class Node(ctypes.BigEndianStructure):
@@ -156,7 +156,7 @@ def choose_active_and_battle(emu, battle_index):
             f"native battle used the wrong lead: {live[0]} vs {active.species}")
     pending_addr = emu.resolve("gRlPendingBattle")
     queued = Mon.from_buffer_copy(emu.read(pending_addr, ctypes.sizeof(Mon)))
-    player_slots_offset = ctypes.sizeof(Mon) * 15 + 8
+    player_slots_offset = PendingBattle.player_slots.offset
     require(emu.read_u8(pending_addr + player_slots_offset) == 2,
             "damaged carry-over lead did not retain party-slot identity")
     if battle_index > 1:
@@ -304,7 +304,7 @@ def verify_native_loss(emu):
     wait_scene(emu, SCENE_BATTLE)
     emu.wait(lambda runner: runner.read_u32("gRlBattleActive") == 1,
              frames=600, description="human native-loss battle launch")
-    trainer_count_offset = ctypes.sizeof(Mon) * 15 + 13
+    trainer_count_offset = PendingBattle.trainer_count.offset
     trainer_count = emu.read_u8(emu.resolve("gRlPendingBattle") +
                                 trainer_count_offset)
     require(trainer_count >= 1, "native-loss battle has no trainer roster")

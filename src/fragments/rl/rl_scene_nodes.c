@@ -1,6 +1,7 @@
 #ifdef ROGUELIKE
 #include "rl_scene_nodes.h"
 #include "rl_ui.h"
+#include "src/roguelike/rl_battle.h"
 #include "src/2E460.h"
 #include "src/232C0.h"
 
@@ -301,6 +302,10 @@ static int node_event(unsigned choice, unsigned slot) {
         &copy, sEvent, choice, slot, sRentals, &sMovePool,
         rl_scene_available_relics(rl_meta_permitted_relics(sMeta)));
     if (result == RL_OK) {
+        if (!(sRun->relics & (1U << RL_PP_POUCH)) &&
+            (copy.relics & (1U << RL_PP_POUCH)) &&
+            rl_battle_apply_pp_pouch(&copy) < 0)
+            return RL_INVALID;
         copy.rng = rng;
         *sRun = copy;
     }
@@ -380,6 +385,7 @@ static unsigned node_living(void) {
 }
 
 int rl_scene_nodes_update(u16 pressed) {
+    RunState copy;
     int selected, result;
     unsigned value, i;
     if (sPage == NODE_DONE) {
@@ -452,8 +458,14 @@ int rl_scene_nodes_update(u16 pressed) {
                 sChoice = 101;
             }
         } else if (sMode == RL_MART) {
-            result = rl_shop_buy(sRun, &sShop[value]);
+            copy = *sRun;
+            result = rl_shop_buy(&copy, &sShop[value]);
+            if (result == RL_OK && sShop[value].item == RL_RELIC_ITEM &&
+                sShop[value].detail == RL_PP_POUCH &&
+                rl_battle_apply_pp_pouch(&copy) < 0)
+                result = RL_INVALID;
             if (result == RL_OK) {
+                *sRun = copy;
                 if (sShop[value].item == RL_RELIC_ITEM) sItems[selected].disabled = 1;
                 sMessage = "Purchased. Added to Bag or relics.";
             }

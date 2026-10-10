@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stddef.h>
 #include "src/roguelike/rl_main.c"
 #include "src/roguelike/rl_rosters.c"
 #include "src/fragments/rl/rl_play.c"
@@ -15,6 +16,10 @@ static unsigned sOrderDrawn;
 static unsigned sDrawnMoves[4];
 
 void osSyncPrintf(const char* format, ...) {}
+int rl_battle_apply_pp_pouch(RunState* run) {
+    run->consumed_relics |= 1U << RL_PP_POUCH;
+    return 1;
+}
 int rl_prepare_mon(RlMon* mon, int full_heal) {
     mon->max_hp = 200;
     if (full_heal) mon->cur_hp = mon->max_hp;
@@ -61,7 +66,9 @@ RlSaveStatus rl_save_store(unsigned port, const RlMeta* meta, const RunState* ru
 }
 const char* rl_save_status_text(RlSaveStatus status) { return "Storage unavailable"; }
 
-int main(void) {
+extern int printf(const char* format, ...);
+
+int main(int argc, char** argv) {
     RunState before;
     RlMon actual[6];
     unsigned char ai;
@@ -70,6 +77,20 @@ int main(void) {
     unsigned lane;
     int count;
     RlBattleRules rules;
+
+    if (argc == 2 && !strcmp(argv[1], "--layout")) {
+        printf("{\"mon_size\":%u,\"rules_size\":%u,\"relics\":%u,"
+               "\"pending_size\":%u,\"rules\":%u,\"player_slots\":%u,"
+               "\"trainer\":%u,\"trainer_count\":%u}\n",
+               (unsigned)sizeof(RlMon), (unsigned)sizeof(RlBattleRules),
+               (unsigned)offsetof(RlBattleRules, relics),
+               (unsigned)sizeof(RlPendingBattle),
+               (unsigned)offsetof(RlPendingBattle, rules),
+               (unsigned)offsetof(RlPendingBattle, player_slots),
+               (unsigned)offsetof(RlPendingBattle, trainer),
+               (unsigned)offsetof(RlPendingBattle, trainer_count));
+        return 0;
+    }
 
     for (i = 0; i < 165; i++) D_80072B00[i].unk_05 = 15;
     rl_meta_init(&sPlayMeta);

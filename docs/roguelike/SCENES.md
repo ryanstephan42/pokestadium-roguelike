@@ -77,24 +77,32 @@ owned-relic list; **B** returns to the same root without changing its Back
 index. The selected relic shows the canonical `rl_relic_defs` name and wrapped
 effect text. Old Amber and Master Ball also show whether their one-time recruit
 use is spent. Each detail and shop preview also marks its runtime status:
-run-core effects that currently work are identified as active, while native
-battle-only effects are explicitly marked as not connected yet. These are
+run-core effects are identified as active, and W9 native battle effects are
+marked as connected. PP Pouch reports whether its pickup use is spent. These are
 run-wide relics, not items in the consumable Bag.
 
 Relics can be offered as battle rewards or at the Mart, and the Hidden Grotto
 event grants a random unowned usable relic from the profile-permitted set. Lavender
 Tower grants Ghost Relic after its HP cost; Mysterious Shrine grants Cursed
-Power. Old Amber and Master Ball are the only relics with `consumed_relics`
-state: their pure-core recruit helper spends them only after recruitment
+Power. PP Pouch applies one native PP Up per current move on acquisition,
+without refilling PP (cap three PP Ups), and records its consumed bit.
+The reward, Mart and Hidden Grotto paths all invoke the pickup helper.
+Mart and event changes commit only if that helper succeeds.
+Old Amber and Master Ball also have `consumed_relics` state:
+their pure-core recruit helper spends them only after recruitment
 succeeds. The helper currently does not enforce that Master Ball is used for
 a boss.
 
 Several run-core effects already work after a native battle result: Amulet Coin
 increases battle money, Exp. Share and Lucky Egg modify awarded XP, Rainbow
 Badge heals the living party after a win, and Earth Badge adds a reward choice.
-Most battle-time effects are still inactive in native Stadium battles: the
-battle adapter does not invoke the stat, damage, turn-end, status, critical-hit,
-or PP relic helpers. Silph Scope adds no extra reveal because the roster preview is always available.
+W9 hooks connect stat, direct damage, turn-end, status and critical-hit effects
+to native Stadium battles using the run-wide battle-rule mask. Soul blocks
+enemy-inflicted major status for the first two turns; Focus protects against one
+direct enemy hit per battle, not residual damage. Leftovers heals only the living
+active Pokemon, then Cursed Power removes 1 HP, potentially causing a native KO.
+See `re-notes/native-relics.md` for exact limits and acceptance status.
+Silph Scope adds no extra reveal because the roster preview is always available.
 
 Old Amber and Master Ball are recruit-only, with no passive effect. Their
 one-time core helper consumes them only if recruitment succeeds, but no
