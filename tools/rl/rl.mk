@@ -24,13 +24,15 @@ RL_NATIVE_RELOCS0 := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_re
 -include $(wildcard $(RL_MAIN_DIR)/*.mk $(RL_FRAG_DIR)/*.mk)
 
 $(shell mkdir -p $(RL_DIR))
+RL_NATIVE_CONFIG := $(RL_DIR)/regen_fragments.txt
+$(shell if ! test -f $(RL_NATIVE_CONFIG) || test "$$(cat $(RL_NATIVE_CONFIG))" != "$(RL_REGEN_FRAGMENTS)"; then printf '%s\n' "$(RL_REGEN_FRAGMENTS)" > $(RL_NATIVE_CONFIG); fi)
 
 RL_LD_ARGS = $(foreach f,$(RL_SYM_OUT),-T $f)
 
 $(VANILLA_MAP):
 	$(error $(VANILLA_MAP) missing: build the vanilla ROM first (`make rl` does this))
 
-$(LDSCRIPT) $(RL_SYM_OUT) &: linker_scripts/$(VERSION)/$(TARGET).ld $(VANILLA_MAP) $(RL_SYM_PP) tools/rl/gen_rl_ld.py $(MAKEFILE_LIST) $(RL_MAIN_O) $(RL_FRAG_O)
+$(LDSCRIPT) $(RL_SYM_OUT) &: linker_scripts/$(VERSION)/$(TARGET).ld $(VANILLA_MAP) $(RL_SYM_PP) tools/rl/gen_rl_ld.py $(MAKEFILE_LIST) $(RL_MAIN_O) $(RL_FRAG_O) $(RL_NATIVE_CONFIG)
 	$(call print,Generating RL linker script:,$<,$(LDSCRIPT))
 	$(V)$(PYTHON) tools/rl/gen_rl_ld.py --vanilla-ld $< --vanilla-map $(VANILLA_MAP) --build-dir $(BUILD_DIR) \
 		--out-ld $(LDSCRIPT) --out-sym-dir $(RL_DIR) --out-anchors $(RL_DIR)/anchors.txt \
