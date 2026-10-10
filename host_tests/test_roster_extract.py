@@ -73,6 +73,20 @@ class RosterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             rosters.write_c(data, Path(directory) / "rl_rosters.h")
 
+    def test_duplicate_rental_storage_shared(self):
+        mon = rosters.parse_mon(self.mon())
+        data = {"trainer_sets": [], "rental_sets": [
+            {"id": "poke", "round": 1, "mons": [mon]},
+            {"id": "poke_alias", "round": 1, "mons": [mon]},
+        ]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rl_rosters.h"
+            rosters.write_c(data, path)
+            text = path.read_text()
+        self.assertEqual(text.count("static const RlGenMon RL_RENTALS_"), 1)
+        self.assertIn('"poke_alias", 1, 1, RL_RENTALS_POKE', text)
+        self.assertIn("#define RL_RENTAL_SET_POKE_ALIAS 1", text)
+
 
 if __name__ == "__main__":
     unittest.main()
