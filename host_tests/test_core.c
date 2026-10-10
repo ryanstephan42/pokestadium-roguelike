@@ -454,7 +454,8 @@ static void test_small_shop_catalog(void) {
     moves.count = 1;
     eligible = (1U << RL_POTION) | (1U << RL_SUPER_POTION) |
         (1U << RL_HYPER_POTION) | (1U << RL_FULL_RESTORE) |
-        (1U << RL_REVIVE) | (1U << RL_ETHER) | (1U << RL_CANDY) |
+        (1U << RL_REVIVE) | (1U << RL_ETHER) | (1U << RL_ELIXIR) |
+        (1U << RL_FULL_HEAL) | (1U << RL_CANDY) |
         (1U << RL_VITAMIN) | (1U << RL_RELIC_ITEM) | (1U << RL_TM);
     for (capacity = 1; capacity <= 3; capacity++) {
         seen = 0;

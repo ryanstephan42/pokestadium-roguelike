@@ -61,6 +61,15 @@ def wait_scene(emu, expected, frames=1200):
              description=f"roguelike scene {expected}")
 
 
+def wait_draft(emu):
+    emu.wait(lambda runner: scene(runner) in (SCENE_DRAFT, 9), frames=1200,
+             description="draft or explicit new-profile choice")
+    if scene(emu) == 9:
+        emu.step(30)
+        press(emu, "N64_A")
+    wait_scene(emu, SCENE_DRAFT)
+
+
 def press(emu, button, after=4):
     emu.press(button, frames=4, after=after)
 
@@ -207,6 +216,7 @@ def choose_active_and_battle(emu, battle_index):
 
 def verify_loss_summary(emu):
     """Exercise summary UI with a synthetic all-fainted party fixture."""
+    emu.write_u32("gRlPlayTestMode", 2)
     press(emu, "N64_A")
     wait_scene(emu, SCENE_DRAFT)
     emu.step(30)
@@ -235,8 +245,9 @@ def start_new_run(emu, seed, test_mode):
     emu.write_u32("gRlPlayTestMode", test_mode)
     emu.write_u32("gRlPlayTestSeed", seed)
     press(emu, "N64_A")
-    wait_scene(emu, SCENE_DRAFT)
+    wait_draft(emu)
     emu.step(30)
+    emu.screenshot(emu.output / f"draft-moves-{seed:08x}.png")
     for button in ("N64_A", "DOWN", "N64_A", "DOWN", "N64_A"):
         emu.press(button, frames=4, after=16)
     for _ in range(5):
@@ -248,6 +259,10 @@ def start_new_run(emu, seed, test_mode):
 def reenter_roguelike(emu):
     emu.press("N64_A", frames=6, after=120)
     emu.step(120)
+    enter_roguelike_from_menu(emu)
+
+
+def enter_roguelike_from_menu(emu):
     emu.hold("L")
     emu.press("N64_A", frames=6, after=120)
     emu.wait_state(0x30, frames=600)
@@ -389,7 +404,7 @@ def run(emu, output):
     emu.screenshot(output / "run-menu.png")
 
     press(emu, "N64_A")
-    wait_scene(emu, SCENE_DRAFT)
+    wait_draft(emu)
     first_draft = emu.read("gRlPlayDraftSpecies", 6)
     press(emu, "N64_B")
     wait_scene(emu, SCENE_MENU)
@@ -437,7 +452,16 @@ def run(emu, output):
     emu.wait_state(4, frames=600)
     reenter_roguelike(emu)
     verify_seed8_suspend_resume(emu)
-    emu.write_u32("gRlPlayTestMode", 3)
+    # Production resumes the canonical seed-8 map, not the trainer-only route.
+    # Start a fresh guarded battle fixture for the distinct native-loss test.
+    resumed = read_run(emu)
+    row = 0 if resumed.row == 255 else resumed.row + 1
+    for _ in range(resumed.map.lanes[row]):
+        press(emu, "DOWN")
+    press(emu, "N64_A")
+    emu.wait_state(4, frames=600)
+    reenter_roguelike(emu)
+    start_new_run(emu, 0x13579BDF, 3)
     verify_native_loss(emu)
     press(emu, "N64_B")
     emu.wait_state(4, frames=600)
@@ -472,7 +496,8 @@ def main():
     parser.add_argument("--native-loss-only", action="store_true")
     args = parser.parse_args()
     output = Path(args.output)
-    with Frontend(args.core, args.rom, args.map_path, output, timeout=900) as emu:
+    with Frontend(args.core, args.rom, args.map_path, output, timeout=1800,
+                  options={"mupen64plus-pak1": "memory"}) as emu:
         try:
             if args.native_loss_only:
                 run_native_loss_only(emu)
