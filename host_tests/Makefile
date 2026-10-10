@@ -11,10 +11,15 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test ui-test save-test clean
+.PHONY: test core-test ui-test save-test native-import-test clean
 
-test: core-test ui-test save-test
+test: core-test ui-test save-test native-import-test
 
+native-import-test:
+	mkdir -p ../build/host_tests
+	$(CC) $(CFLAGS) test_native_imports.c ../src/roguelike/rl_native_imports.c -o ../build/host_tests/native-imports
+	../build/host_tests/native-imports
+	cd .. && python3 -m unittest host_tests.test_archive_import_generator
 save-test:
 	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \

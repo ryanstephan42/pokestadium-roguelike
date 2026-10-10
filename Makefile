@@ -428,9 +428,17 @@ ifeq ($(N64_EMULATOR),)
 endif
 	$(N64_EMULATOR) $<
 
+# Roguelike: trainer rosters / rental pools generated from the baserom (never committed).
+RL_GEN_DIR := $(BUILD_DIR)/rl_gen
+$(RL_GEN_DIR)/rl_rosters.h: $(BASEROM) tools/rl_extract_rosters.py
+	$(PYTHON) tools/rl_extract_rosters.py --rom $(BASEROM) --out $(RL_GEN_DIR)
+rl-rosters: $(RL_GEN_DIR)/rl_rosters.h
+ifeq ($(ROGUELIKE),1)
+$(BUILD_DIR)/src/roguelike/rl_rosters.o: $(RL_GEN_DIR)/rl_rosters.h
+endif
 
+.PHONY: all rom clean libclean distclean venv setup extract lib diff-init init run rl-rosters
 .PHONY: rl rlrom rlclean
-.PHONY: all rom clean libclean distclean venv setup extract lib diff-init init run
 .DEFAULT_GOAL := rom
 # Prevent removing intermediate files
 .SECONDARY:

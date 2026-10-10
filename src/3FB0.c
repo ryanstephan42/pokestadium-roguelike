@@ -513,6 +513,16 @@ void func_800043BC(s32 arg0, Fragment* addr) {
 
     main_pool_set_func(addr, arg0 + 0x81000000, &func_80004364);
 
+#ifdef ROGUELIKE
+    {
+        extern int rl_relocate_archive_imports(unsigned int, unsigned int*);
+        if (rl_relocate_archive_imports(arg0, (unsigned int*)addr) < 0) {
+            osSyncPrintf("Unsupported original archive battle import\n");
+            osStopThread(NULL);
+        }
+        osWritebackDCache(addr, addr->relocOffset);
+    }
+#endif
     if (sp20 < addr->sizeInRam) {
         main_pool_realloc(addr, addr->sizeInRam);
         Memmap_RelocateFragment(arg0, addr);

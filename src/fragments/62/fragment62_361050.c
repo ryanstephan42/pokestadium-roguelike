@@ -5654,6 +5654,18 @@ s32 func_843831A0(unk_D_800AE540_0004* arg0, unk_D_800AE540_0004* arg1, unk_D_80
     func_8437717C(arg1);
     func_8437717C(arg2);
 
+#ifdef ROGUELIKE
+    {
+        extern int gRlBattleActive;
+        if (gRlBattleActive) {
+            for (i = 0; i < D_843C60A4->unk_06; i++) {
+                D_843C5568[D_843C5568->unk_000].unk_00C[i] = i;
+            }
+            return 1;
+        }
+    }
+#endif
+
     if (D_843C5564->unk_00 & 0x100) {
         if (D_843C5564->unk_00 & 1) {
             if (func_843804F4(D_843C60A8, D_843C60A4, sp38, NULL, arg5) == 0) {
