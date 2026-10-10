@@ -13,7 +13,15 @@ UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
 
 .PHONY: test core-test ui-test save-test native-import-test clean
 
-test: core-test ui-test save-test native-import-test
+test: core-test ui-test save-test native-import-test nodes-test
+
+.PHONY: nodes-test
+nodes-test:
+	@set -e; trap 'rm -f test_nodes test_nodes_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_nodes.c $(CORE) -o test_nodes; \
+	./test_nodes; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_nodes.c $(CORE) -o test_nodes_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_nodes_san
 
 native-import-test:
 	mkdir -p ../build/host_tests

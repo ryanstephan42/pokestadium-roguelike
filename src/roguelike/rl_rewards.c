@@ -145,17 +145,19 @@ static RlU16 rl_price(unsigned price, unsigned act) {
 
 unsigned rl_shop_generate(RunState *run, const RlMovePool *moves,
                           RlShopEntry *out, unsigned capacity) {
-    static const RlU8 items[10] = {
+    static const RlU8 items[12] = {
         RL_POTION, RL_SUPER_POTION, RL_HYPER_POTION, RL_FULL_RESTORE,
-        RL_REVIVE, RL_ETHER, RL_CANDY, RL_VITAMIN, RL_RELIC_ITEM, RL_TM
+        RL_REVIVE, RL_ETHER, RL_ELIXIR, RL_FULL_HEAL,
+        RL_CANDY, RL_VITAMIN, RL_RELIC_ITEM, RL_TM
     };
-    static const unsigned prices[10] = {
-        200, 500, 1200, 2500, 1500, 600, 1800, 900, 5000, 3000
+    static const unsigned prices[12] = {
+        200, 500, 1200, 2500, 1500, 600, 1200, 400,
+        1800, 900, 5000, 3000
     };
     unsigned i, count, start, catalog_count;
     if (!run || !out || (moves && moves->count && !rl_move_pool_valid(moves)))
         return 0;
-    catalog_count = rl_move_pool_valid(moves) ? 10U : 9U;
+    catalog_count = rl_move_pool_valid(moves) ? 12U : 11U;
     count = capacity < catalog_count ? capacity : catalog_count;
     if (!count) return 0;
     start = rl_random_bounded(&run->rng, catalog_count);
