@@ -76,12 +76,15 @@ ascension money reduction before the Amulet Coin bonus.
   extracted trainer/rental tables can be passed without changing core logic.
   `fixed_order` preserves source order for signature teams; otherwise selections
   use the run RNG. In act 3, map boss nodes carry `target_species == 150` to
-  identify the Mewtwo finale encounter; the integrator must supply its complete
-  VS Mewtwo signature team, not a one-Pokémon Mewtwo record. The built-in
+  identify the Mewtwo finale encounter. The real Stadium US VS Mewtwo roster
+  contains **one Mewtwo** in both rounds, not a fabricated six-mon team. The built-in
   four-mon pool is fixture data only, not final Stadium roster content.
 - `rl_enemy_level` applies act base + 2 per row + ascension level bonus,
   +3 for elites and +5 for bosses, capped at 100. Elite/boss DVs are max;
-  ordinary DVs and stat experience rise with depth. Scaled stats use the shared
+  ordinary DVs and stat experience rise with depth. Ordinary DV nibbles round
+  upward to odd values so the derived HP DV cannot reset on an even ascension
+  step; every stat is nondecreasing with ascension for a fixed source mon.
+  Scaled stats use the shared
   Gen 1 recalculation helper rather than linear HP scaling; level-ups preserve
   the Pokémon's absolute missing HP. Supplied records are copied and zero
   DVs/stat experience are not silently defaulted.
@@ -95,6 +98,74 @@ ascension money reduction before the Amulet Coin bonus.
   growth curves. `rl_mon_add_xp` updates level/HP using Gen 1 stat math and
   preserves the mon's prior damage amount. Learnset/move replacement is left
   to a caller with game data.
+
+### Canonical Stadium encounters
+
+`rl_content.h` defines stable logical roster IDs and `RlEncounter` descriptors,
+independent of generated numeric set IDs. `rl_encounter_select(run, &descriptor)`
+selects from seed, act, row, lane and ascension using a local RNG; it does not
+advance `run.rng`. Repeated previews and save/reload therefore select exactly
+the same trainer without adding encounter fields to the v3 record.
+
+| Act | Normal / elite | Final-row bosses |
+|---|---|---|
+| 0 | Poke Cup Poke/Great/Ultra with depth; Master for elites | Last trainer in one of the eight Gym Leader Castle gyms |
+| 1 | Prime Cup Poke/Great/Ultra; Master for elites | Even lanes: gym leader; odd lanes: random Elite Four member |
+| 2 | Prime Cup by depth; Elite Four members for elites | One of the seven real Rival variants |
+| 3 | None | VS Mewtwo, trainer 0 |
+
+Ascensions 8–10 use the corresponding Round 2 source sets; earlier ascensions
+use Round 1. `rl_load_encounter(const RunState *, RlMon *, int capacity,
+unsigned char *ai)` in `rl_rosters.h` loads and scales the **complete** native
+signature roster in source order, returns its count (normally six, finale one),
+and preserves native AI. Supply capacity six. Invalid requests return -1 with
+native logging; do not proceed to battle on failure. The caller chooses three
+combatants under ordinary rules or up to six with `rl_ascension(...).full_team`;
+the loader does not discard reserve mons. It rebuilds stats, heals HP, clears
+status/fainting, and restores PP for the new enemy encounter only.
+`rl_enemy_scale` exposes the same in-place scaling for canonical host records.
+Native source rosters/rentals are generated locally; identical rental arrays
+share storage while all public set IDs and descriptors remain unchanged.
+
+Winning battles award guaranteed money:
+`(100 + 75*act + 15*row) * encounter_multiplier`, with multiplier 1/2/3
+for normal/elite/boss, then ascension money reduction and Amulet Coin.
+`rl_battle_money` queries that value. The battle-result API awards it exactly
+once, before the separate pick-one reward; scenes must not award it again.
+XP is `8000*(act+1) + 1000*row`, multiplied by 2 for elites or 3 for bosses,
+then Lucky Egg and active/bench participation modifiers. Money awards saturate
+at the unsigned 32-bit maximum rather than wrapping.
+
+### Meta/unlock boundary
+
+`rl_meta.h` operates on the existing v3 `RlMeta` without touching storage or UI.
+Only initialize a profile with `rl_meta_init` after explicit new-profile
+creation, never as a fallback for a load error. Pool IDs are
+`RL_META_POOL_STARTERS` (Poke Cup), `RL_META_POOL_PRIME_CUP`, and
+`RL_META_POOL_LITTLE_CUP` (Stadium's Petit Cup). Use
+`rl_meta_select_ascension` before `rl_run_new` to enforce the saved maximum;
+the low-level constructor's clamp alone does not enforce unlocks.
+
+`rl_meta_permitted_pools/relics/events` return catalog-bounded saved masks.
+`rl_meta_choose_event(meta, &run.rng, &event)` uniformly chooses an unlocked
+event, reporting `RL_EMPTY` without mutation if none are available.
+`rl_rewards_generate_unlocked` and `rl_shop_generate_unlocked` take the
+permitted relic mask; their legacy counterparts intentionally expose all
+content for compatibility and fixtures. `rl_event_resolve_unlocked` also
+accepts that mask, returning `RL_EMPTY` before mutation for locked fixed
+Ghost/Cursed relic choices. A shop relic detail of `RL_NO_SLOT` is unavailable,
+not a purchasable placeholder. Event availability itself is checked with the
+meta event APIs before resolution.
+
+New profiles expose the base starter pool and the first eight relics/events.
+The first win unlocks Prime starters, the fifth unlocks Petit starters, and
+each win adds one subsequent relic/event. Clearing the highest unlocked
+ascension unlocks the next, capped at 10. Call `rl_meta_record_run` only once
+after `RL_WON`/`RL_LOST`, then save its changed metadata with the existing
+Controller Pak API. It tracks saturated runs/wins, best floor (up to 22),
+and the latest winning team. Exactly-once summary ownership belongs to the
+integrator: v3 has no persistent run ID, and repeating this call would count
+the run twice. See `SAVES.md`.
 
 ## Party, rewards, events, relics
 
@@ -157,8 +228,27 @@ and lost states.
 ## Host validation
 
 Run `make -C host_tests test` for strict C89 compilation, seeded determinism,
-10,000 generated map validity checks, scaling, rewards/shop/TM detail, event
+10,000 seeds across **all four acts**, each including v3 encode/decode, plus
+complete 22-node runs at all ascensions, monotonic scaling, unlocked
+rewards/shop/event choices, meta milestones, rewards/shop/TM detail, event
 pool and RNG behavior, healing/revive rules, relic math, Gen 1 XP, party
 operations, and meta/suspend save round-trips and corruption detection. The
 target repeats the suite under AddressSanitizer and UndefinedBehaviorSanitizer.
 `scripts/rl-gate.sh` invokes this target when the host test Makefile exists.
+
+`python3 tools/rl_balance.py --runs 1000 --seed 0` prints CSV containing run
+win rates, per-act reach/battle win rates and player/enemy mean levels for all
+ascensions 0–10. `--sanitize` compiles the host simulator with ASan/UBSan.
+It uses locally extracted real Stadium teams, canonical base stats/growth,
+the core's actual map/scaling/progression/reward APIs, a six-option Poke Cup
+rental draft at source levels, and deterministic battle RNG separate from
+the run RNG. Its route policy prefers recruits until full, battles for XP,
+and Centers when hurt; events use Oak's heal and marts buy affordable potions.
+
+**This is a power-model estimate, not a native Stadium AI/move simulation.**
+Battles compare current-HP-weighted Attack/Special/Speed, model damage and a
+seeded win probability, and do not implement typing, moves, PP usage, status,
+or all battle relic hooks. CSV zeros are genuine model outcomes, not fabricated
+success rates. Use the curves to spot difficulty cliffs, then calibrate with
+W8/W9 native full-run emulator playtests before claiming final balance.
+ROM-derived fixtures/executables are temporary and cleaned automatically.

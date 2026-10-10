@@ -258,10 +258,18 @@ def write_c(data, path):
             L.append("    { %s, %s, %d, %d, %d, { %s } }," % (
                 c_str(t["name"]), c_str(t["class"]), t["portrait"], t["ai"], len(t["mons"]), mons))
         L.append("};")
+    rental_arrays = {}
+    rental_aliases = {}
     for s in data["rental_sets"]:
+        records = tuple(c_mon(m) for m in s["mons"])
+        if records in rental_arrays:
+            rental_aliases[s["id"]] = rental_arrays[records]
+            continue
+        rental_arrays[records] = s["id"]
+        rental_aliases[s["id"]] = s["id"]
         L.append("static const RlGenMon RL_RENTALS_%s[%d] = {" % (c_ident(s["id"]), len(s["mons"])))
-        for m in s["mons"]:
-            L.append("    %s," % c_mon(m))
+        for record in records:
+            L.append("    %s," % record)
         L.append("};")
     L.append("\nconst RlGenTrainerSet gRlTrainerSets[%d] = {" % len(data["trainer_sets"]))
     for s in data["trainer_sets"]:
@@ -271,7 +279,7 @@ def write_c(data, path):
     L.append("const RlGenRentalSet gRlRentalSets[%d] = {" % len(data["rental_sets"]))
     for s in data["rental_sets"]:
         L.append("    { %s, %d, %d, RL_RENTALS_%s }," % (c_str(s["id"]), s["round"], len(s["mons"]),
-                                                         c_ident(s["id"])))
+                                                         c_ident(rental_aliases[s["id"]])))
     L.append("};")
     L.append("\n#else\n")
     L.append("extern const RlGenTrainerSet gRlTrainerSets[%d];" % len(data["trainer_sets"]))

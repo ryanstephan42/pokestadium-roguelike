@@ -11,6 +11,9 @@ flags=(-std=gnu89 -m32 -funsigned-char -fno-builtin -ffunction-sections -fdata-s
 gcc "${flags[@]}" -Dfunc_80022338=rl_native_calculate -Dfunc_800224B8=rl_native_exp \
     -c src/22630.c -o build/host_tests/native-stat-dvs.o
 gcc "${flags[@]}" host_tests/test_battle_adapter.c build/host_tests/native-stat-dvs.o \
+    src/roguelike/rl_content.c src/roguelike/rl_enemy.c \
+    src/roguelike/rl_party.c src/roguelike/rl_relics.c \
+    src/roguelike/rl_core.c src/roguelike/rl_map.c \
     -Wl,--gc-sections -o build/host_tests/battle-adapter
 build/host_tests/battle-adapter
 echo "Battle adapter: OK"
