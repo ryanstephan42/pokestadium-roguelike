@@ -1,7 +1,12 @@
 /* PURE */
 #include "rl_core.h"
-#include <string.h>
 
+static void rl_zero_bytes(void *target, unsigned size) {
+    volatile unsigned char *bytes;
+    unsigned i;
+    bytes = (volatile unsigned char *)target;
+    for (i = 0; i < size; i++) bytes[i] = 0;
+}
 RlU32 rl_random(RlU32 *state) {
     RlU32 x;
     if (!state) return 0;
@@ -24,7 +29,7 @@ RlU32 rl_random_bounded(RlU32 *state, RlU32 limit) {
 
 void rl_run_new(RunState *run, RlU32 seed, unsigned ascension) {
     if (!run) return;
-    memset(run, 0, sizeof(*run));
+    rl_zero_bytes(run, sizeof(*run));
     run->seed = seed;
     run->rng = seed ? seed : 0x6d2b79f5U;
     run->ascension = (RlU8)(ascension > 10 ? 10 : ascension);
@@ -65,6 +70,8 @@ int rl_run_advance(RunState *run, unsigned lane) {
     if (run->daycare_active == 2 && run->party_count < RL_PARTY) {
         run->party[run->party_count++] = run->daycare;
         run->daycare_active = 0;
+        run->daycare_nodes = 0;
+        rl_zero_bytes(&run->daycare, sizeof(run->daycare));
     }
     return RL_OK;
 }
@@ -74,7 +81,8 @@ int rl_run_finish_node(RunState *run) {
         return RL_INVALID;
     if (run->row == RL_ROWS - 1) {
         if (run->phase != RL_REWARD) return RL_INVALID;
-        if (++run->act == 4) { run->phase = RL_WON; return RL_OK; }
+        if (run->act == 3) { run->phase = RL_WON; return RL_OK; }
+        run->act++;
         rl_map_generate(&run->map, &run->rng, run->act, run->ascension);
         run->row = RL_NO_SLOT;
         run->lane = RL_NO_SLOT;

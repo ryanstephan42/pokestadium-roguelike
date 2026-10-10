@@ -5,6 +5,13 @@ static RlU32 rl_cube(unsigned level) {
     return (RlU32)level * level * level;
 }
 
+static void rl_zero_mon(RlMon *mon) {
+    volatile unsigned char *bytes;
+    unsigned i;
+    bytes = (volatile unsigned char *)mon;
+    for (i = 0; i < sizeof(*mon); i++) bytes[i] = 0;
+}
+
 RlU32 rl_xp_for_level(unsigned level, unsigned growth) {
     RlS32 n, value;
     if (level > 100) level = 100;
@@ -33,25 +40,52 @@ static unsigned rl_isqrt(unsigned value) {
     return root;
 }
 
-static unsigned rl_stat_value(const RlMon *mon, unsigned stat, unsigned level) {
-    unsigned dv, effort, value, attack, defense, speed, special;
+unsigned rl_mon_stat_value(const RlMon *mon, unsigned stat, unsigned level) {
+    unsigned dv, effort, value, attack, defense, speed, special, root;
+    if (!mon || stat >= 5 || level > 100) return 0;
     if (stat == RL_HP) {
-        attack = (mon->dvs >> 12) & 15;
-        defense = (mon->dvs >> 8) & 15;
-        speed = (mon->dvs >> 4) & 15;
-        special = mon->dvs & 15;
-        dv = ((attack & 1) << 3) | ((defense & 1) << 2) |
-             ((speed & 1) << 1) | (special & 1);
-    } else dv = (mon->dvs >> ((4 - stat) * 4)) & 15;
-    effort = rl_isqrt(mon->stat_exp[stat]) / 4;
-    value = (2 * mon->base_stats[stat] + dv + effort) * level / 100;
+        attack = mon->dvs & 15;
+        defense = (mon->dvs >> 4) & 15;
+        speed = (mon->dvs >> 8) & 15;
+        special = (mon->dvs >> 12) & 15;
+        dv = ((special & 1) << 3) | ((speed & 1) << 2) |
+             ((defense & 1) << 1) | (attack & 1);
+    } else dv = (mon->dvs >> ((stat - 1) * 4)) & 15;
+    root = rl_isqrt(mon->stat_exp[stat]);
+    if (root * root < mon->stat_exp[stat]) root++;
+    if (root > 254) root = 255;
+    effort = root / 4;
+    value = (effort + 2 * (mon->base_stats[stat] + dv)) * level / 100;
     if (stat == RL_HP) return value + level + 10;
     return value + 5;
 }
 
+void rl_mon_recalculate_stats(RlMon *mon, int preserve_hp) {
+    unsigned i, old_hp, new_hp;
+    if (!mon || mon->level > 100) return;
+    old_hp = mon->max_hp;
+    for (i = 0; i < 5; i++) {
+        unsigned value;
+        value = rl_mon_stat_value(mon, i, mon->level);
+        if (value > 999) value = 999;
+        mon->current_stats[i] = (RlU16)value;
+    }
+    new_hp = mon->current_stats[RL_HP];
+    if (preserve_hp && mon->cur_hp) {
+        if (new_hp >= old_hp)
+            mon->cur_hp = (RlU16)(mon->cur_hp + new_hp - old_hp);
+        else if (mon->cur_hp > old_hp - new_hp)
+            mon->cur_hp = (RlU16)(mon->cur_hp - (old_hp - new_hp));
+        else mon->cur_hp = 0;
+    }
+    mon->max_hp = (RlU16)new_hp;
+    if (mon->cur_hp > mon->max_hp) mon->cur_hp = mon->max_hp;
+    mon->fainted = (RlU8)(mon->cur_hp == 0);
+}
+
 int rl_mon_add_xp(RlMon *mon, RlU32 xp) {
     RlU32 total, next_xp;
-    unsigned level, old_hp, new_hp, i;
+    unsigned level;
     if (!mon || mon->growth > RL_MEDIUM_SLOW || mon->level > 100)
         return RL_INVALID;
     total = mon->exp;
@@ -66,22 +100,8 @@ int rl_mon_add_xp(RlMon *mon, RlU32 xp) {
         level++;
     }
     if (level == mon->level) return RL_OK;
-    old_hp = mon->max_hp;
-    new_hp = old_hp;
-    for (i = 0; i < 5; i++) {
-        unsigned stat_value;
-        stat_value = rl_stat_value(mon, i, level);
-        if (i == RL_HP) new_hp = stat_value;
-    }
-    if (new_hp < old_hp) new_hp = old_hp;
-    if (mon->cur_hp) {
-        unsigned healed;
-        healed = new_hp - old_hp;
-        mon->cur_hp = (RlU16)(mon->cur_hp + healed);
-        if (mon->cur_hp > new_hp) mon->cur_hp = (RlU16)new_hp;
-    }
-    mon->max_hp = (RlU16)(new_hp > 65535 ? 65535 : new_hp);
     mon->level = (RlU8)level;
+    rl_mon_recalculate_stats(mon, 1);
     return RL_OK;
 }
 
@@ -89,12 +109,7 @@ void rl_mon_heal(RlMon *mon, unsigned percent) {
     unsigned hp;
     if (!mon || !mon->max_hp) return;
     if (percent > 100) percent = 100;
-    if (mon->fainted && percent == 100) {
-        mon->cur_hp = mon->max_hp;
-        mon->fainted = 0;
-        mon->status = 0;
-        return;
-    }
+    if (mon->fainted || !mon->cur_hp) return;
     hp = (unsigned)mon->max_hp * percent / 100;
     if (!hp && percent) hp = 1;
     if (mon->cur_hp + hp > mon->max_hp) mon->cur_hp = mon->max_hp;
@@ -102,9 +117,18 @@ void rl_mon_heal(RlMon *mon, unsigned percent) {
     if (mon->cur_hp) mon->fainted = 0;
 }
 
+void rl_mon_restore_hp(RlMon *mon, unsigned amount) {
+    unsigned value;
+    if (!mon || mon->fainted || !mon->cur_hp) return;
+    value = mon->cur_hp + amount;
+    mon->cur_hp = (RlU16)(value > mon->max_hp ? mon->max_hp : value);
+}
+
 int rl_party_recruit(RunState *run, const RlMon *mon) {
     RlMon copy;
-    if (!run || !mon || !mon->species) return RL_INVALID;
+    if (!run || !mon || !mon->species || mon->species > 151 ||
+        !mon->level || mon->level > 100 || mon->growth > RL_MEDIUM_SLOW ||
+        !mon->max_hp || mon->cur_hp > mon->max_hp) return RL_INVALID;
     if (run->party_count >= RL_PARTY) return RL_FULL;
     copy = *mon;
     if (!copy.max_hp) return RL_INVALID;
@@ -120,6 +144,7 @@ int rl_party_release(RunState *run, unsigned slot) {
     for (i = slot; i + 1 < run->party_count; i++)
         run->party[i] = run->party[i + 1];
     run->party_count--;
+    rl_zero_mon(&run->party[run->party_count]);
     return RL_OK;
 }
 
@@ -157,13 +182,18 @@ int rl_item_use(RunState *run, unsigned item, unsigned slot, unsigned move) {
     if (!run || item >= RL_ITEM_COUNT || !run->bag[item]) return RL_EMPTY;
     if (slot >= run->party_count) return RL_INVALID;
     mon = &run->party[slot];
+    if ((item == RL_POTION || item == RL_SUPER_POTION ||
+         item == RL_HYPER_POTION || item == RL_FULL_RESTORE) &&
+        (mon->fainted || !mon->cur_hp)) return RL_INVALID;
     switch (item) {
-    case RL_POTION: rl_mon_heal(mon, 20); break;
-    case RL_SUPER_POTION: rl_mon_heal(mon, 50); break;
-    case RL_HYPER_POTION: rl_mon_heal(mon, 100); break;
+    case RL_POTION: rl_mon_restore_hp(mon, 20); break;
+    case RL_SUPER_POTION: rl_mon_restore_hp(mon, 50); break;
+    case RL_HYPER_POTION: rl_mon_restore_hp(mon, 200); break;
     case RL_FULL_RESTORE:
-        rl_mon_heal(mon, 100);
-        mon->status = 0;
+        if (!mon->fainted && mon->cur_hp) {
+            mon->cur_hp = mon->max_hp;
+            mon->status = 0;
+        }
         break;
     case RL_REVIVE:
         if (rl_party_revive(run, slot) != RL_OK) return RL_INVALID;
@@ -193,6 +223,7 @@ int rl_item_use(RunState *run, unsigned item, unsigned slot, unsigned move) {
                 amount = mon->stat_exp[i] + 2560;
                 mon->stat_exp[i] = (RlU16)(amount > 65535 ? 65535 : amount);
             }
+        rl_mon_recalculate_stats(mon, 1);
         break;
     case RL_MONEY:
         run->money += 100;
