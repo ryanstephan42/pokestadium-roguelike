@@ -1,4 +1,7 @@
 #include "29BA0.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_battle.h"
+#endif
 #include "include/functions.h"
 #include "src/20330.h"
 #include "src/26820.h"
@@ -1340,8 +1343,20 @@ void Game_Thread(UNUSED LEODiskID* arg) {
 
     while (1) {
         state = Game_DoCopyProtection(gCurrentGameState);
+#ifdef ROGUELIKE
+        if ((state == gCurrentGameState) && gRlBattleTestRequest) {
+            gRlBattleTestRequest = 0;
+            state = STATE_RL_BATTLE_TEST;
+            gCurrentGameState = state;
+        }
+#endif
 
         switch (state) {
+#ifdef ROGUELIKE
+            case STATE_RL_BATTLE_TEST:
+                rl_battle_test_state();
+                break;
+#endif
             case STATE_N64_LOGO_INTRO:
                 func_80029310();
                 break;

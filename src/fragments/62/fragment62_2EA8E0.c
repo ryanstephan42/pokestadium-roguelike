@@ -1,4 +1,7 @@
 #include "fragment62.h"
+#ifdef ROGUELIKE
+#include "include/rl_battle.h"
+#endif
 #include "src/11BA0.h"
 #include "src/12D80.h"
 #include "src/19840.h"
@@ -450,6 +453,12 @@ void func_8430128C(void) {
     s32 i;
     s32 var_s1;
 
+#ifdef ROGUELIKE
+    extern int gRlBattleActive;
+    if (gRlBattleActive) {
+        return;
+    }
+#endif
     temp_s1 = D_800AE540.unk_1194[0].unk_08[0];
     temp_s2 = D_800AE540.unk_1194[0].unk_08[1];
     temp_s0 = D_800AE540.unk_1194[1].unk_08[0];
@@ -624,6 +633,21 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     func_80007678(sp24);
     func_800077B4(1);
     func_800078D4(func_843010EC, 0x20, 0x10);
+#ifdef ROGUELIKE
+    {
+        extern int gRlBattleActive;
+        s32 side_index;
+        if (gRlBattleActive) {
+            for (side_index = 0; side_index < 2; side_index++) {
+                RlBattleSide* side = D_84390010[side_index];
+                RlBattlePartyMon* original = rl_battle_party_mon(side, rl_battle_active_index(side));
+                RlBattleMon* live = rl_battle_mon(side);
+                rl_battle_party_hp(original) = rl_battle_hp(live);
+                rl_battle_party_status(original) = rl_battle_status(live);
+            }
+        }
+    }
+#endif
     func_800077B4(2);
     func_800076C0();
     func_80005EAC();
