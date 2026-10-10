@@ -86,7 +86,12 @@ Attack/Defense/Speed/Special: physical damage `func_843700F0`, ordering
 `func_8436FC7C`, paralysis `func_84370B0C`, burn `func_84370B44`.
 Roster stat experience order agrees (`oldnotes/utils/extractrostertbltbl.c`).
 The species-table byte called `baseDefense` is used as base Speed for crits.
-Do not rename tables globally without checking known species in the emulator.
+Vanilla ROM inspection at ROM `0x71B84 + species * 0x17 + 6` confirms the
+five bytes are HP/Attack/Defense/Speed/Special: Bulbasaur (species 1)
+`45/49/49/45/65`, Pikachu (25) `35/55/30/90/50`, Mew (151)
+`100/100/100/100/100`. This is a static ROM check, not a live RAM observation.
+The header's old stat names are therefore demonstrably inconsistent; no
+global rename is needed for these independently named battle accessors.
 
 ## Lifecycle and execution evidence
 
@@ -142,6 +147,7 @@ unmodified stat values; crits bypass normal stage-adjusted values.
 
 `func_843715C0` computes poison/burn pending HP `unk_0E`, maxHP/16
 (minimum 1), multiplied by Toxic counter `unk_51` when applicable.
+The Toxic multiplier gate is `unk_4E & 1`; `unk_4D & 0x80` marks Leech Seed.
 `func_8437166C` computes seed pending HP `unk_10` and opposing healing.
 `func_8437176C` runs after an action. Native cadence is per-action, not
 automatically a modern whole-turn callback. `func_84326E84/84327720`
