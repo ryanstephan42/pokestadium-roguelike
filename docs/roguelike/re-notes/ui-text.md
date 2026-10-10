@@ -128,9 +128,16 @@ measured 1,489,744 available bytes; that value can change as resident code
 or the overlay grows, so the scenario compares runtime values, not a
 hardcoded address or allocation budget.
 
+With W0's fade lifecycle and W1's smoke runner integrated,
+`scripts/rl-gate.sh` completes every stage (vanilla matching ROM, RL build,
+host UI tests, and vanilla emulator smoke) and prints `GATE PASSED`;
+the separate UI scenario prints `UI DEMO PASSED`. No emulator stage was
+skipped in that integrated validation.
+
 Button names in `Frontend` are RetroPad names, not N64 names. On the
 tested Mupen core, RetroPad B produces native A (8000), RetroPad Y
-produces native B (4000), and L produces 0020. Hold L through the Menu
+produces native B (4000), and L produces 0020. The scenario uses W1's
+`N64_A` and `N64_B` aliases to express that intent. Hold L through the Menu
 Select fade while confirming, until state 30 is reached. State 4 initially
 contains Game Pak Check, which also needs native A before Menu Select is
 interactive.

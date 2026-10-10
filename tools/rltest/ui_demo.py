@@ -55,15 +55,15 @@ def run(emu, map_path, output):
     emu.press("START", frames=6, after=120)
     emu.wait_state(4)
     # The first state-4 screen is Game Pak Check, not Menu Select.
-    emu.press("B", frames=6, after=120)
+    emu.press("N64_A", frames=6, after=120)
     emu.step(120)
     emu.screenshot(output / "menu.png")
     print(f"Menu Select at frame {emu.frame}", flush=True)
     visits = []
     for visit in range(2):
-        # Mupen's RetroPad B/Y map to native N64 A/B; L must survive the fade.
+        # L must survive the Menu Select fade for the resident entry hook.
         emu.hold("L")
-        emu.press("B", frames=6, after=120)
+        emu.press("N64_A", frames=6, after=120)
         emu.wait_state(0x30, frames=600)
         emu.release("L")
         emu.step(240)
@@ -76,7 +76,7 @@ def run(emu, map_path, output):
             if cursor in (1, 2):
                 emu.screenshot(output / f"icon-{cursor}-visit-{visit + 1}.png")
             if cursor == 5:
-                emu.press("B", frames=4, after=4)
+                emu.press("N64_A", frames=4, after=4)
                 require(demo_state(emu, bss), (5, 1), "Disabled selection")
         emu.screenshot(output / f"scroll-{visit + 1}.png")
         emu.press("LEFT", frames=4, after=4)
@@ -96,10 +96,10 @@ def run(emu, map_path, output):
         require(emu.read_u32(pool_bss[0] + 0x1C), available, "Stable pool allocation")
         if visits:
             require(available, visits[0]["pool_available"], "Pool reclaimed on re-entry")
-        emu.press("B", frames=4, after=8)
+        emu.press("N64_A", frames=4, after=8)
         emu.screenshot(output / f"selected-{visit + 1}.png")
         visits.append({"frame": emu.frame, "icon_pointers": cache, "pool_available": available})
-        emu.press("Y", frames=4, after=120)
+        emu.press("N64_B", frames=4, after=120)
         emu.wait_state(4, frames=600)
         emu.step(120)
         print(f"Returned to Menu Select at frame {emu.frame}", flush=True)
