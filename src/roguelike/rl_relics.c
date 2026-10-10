@@ -2,27 +2,58 @@
 #include "rl_core.h"
 
 const RlRelicDef rl_relic_defs[RL_RELIC_COUNT] = {
-    {"Boulder Badge", "Defense +10%"},
-    {"Cascade Badge", "Water damage +15%"},
-    {"Thunder Badge", "Speed +10%"},
-    {"Rainbow Badge", "Heal party 10% after battle"},
-    {"Soul Badge", "Block status for first two turns"},
-    {"Marsh Badge", "Special +10%"},
-    {"Volcano Badge", "Fire damage +15%"},
-    {"Earth Badge", "+1 reward choice"},
-    {"Amulet Coin", "+50% battle money"},
-    {"Exp. Share", "Bench earns half battle XP"},
-    {"Lucky Egg", "+50% battle XP"},
-    {"Leftovers Charm", "Recover 1/16 max HP each turn"},
-    {"Focus Band Charm", "Once per battle survive at 1 HP"},
-    {"Scope Lens Charm", "Increased critical chance"},
-    {"Silph Scope", "Reveal enemy party before battle"},
-    {"PP Up Pouch", "One PP Up per current move on pickup"},
-    {"Old Amber", "One-time additional recruit"},
-    {"Master Ball", "One-time boss recruit"},
-    {"Ghost Relic", "Ghost-type damage +15%"},
-    {"Cursed Power", "All damage +10%; lose 1 HP each turn"}
+    {"Boulder Badge", "Your Pokemon's Defense stat is 10% higher in battle."},
+    {"Cascade Badge", "Water-type move damage is 15% higher in battle."},
+    {"Thunder Badge", "Your Pokemon's Speed stat is 10% higher in battle."},
+    {"Rainbow Badge", "After battle, each living party Pokemon heals 10% of max HP."},
+    {"Soul Badge", "Blocks enemy-inflicted major status for the first two turns."},
+    {"Marsh Badge", "Your Pokemon's Special stat is 10% higher in battle."},
+    {"Volcano Badge", "Fire-type move damage is 15% higher in battle."},
+    {"Earth Badge", "Offers one extra reward choice after battle."},
+    {"Amulet Coin", "Increases run money rewards by 50%."},
+    {"Exp. Share", "Bench Pokemon earn half of battle XP."},
+    {"Lucky Egg", "Increases battle XP by 50%."},
+    {"Leftovers Charm", "Living active Pokemon heals 1/16 max HP at turn end (minimum 1)."},
+    {"Focus Band Charm", "Once per battle, survive a direct enemy hit at 1 HP; not residual damage."},
+    {"Scope Lens Charm", "Doubles your critical-hit chance, capped at the native limit."},
+    {"Silph Scope", "Shows the opposing party before you choose your Pokemon."},
+    {"PP Up Pouch", "On pickup, one PP Up per current move (cap 3); does not refill PP."},
+    {"Old Amber", "One use: recruit an extra Pokemon; consumed only if recruitment succeeds."},
+    {"Master Ball", "One use: recruit a boss Pokemon; consumed only if recruitment succeeds."},
+    {"Ghost Relic", "Ghost-type move damage is 15% higher in battle."},
+    {"Cursed Power", "Direct damage +10%; active loses 1 HP after Leftovers each turn. Can KO."}
 };
+
+const char *rl_scene_relic_status(const RunState *run, unsigned relic) {
+    if (!run || relic >= RL_RELIC_COUNT) return "Relic status unavailable.";
+    switch (relic) {
+    case RL_RAINBOW: return "Post-battle heal is active in run logic.";
+    case RL_EARTH: return "One extra choice on each reward.";
+    case RL_AMULET: return "Run money bonus is active.";
+    case RL_EXP_SHARE:
+    case RL_LUCKY_EGG: return "Battle XP bonus is active after wins.";
+    case RL_SILPH_SCOPE:
+        return "Roster preview is always available; no extra effect.";
+    case RL_PP_POUCH:
+        if (run->consumed_relics & (1U << relic))
+            return "PP Up applied to moves held at pickup.";
+        return "One-time PP Up applies on pickup.";
+    case RL_OLD_AMBER:
+        if (run->consumed_relics & (1U << relic))
+            return "Recruit use spent this run.";
+        return "Recruit only; no passive effect; no UI yet.";
+    case RL_MASTER_BALL:
+        if (run->consumed_relics & (1U << relic))
+            return "Recruit use spent this run.";
+        return "Recruit UI missing; boss-only limit unenforced.";
+    default: return "Native battle effect is connected.";
+    }
+}
+
+RlU32 rl_scene_available_relics(RlU32 permitted) {
+    return permitted & (((1U << RL_RELIC_COUNT) - 1U) &
+                        ~((1U << RL_OLD_AMBER) | (1U << RL_MASTER_BALL)));
+}
 
 static const RlAscension ascensions[11] = {
     {0,0,0,0,100,0,50},

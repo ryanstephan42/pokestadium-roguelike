@@ -20,9 +20,21 @@ if grep -q '^rl:' Makefile 2>/dev/null; then
         step "roguelike boot test (title -> menu -> RL scene -> menu, x3)"
         PY=python3; [ -x .venv/bin/python3 ] && PY=.venv/bin/python3
         "$PY" tools/rl/boot_test.py 2>&1 | grep -v '^\[' | tail -12
+        if [ -f tools/rltest/test_nodes.py ]; then
+            step "canonical node UI, twelve events and Controller Pak resumes"
+            "$PY" -m tools.rltest.test_nodes
+            for kind in trainer elite boss; do
+                step "canonical $kind route and native battle entry"
+                "$PY" -m tools.rltest.test_nodes --battle-kind "$kind"
+            done
+        fi
         if [ -f tools/rltest/test_play_run.py ]; then
             step "playable run UI and three native battles"
             "$PY" -m tools.rltest.test_play_run
+        fi
+        if [ -f tools/rltest/test_meta_runtime.py ]; then
+            step "native loss progression and fresh-process meta persistence"
+            "$PY" -m tools.rltest.test_meta_runtime
         fi
         if [ -f tools/rltest/test_custom_battle.py ]; then
             step "native adapter consecutive-battle regression"

@@ -10,6 +10,28 @@ static const RlUiItem items[] = {
 
 int main(void) {
     RlUiList list;
+    RlUiOrder order = {{0, 0, 0, 0, 0, 0}, 0};
+    RlUiOrder saved;
+
+    assert(rl_ui_order_toggle(&order, 4, 3) == RL_UI_NONE);
+    assert(rl_ui_order_toggle(&order, 0, 3) == RL_UI_NONE);
+    assert(rl_ui_order_toggle(&order, 2, 3) == RL_UI_NONE);
+    assert(order.count == 3 && order.slots[0] == 4 && order.slots[2] == 2);
+    saved = order;
+    assert(rl_ui_order_toggle(&order, 1, 3) == RL_UI_DISABLED);
+    assert(order.count == saved.count && order.slots[0] == saved.slots[0]);
+    assert(rl_ui_order_move(&order, 2, -1) == RL_UI_NONE);
+    assert(rl_ui_order_move(&order, 2, -1) == RL_UI_NONE);
+    assert(order.slots[0] == 2 && order.slots[1] == 4 && order.slots[2] == 0);
+    assert(rl_ui_order_move(&order, 2, -1) == RL_UI_DISABLED);
+    assert(rl_ui_order_move(&order, 1, 1) == RL_UI_INVALID);
+    assert(rl_ui_order_toggle(&order, 4, 3) == RL_UI_NONE);
+    assert(order.count == 2 && order.slots[0] == 2 && order.slots[1] == 0);
+    assert(rl_ui_order_toggle(&order, 4, 3) == RL_UI_NONE);
+    assert(order.slots[2] == 4);
+    assert(rl_ui_order_index(&order, 6) == RL_UI_INVALID);
+    assert(rl_ui_order_toggle(&order, 6, 3) == RL_UI_INVALID);
+    assert(rl_ui_order_move(&order, 2, 0) == RL_UI_INVALID);
 
     assert((unsigned char)rl_text[RL_TEXT_TITLE][3] == 0xE9);
     assert((unsigned char)rl_text_demo_items[1][3] == 0xE9);

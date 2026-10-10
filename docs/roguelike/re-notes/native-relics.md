@@ -44,6 +44,16 @@ Native post-battle copying still settles live HP/status into original records
 before overlay release. W7 then maps selected indices back into the run and
 calls the existing `rl_run_on_battle_result` for XP and Rainbow healing.
 
+After integrating W8, `rl_scene_nodes.c` also invokes the Pouch helper for
+Mart purchases and Hidden Grotto acquisitions. Both use a temporary run copy:
+a negative native return leaves the original run (including money, RNG,
+relic and consumed bits) unchanged and surfaces the scene's invalid-action
+message. Host scene tests exercise successful and failed acquisitions through
+both paths, unchanged current PP, and no repeated use on a disabled shop slot.
+The native adapter host test asserts `sizeof(RlBattleRules) == 12` and the
+relic mask offset is 8. W8 scene descriptions and runtime status labels now
+describe the connected hooks, while unavailable recruit relics remain excluded.
+
 ## Native surfaces
 
 | Relic | Implementation and intentional scope |

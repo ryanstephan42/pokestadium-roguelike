@@ -41,7 +41,7 @@ typedef struct RlBattleRules {
 enum {
     RL_BATTLE_LOSS = 0,
     RL_BATTLE_WIN = 1,
-    RL_LAUNCH_DRAW = 2,
+    RL_LAUNCH_DRAW = 2
 };
 
 typedef struct RlLaunchResult {

@@ -1,7 +1,11 @@
 #include <string.h>
+#include <stddef.h>
 #define ROGUELIKE
 #include "src/roguelike/rl_battle.c"
 #include "src/roguelike/rl_rosters.c"
+
+typedef char rules_size_check[(sizeof(RlBattleRules) == 12) ? 1 : -1];
+typedef char rules_relic_offset_check[(offsetof(RlBattleRules, relics) == 8) ? 1 : -1];
 
 #undef assert
 #define assert(condition) do { if (!(condition)) return __LINE__; } while (0)
