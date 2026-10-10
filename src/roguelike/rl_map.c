@@ -61,6 +61,8 @@ int rl_map_valid(const RlMap *map) {
     if (!map) return 0;
     rows = map->lanes[0] == 1 ? 1U : RL_ROWS;
     for (row = 0; row < RL_ROWS; row++) {
+        if (row < rows && rows == RL_ROWS &&
+            (map->lanes[row] < 2 || map->lanes[row] > RL_LANES)) return 0;
         if (row >= rows && map->lanes[row]) return 0;
         for (lane = row < rows ? map->lanes[row] : 0; lane < RL_LANES; lane++)
             if (map->nodes[row][lane].type || map->nodes[row][lane].edges ||

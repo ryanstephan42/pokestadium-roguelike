@@ -23,6 +23,14 @@ static void test_rng_and_map(void) {
         assert(memcmp(&map_a, &map_b, sizeof(map_a)) == 0);
         assert(ra == rb);
     }
+    a = 1;
+    rl_map_generate(&map_a, &a, 0, 0);
+    map_a.lanes[1] = 255;
+    assert(!rl_map_valid(&map_a));
+    a = 1;
+    rl_map_generate(&map_a, &a, 3, 0);
+    map_a.nodes[1][0].type = RL_BOSS;
+    assert(!rl_map_valid(&map_a));
 }
 
 static void test_enemy_scaling(void) {
