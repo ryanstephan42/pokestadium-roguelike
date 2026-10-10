@@ -160,9 +160,14 @@ unreachable lanes are disabled. Recruit rewards come from the defeated
 trainer's canonical roster; other rewards use the existing core generator.
 The summary marks the three-battle route as the current milestone.
 
-For a visible test, build with `make rl` and launch the resulting
-`build_rl/pokestadium-rl.z64` in RetroArch. At the title, press N64 Start and
+For a visible test, build with `make rl` and run `scripts/rl-preview.sh`.
+This uses isolated Angrylion/Parallel-RSP options, X11/XWayland keyboard input,
+SDL2 controller mappings, and local saves; it does not reuse your global
+RetroArch profile. See [PREVIEW.md](PREVIEW.md) for the renderer comparison,
+local evidence paths and physical-controller checklist. At the title, press N64 Start and
 pass Game Pak Check with N64 A. In Menu Select, hold L and press N64 A to open
 Roguelike. N64 A confirms, N64 B backs out, the D-pad moves through lists, and
 the C-buttons (right stick on the configured preview controller) navigate
-battle moves.
+battle moves. With the preview script, keyboard Enter is Start, Z is N64 A,
+X is N64 B and Q is L (hold Q through the Menu Select fade while pressing Z).
+Arrow keys navigate; I/K/J/L are C-up/down/left/right.
