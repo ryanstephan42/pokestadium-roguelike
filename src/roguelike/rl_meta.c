@@ -57,6 +57,21 @@ static void set_species_bit(RlU8 *bits, unsigned species) {
     bits[index >> 3] |= (RlU8)(1U << (index & 7));
 }
 
+static void clear_species_bit(RlU8 *bits, unsigned species) {
+    unsigned index;
+    index = species - 1;
+    bits[index >> 3] &= (RlU8)~(1U << (index & 7));
+}
+
+static unsigned species_bit_count(const RlU8 *bits) {
+    unsigned i, bit, count;
+    count = 0;
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+        for (bit = 0; bit < 8; bit++)
+            if (bits[i] & (1U << bit)) count++;
+    return count;
+}
+
 static int base_species_unlocked(unsigned species) {
     unsigned i;
     for (i = 0; i < sizeof(base_starter_species); i++)
@@ -68,10 +83,10 @@ static int valid_meta_extension(const RlMeta *meta) {
     unsigned i, has_pending;
     if (!meta || (meta->options & ~RL_META_OPTIONS_MASK) ||
         meta->last_registration_run > meta->runs ||
-        meta->pending_registration_run > meta->runs ||
+        meta->pending_registration_count > 151 ||
         meta->last_registered_species > 151 ||
-        ((meta->last_registration_run == 0) !=
-         (meta->last_registered_species == 0))) return 0;
+        (meta->last_registration_run == 0 &&
+         meta->last_registered_species != 0)) return 0;
     if ((meta->registered_species[RL_META_SPECIES_BYTES - 1] & 0x80) ||
         (meta->pending_species[RL_META_SPECIES_BYTES - 1] & 0x80))
         return 0;
@@ -84,11 +99,9 @@ static int valid_meta_extension(const RlMeta *meta) {
             return 0;
         if (meta->pending_species[i]) has_pending = 1;
     }
-    if (meta->pending_registration_run) {
-        if (meta->pending_registration_run != meta->runs ||
-            meta->last_registration_run == meta->runs || !has_pending)
-            return 0;
-    } else if (has_pending) return 0;
+    if ((meta->pending_registration_count != 0) != has_pending ||
+        meta->pending_registration_count > species_bit_count(meta->pending_species))
+        return 0;
     return 1;
 }
 
@@ -136,7 +149,7 @@ void rl_meta_init(RlMeta *meta) {
     meta->currency = 0;
     meta->options = 0;
     meta->last_registration_run = 0;
-    meta->pending_registration_run = 0;
+    meta->pending_registration_count = 0;
     meta->last_registered_species = 0;
     for (i = 0; i < RL_META_SPECIES_BYTES; i++) {
         meta->registered_species[i] = 0;
@@ -266,12 +279,8 @@ int rl_meta_register_species(RlMeta *meta, unsigned species) {
     if (!meta || !species || species > 151)
         return RL_INVALID;
     if (!valid_meta_extension(meta)) return RL_INVALID;
-    if (meta->runs &&
-        meta->last_registration_run == meta->runs)
-        return meta->last_registered_species == species ? RL_OK : RL_INVALID;
-    if (meta->pending_registration_run == 0 ||
-        meta->pending_registration_run != meta->runs)
-        return RL_INVALID;
+    if (species_bit(meta->registered_species, species)) return RL_OK;
+    if (!meta->pending_registration_count) return RL_INVALID;
     index = species - 1;
     if (!(meta->pending_species[index >> 3] &
           (1U << (index & 7)))) return RL_INVALID;
@@ -279,21 +288,25 @@ int rl_meta_register_species(RlMeta *meta, unsigned species) {
     set_species_bit(meta->registered_species, species);
     meta->last_registration_run = meta->runs;
     meta->last_registered_species = (RlU8)species;
-    meta->pending_registration_run = 0;
-    for (index = 0; index < RL_META_SPECIES_BYTES; index++)
-        meta->pending_species[index] = 0;
+    clear_species_bit(meta->pending_species, species);
+    meta->pending_registration_count--;
+    if (!meta->pending_registration_count) {
+        for (index = 0; index < RL_META_SPECIES_BYTES; index++)
+            meta->pending_species[index] = 0;
+    }
     return RL_OK;
 }
 
 int rl_meta_skip_species_registration(RlMeta *meta) {
     unsigned i;
-    if (!meta || !valid_meta_extension(meta) ||
-        !meta->pending_registration_run ||
-        meta->pending_registration_run != meta->runs)
-        return RL_INVALID;
-    meta->pending_registration_run = 0;
-    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
-        meta->pending_species[i] = 0;
+    if (!meta || !valid_meta_extension(meta)) return RL_INVALID;
+    if (!meta->pending_registration_count) return RL_INVALID;
+    meta->last_registration_run = meta->runs;
+    meta->last_registered_species = 0;
+    meta->pending_registration_count--;
+    if (!meta->pending_registration_count)
+        for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+            meta->pending_species[i] = 0;
     return RL_OK;
 }
 
@@ -308,10 +321,10 @@ int rl_meta_select_ascension(const RlMeta *meta, unsigned requested,
 
 int rl_meta_record_run(RlMeta *meta, const RunState *run) {
     unsigned floor, i, payout;
-    RlU32 previous_runs;
+    int added_pending_species;
     if (!meta || !run || meta->hall_count > RL_PARTY ||
         meta->ascension > 10 ||
-        !valid_meta_extension(meta) || meta->pending_registration_run ||
+        !valid_meta_extension(meta) ||
         (run->phase != RL_WON && run->phase != RL_LOST) ||
         run->act > 3 || run->ascension > 10 ||
         run->ascension > meta->ascension ||
@@ -329,7 +342,20 @@ int rl_meta_record_run(RlMeta *meta, const RunState *run) {
     for (i = 0; i < run->party_count; i++)
         if (!valid_hall_mon(&run->party[i])) return RL_INVALID;
 
-    previous_runs = meta->runs;
+    added_pending_species = 0;
+    for (i = 0; i < run->party_count; i++) {
+        unsigned species, index;
+        species = run->party[i].species;
+        if (!species || species > 151 ||
+            rl_meta_species_unlocked(meta, species)) continue;
+        index = species - 1;
+        if (meta->pending_species[index >> 3] &
+            (1U << (index & 7))) continue;
+        added_pending_species = 1;
+    }
+    if (added_pending_species &&
+        meta->pending_registration_count >= 151) return RL_FULL;
+
     if (meta->runs != 0xffffffffU) meta->runs++;
     floor = run->act * RL_ROWS;
     if (run->row != RL_NO_SLOT) floor += (unsigned)run->row + 1;
@@ -345,24 +371,18 @@ int rl_meta_record_run(RlMeta *meta, const RunState *run) {
         payout = add_saturated(payout, RL_META_CLEAR_BONUS_COINS);
     meta->currency = add_saturated(meta->currency, payout);
 
-    meta->pending_registration_run = 0;
-    for (i = 0; i < RL_META_SPECIES_BYTES; i++) meta->pending_species[i] = 0;
-    if (previous_runs != 0xffffffffU) {
-        for (i = 0; i < run->party_count; i++) {
-            unsigned species, index;
-            species = run->party[i].species;
-            if (!species || species > 151 ||
-                rl_meta_species_unlocked(meta, species)) continue;
-            index = species - 1;
-            meta->pending_species[index >> 3] |=
-                (RlU8)(1U << (index & 7));
-        }
-        for (i = 0; i < RL_META_SPECIES_BYTES; i++)
-            if (meta->pending_species[i]) {
-                meta->pending_registration_run = meta->runs;
-                break;
-            }
+    for (i = 0; i < run->party_count; i++) {
+        unsigned species, index;
+        species = run->party[i].species;
+        if (!species || species > 151 ||
+            rl_meta_species_unlocked(meta, species)) continue;
+        index = species - 1;
+        if (meta->pending_species[index >> 3] &
+            (1U << (index & 7))) continue;
+        meta->pending_species[index >> 3] |=
+            (RlU8)(1U << (index & 7));
     }
+    if (added_pending_species) meta->pending_registration_count++;
 
     if (run->phase == RL_WON) {
         if (meta->wins != 0xffffffffU) meta->wins++;

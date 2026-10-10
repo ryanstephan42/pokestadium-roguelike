@@ -98,7 +98,7 @@ static void write_meta_extension(RlWriter *w, const RlMeta *meta) {
     put32(w, meta->currency);
     put32(w, meta->options);
     put32(w, meta->last_registration_run);
-    put32(w, meta->pending_registration_run);
+    put32(w, meta->pending_registration_count);
     for (i = 0; i < RL_META_SPECIES_BYTES; i++)
         put8(w, meta->registered_species[i]);
     for (i = 0; i < RL_META_SPECIES_BYTES; i++)
@@ -111,7 +111,7 @@ static void read_meta_extension(RlReader *r, RlMeta *meta) {
     meta->currency = get32(r);
     meta->options = get32(r);
     meta->last_registration_run = get32(r);
-    meta->pending_registration_run = get32(r);
+    meta->pending_registration_count = get32(r);
     for (i = 0; i < RL_META_SPECIES_BYTES; i++)
         meta->registered_species[i] = get8(r);
     for (i = 0; i < RL_META_SPECIES_BYTES; i++)
@@ -130,17 +130,26 @@ static int species_bit(const RlU8 *bits, unsigned species) {
     return (bits[index >> 3] & (1U << (index & 7))) != 0;
 }
 
+static unsigned species_bit_count(const RlU8 *bits) {
+    unsigned i, bit, count;
+    count = 0;
+    for (i = 0; i < RL_META_SPECIES_BYTES; i++)
+        for (bit = 0; bit < 8; bit++)
+            if (bits[i] & (1U << bit)) count++;
+    return count;
+}
+
 static int valid_meta_extension(const RlMeta *meta) {
     unsigned i, has_pending;
     if (meta->options & ~RL_META_OPTIONS_MASK ||
         meta->last_registration_run > meta->runs ||
-        meta->pending_registration_run > meta->runs ||
+        meta->pending_registration_count > 151 ||
         !valid_species_bits(meta->registered_species) ||
         !valid_species_bits(meta->pending_species) ||
         meta->last_registered_species > 151)
         return 0;
-    if ((meta->last_registration_run == 0) !=
-        (meta->last_registered_species == 0)) return 0;
+    if (!meta->last_registration_run && meta->last_registered_species)
+        return 0;
     if (meta->last_registered_species &&
         !species_bit(meta->registered_species,
                      meta->last_registered_species)) return 0;
@@ -149,12 +158,9 @@ static int valid_meta_extension(const RlMeta *meta) {
         if (meta->pending_species[i] & meta->registered_species[i])
             return 0;
         else if (meta->pending_species[i]) has_pending = 1;
-    if (meta->pending_registration_run) {
-        if (meta->pending_registration_run != meta->runs ||
-            !has_pending) return 0;
-    } else if (has_pending) return 0;
-    if (meta->last_registration_run == meta->runs &&
-        meta->pending_registration_run) return 0;
+    if ((meta->pending_registration_count != 0) != has_pending ||
+        meta->pending_registration_count >
+            species_bit_count(meta->pending_species)) return 0;
     return 1;
 }
 
@@ -343,7 +349,7 @@ int rl_save_decode(RlMeta *meta, RunState *run, RlU8 *has_run,
     decoded_meta.currency = 0;
     decoded_meta.options = 0;
     decoded_meta.last_registration_run = 0;
-    decoded_meta.pending_registration_run = 0;
+    decoded_meta.pending_registration_count = 0;
     decoded_meta.last_registered_species = 0;
     for (i = 0; i < RL_META_SPECIES_BYTES; i++) {
         decoded_meta.registered_species[i] = 0;

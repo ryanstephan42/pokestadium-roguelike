@@ -138,7 +138,7 @@ static void test_v3_migration(void) {
     assert(loaded.hall_count == 1 && loaded.hall[0].species == 7);
     assert(loaded.currency == 0 && loaded.options == 0);
     assert(loaded.last_registration_run == 0);
-    assert(loaded.pending_registration_run == 0);
+    assert(loaded.pending_registration_count == 0);
     assert(loaded.last_registered_species == 0);
     for (i = 0; i < RL_META_SPECIES_BYTES; i++)
         assert(!loaded.registered_species[i] && !loaded.pending_species[i]);
@@ -208,34 +208,63 @@ static void test_terminal_registration_cold_reload(void) {
     run.stats.battles = 4;
     run.stats.wins = 3;
     assert(rl_meta_record_run(&meta, &run) == RL_OK);
-    assert(meta.currency == 35 && meta.pending_registration_run == 1);
+    assert(meta.currency == 35 && meta.pending_registration_count == 1);
     assert(rl_storage_save(&device, &meta, NULL, 1) == RL_SAVE_OK);
 
     memset(&loaded, 0x55, sizeof(loaded));
     assert(rl_storage_load(&device, &loaded, NULL, &has_run) == RL_SAVE_OK);
     assert(!has_run && loaded.currency == 35);
-    assert(loaded.pending_registration_run == loaded.runs);
+    assert(loaded.pending_registration_count == 1);
     assert(loaded.pending_species[(8 - 1) >> 3] &
            (1U << ((8 - 1) & 7)));
-    assert(rl_meta_register_species(&loaded, 8) == RL_OK);
-    assert(loaded.currency == 35 && loaded.runs == 1);
-    memory.fail_read = 6;
-    memory.reads = 0;
-    assert(rl_storage_save(&device, &loaded, NULL, 0) == RL_SAVE_IO);
-    memory.fail_read = 0;
+
+    rl_run_new(&run, 0x87654321U, 0);
+    run.act = 2;
+    rl_map_generate(&run.map, &run.rng, 2, 0);
+    run.row = 6;
+    run.lane = 0;
+    run.phase = RL_LOST;
+    run.party_count = 1;
+    run.party[0] = rl_placeholder_pool.mons[2];
+    run.party[0].species = 9;
+    run.stats.battles = 2;
+    run.stats.wins = 1;
+    assert(rl_meta_record_run(&loaded, &run) == RL_OK);
+    assert(loaded.currency == 50 && loaded.runs == 2);
+    assert(loaded.pending_registration_count == 2);
+    assert(rl_storage_save(&device, &loaded, NULL, 0) == RL_SAVE_OK);
 
     memset(&meta, 0, sizeof(meta));
     assert(rl_storage_load(&device, &meta, NULL, &has_run) == RL_SAVE_OK);
-    assert(!has_run && meta.currency == 35 && meta.runs == 1);
-    assert(rl_meta_species_unlocked(&meta, 8));
-    assert(meta.pending_registration_run == 0);
+    assert(!has_run && meta.currency == 50 && meta.runs == 2);
+    assert(meta.pending_registration_count == 2);
     assert(rl_meta_register_species(&meta, 8) == RL_OK);
-    assert(meta.currency == 35 && meta.runs == 1);
-    assert(rl_storage_save(&device, &meta, NULL, 0) == RL_SAVE_OK);
+    assert(meta.pending_registration_count == 1);
+    memory.fail_read = 6;
+    memory.reads = 0;
+    assert(rl_storage_save(&device, &meta, NULL, 0) == RL_SAVE_IO);
+    memory.fail_read = 0;
+
     memset(&loaded, 0, sizeof(loaded));
     assert(rl_storage_load(&device, &loaded, NULL, &has_run) == RL_SAVE_OK);
-    assert(!has_run && loaded.last_registered_species == 8);
-    assert(loaded.currency == 35 && loaded.runs == 1);
+    assert(!has_run && loaded.currency == 50 && loaded.runs == 2);
+    assert(loaded.pending_registration_count == 1);
+    assert(rl_meta_species_unlocked(&loaded, 8));
+    assert(loaded.pending_species[(9 - 1) >> 3] &
+           (1U << ((9 - 1) & 7)));
+    assert(rl_meta_register_species(&loaded, 8) == RL_OK);
+    assert(loaded.pending_registration_count == 1);
+    assert(rl_meta_register_species(&loaded, 9) == RL_OK);
+    assert(loaded.currency == 50 && loaded.runs == 2);
+    assert(loaded.pending_registration_count == 0);
+    assert(rl_storage_save(&device, &loaded, NULL, 0) == RL_SAVE_OK);
+
+    memset(&meta, 0, sizeof(meta));
+    assert(rl_storage_load(&device, &meta, NULL, &has_run) == RL_SAVE_OK);
+    assert(!has_run && meta.currency == 50 && meta.runs == 2);
+    assert(meta.pending_registration_count == 0);
+    assert(rl_meta_species_unlocked(&meta, 8));
+    assert(rl_meta_species_unlocked(&meta, 9));
 }
 
 static void be16(RlU8 *p, unsigned n) {

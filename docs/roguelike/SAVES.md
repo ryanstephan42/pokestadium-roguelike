@@ -105,11 +105,17 @@ proposal, not a user-selected threshold. Their species IDs are
 52, 56, 60, 63, 66, 69, 74, 79, 84, 90, 104, 116, 118, and 129. Each terminal
 run stores its still-unregistered final-team species as a pending profile
 choice in the same atomic save as run statistics and currency. The choice is
-available after a cold reload; registering or explicitly skipping it consumes
-the pending choice. Re-registering the same species for the same saved run is
-idempotent, while another species or a species not on that final team is
-rejected. Species registration unlocks species only; the draft integrator must
-build the selected Pokémon from its canonical legal rental loadout.
+available after a cold reload. Each terminal run that adds at least one
+previously unregistered species contributes one registration receipt, and the
+profile accumulates the union of newly eligible species plus the receipt count.
+Registering one species from that union or explicitly skipping consumes exactly
+one receipt; already-registered species are idempotent and cannot consume
+another receipt. The final receipt clears the remaining union. If the union has
+no new eligible species, the run still records currency and run statistics
+without adding a receipt. Receipt count is bounded by the 151 distinct species
+IDs; capacity is checked before profile mutation. Species registration unlocks
+species only; the draft integrator must build the selected Pokémon from its
+canonical legal rental loadout.
 
 Successful wins unlock Prime Cup starters on the first win and Little Cup
 starters on the fifth; each win also unlocks the next relic and event bit,

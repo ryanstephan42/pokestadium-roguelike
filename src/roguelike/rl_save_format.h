@@ -16,7 +16,7 @@ typedef struct RlMeta {
     RlU8 ascension, hall_count;
     RlMon hall[RL_PARTY];
     RlU32 currency, options, last_registration_run;
-    RlU32 pending_registration_run;
+    RlU32 pending_registration_count;
     RlU8 registered_species[RL_META_SPECIES_BYTES];
     RlU8 pending_species[RL_META_SPECIES_BYTES];
     RlU8 last_registered_species;

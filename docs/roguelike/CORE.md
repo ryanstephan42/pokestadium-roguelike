@@ -153,10 +153,15 @@ event, reporting `RL_EMPTY` without mutation if none are available.
 The base starter-species catalog contains first-stage species with base-stat
 totals at most 320. `rl_meta_choose_species` filters a caller-provided legal
 rental catalog to unlocked species and selects among distinct species with
-inverse-BST weights. Terminal recording stores the unregistered species on the
-final team as a pending profile choice; `rl_meta_register_species` or
-`rl_meta_skip_species_registration` consumes it, so the choice survives the
-terminal save clearing the suspend record. `rl_meta_purchase_option` spends
+inverse-BST weights. Each terminal run that adds at least one previously
+unregistered species from its final team contributes one registration receipt;
+the profile accumulates the union of those newly eligible species and the
+receipt count. A receipt can register one species from that union or be
+skipped. A species already registered cannot consume another receipt. Both the
+union and receipts survive the terminal save clearing the suspend record, and
+the last receipt clears the remaining choices. Runs whose final team adds no
+new eligible species still record normally without a receipt.
+`rl_meta_purchase_option` spends
 saved currency once per available option bit and is idempotent for already-owned
 options. `rl_meta_option_available` and `rl_meta_option_name` exclude option IDs
 whose content is not implemented; event-pack, contract, and cosmetic IDs are

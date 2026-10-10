@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <limits.h>
+#include <stddef.h>
 
 #include "rl_meta.h"
 
@@ -113,7 +114,7 @@ static void test_progression_and_roundtrip(void) {
     assert(loaded.hall_count == meta.hall_count);
     assert(loaded.hall[0].species == meta.hall[0].species);
     assert(loaded.currency == meta.currency);
-    assert(loaded.pending_registration_run == 0);
+    assert(loaded.pending_registration_count == 0);
 }
 
 static void test_options_species_and_currency(void) {
@@ -146,12 +147,12 @@ static void test_options_species_and_currency(void) {
     rl_map_generate(&run.map, &run.rng, 2, 0);
     assert(rl_meta_record_run(&meta, &run) == RL_OK);
     assert(meta.currency == 65);
-    assert(meta.pending_registration_run == meta.runs);
+    assert(meta.pending_registration_count == 1);
     assert(rl_meta_register_species(&meta, 9) == RL_INVALID);
     assert(rl_meta_register_species(&meta, 8) == RL_OK);
     assert(rl_meta_species_unlocked(&meta, 8));
     assert(meta.last_registered_species == 8);
-    assert(meta.pending_registration_run == 0);
+    assert(meta.pending_registration_count == 0);
     assert(rl_meta_register_species(&meta, 8) == RL_OK);
     assert(rl_meta_register_species(&meta, 9) == RL_INVALID);
 
@@ -196,12 +197,12 @@ static void test_options_species_and_currency(void) {
     run.stats.battles = 2;
     run.stats.wins = 2;
     assert(rl_meta_record_run(&loaded, &run) == RL_OK);
-    assert(loaded.pending_registration_run == loaded.runs);
+    assert(loaded.pending_registration_count == 1);
     assert(rl_save_encode(&loaded, 0, buffer, sizeof(buffer), &length) == RL_OK);
     assert(rl_save_decode(&meta, 0, &has_run, buffer, length) == RL_OK);
     assert(meta.pending_species[(9 - 1) >> 3] & (1U << ((9 - 1) & 7)));
     assert(rl_meta_skip_species_registration(&meta) == RL_OK);
-    assert(meta.pending_registration_run == 0);
+    assert(meta.pending_registration_count == 0);
     assert(rl_meta_skip_species_registration(&meta) == RL_INVALID);
 }
 
@@ -238,11 +239,101 @@ static void test_loss_rejection_and_saturation(void) {
     meta.runs = UINT_MAX;
     meta.wins = UINT_MAX;
     prepare_terminal_run(&run, 0, RL_WON);
+    run.party[0].species = 12;
+    run.stats.battles = 2;
+    run.stats.wins = 1;
     assert(rl_meta_record_run(&meta, &run) == RL_OK);
     assert(meta.runs == UINT_MAX && meta.wins == UINT_MAX);
+    assert(meta.currency == 40);
+    assert(meta.pending_registration_count == 1);
+    assert(meta.pending_species[(12 - 1) >> 3] &
+           (1U << ((12 - 1) & 7)));
     assert(rl_meta_starter_unlocked(&meta, RL_META_POOL_LITTLE_CUP));
     assert(rl_meta_relic_unlocked(&meta, RL_RELIC_COUNT - 1));
     assert(rl_meta_event_unlocked(&meta, RL_EVENT_COUNT - 1));
+}
+
+static void set_lost_team(RunState *run, unsigned species, unsigned battles,
+                          unsigned wins) {
+    prepare_terminal_run(run, 0, RL_LOST);
+    run->act = 2;
+    run->row = 6;
+    run->lane = 0;
+    run->party[0].species = (RlU8)species;
+    run->stats.battles = battles;
+    run->stats.wins = wins;
+    rl_map_generate(&run->map, &run->rng, 2, 0);
+}
+
+static void test_accumulated_registration_receipts(void) {
+    RlMeta meta, loaded, overflow;
+    RunState run;
+    RlU8 bytes[RL_SAVE_MAX_SIZE], has_run;
+    unsigned length;
+
+    rl_meta_init(&meta);
+    set_lost_team(&run, 8, 4, 3);
+    assert(rl_meta_record_run(&meta, &run) == RL_OK);
+    assert(meta.runs == 1 && meta.currency == 35);
+    assert(meta.pending_registration_count == 1);
+
+    assert(rl_save_encode(&meta, NULL, bytes, sizeof(bytes), &length) == RL_OK);
+    assert(rl_save_decode(&loaded, NULL, &has_run, bytes, length) == RL_OK);
+    assert(!has_run && loaded.pending_registration_count == 1);
+
+    set_lost_team(&run, 9, 2, 1);
+    assert(rl_meta_record_run(&loaded, &run) == RL_OK);
+    assert(loaded.runs == 2 && loaded.currency == 50);
+    assert(loaded.pending_registration_count == 2);
+    assert(loaded.pending_species[(8 - 1) >> 3] &
+           (1U << ((8 - 1) & 7)));
+    assert(loaded.pending_species[(9 - 1) >> 3] &
+           (1U << ((9 - 1) & 7)));
+
+    assert(rl_meta_register_species(&loaded, 8) == RL_OK);
+    assert(loaded.pending_registration_count == 1);
+    assert(! (loaded.pending_species[(8 - 1) >> 3] &
+              (1U << ((8 - 1) & 7))));
+    assert(loaded.pending_species[(9 - 1) >> 3] &
+           (1U << ((9 - 1) & 7)));
+    assert(rl_meta_register_species(&loaded, 8) == RL_OK);
+    assert(loaded.pending_registration_count == 1);
+    assert(rl_meta_register_species(&loaded, 7) == RL_INVALID);
+
+    assert(rl_save_encode(&loaded, NULL, bytes, sizeof(bytes), &length) == RL_OK);
+    assert(rl_save_decode(&meta, NULL, &has_run, bytes, length) == RL_OK);
+    assert(meta.pending_registration_count == 1);
+    assert(rl_meta_register_species(&meta, 9) == RL_OK);
+    assert(meta.pending_registration_count == 0);
+    assert(meta.pending_species[(9 - 1) >> 3] == 0);
+    assert(meta.runs == 2 && meta.currency == 50);
+
+    set_lost_team(&run, 12, 1, 0);
+    assert(rl_meta_record_run(&meta, &run) == RL_OK);
+    set_lost_team(&run, 14, 1, 0);
+    assert(rl_meta_record_run(&meta, &run) == RL_OK);
+    assert(meta.pending_registration_count == 2);
+    assert(rl_meta_skip_species_registration(&meta) == RL_OK);
+    assert(meta.pending_registration_count == 1);
+    assert(meta.pending_species[(12 - 1) >> 3] &
+           (1U << ((12 - 1) & 7)));
+    assert(meta.pending_species[(14 - 1) >> 3] &
+           (1U << ((14 - 1) & 7)));
+    assert(rl_meta_skip_species_registration(&meta) == RL_OK);
+    assert(meta.pending_registration_count == 0);
+    assert(meta.pending_species[(12 - 1) >> 3] == 0);
+    assert(meta.pending_species[(14 - 1) >> 3] == 0);
+    assert(rl_meta_skip_species_registration(&meta) == RL_INVALID);
+
+    set_lost_team(&run, 1, 1, 0);
+    assert(rl_meta_record_run(&meta, &run) == RL_OK);
+    assert(meta.runs == 5 && meta.currency == 65);
+    assert(meta.pending_registration_count == 0);
+
+    overflow = meta;
+    overflow.pending_registration_count = 152;
+    assert(rl_meta_record_run(&overflow, &run) == RL_INVALID);
+    assert(overflow.runs == meta.runs && overflow.currency == meta.currency);
 }
 
 int main(void) {
@@ -250,5 +341,6 @@ int main(void) {
     test_progression_and_roundtrip();
     test_options_species_and_currency();
     test_loss_rejection_and_saturation();
+    test_accumulated_registration_receipts();
     return 0;
 }
