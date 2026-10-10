@@ -69,6 +69,18 @@ class PreviewTests(unittest.TestCase):
             self.assertNotIn(str(Path.home() / ".config"), config)
             self.assertIn('mupen64plus-rdp-plugin = "angrylion"',
                           (profile / "core-options.cfg").read_text())
+            bindings = dict(
+                line.split(" = ", 1) for line in config.splitlines()
+                if line.startswith("input_player1_r_")
+            )
+            self.assertEqual(bindings, {
+                "input_player1_r_y_minus_axis": '"+3"',
+                "input_player1_r_y_plus_axis": '"-3"',
+                "input_player1_r_y_minus": '"i"',
+                "input_player1_r_y_plus": '"k"',
+                "input_player1_r_x_minus": '"j"',
+                "input_player1_r_x_plus": '"l"',
+            })
 
 
 if __name__ == "__main__":

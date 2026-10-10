@@ -50,6 +50,13 @@ SDL device index if needed; inspect the input/autoconfig lines in the local log.
 The tested host enumerated Xbox first and the Keychron keyboard's joystick
 interface second.
 
+The preview explicitly swaps the Xbox right-stick vertical axis bindings
+(`r_y_minus_axis = "+3"`, `r_y_plus_axis = "-3"`) to correct the inverted
+C-up/C-down reported during physical-controller play. Horizontal stick
+bindings and keyboard I/K/J/L remain unchanged. This applies when
+`scripts/rl-preview.sh` next generates its local config; it does not change
+the currently running preview or any global controller configuration.
+
 ### Physical-controller acceptance checklist
 
 The Xbox device was readable and opened by RetroArch, but automated keyboard
