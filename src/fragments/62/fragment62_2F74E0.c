@@ -1,4 +1,7 @@
 #include "fragment62.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_native_relics.h"
+#endif
 #include "src/373A0.h"
 #include "src/3D140.h"
 #include "src/49790.h"
@@ -374,8 +377,14 @@ void func_8430D710(s32 arg0) {
 
 void func_8430D814(void) {
     func_8430CC20();
+#ifdef ROGUELIKE
+    rl_native_relics_bind(D_84390010[0], D_84390010[1]);
+    rl_func_84370B7C(D_84390010[0]);
+    rl_func_84370B7C(D_84390010[1]);
+#else
     func_84370B7C(D_84390010[0]);
     func_84370B7C(D_84390010[1]);
+#endif
 
     D_843900A8[0] = D_84390010[0]->unk_654.unk_38.unk_0C;
     D_843900A8[1] = D_84390010[1]->unk_654.unk_38.unk_0C;

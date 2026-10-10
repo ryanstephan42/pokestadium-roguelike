@@ -26,4 +26,5 @@ gcc "${flags[@]}" host_tests/test_play_ui.c \
     src/roguelike/rl_save_format.c src/roguelike/rl_ui_model.c \
     -DROGUELIKE -Wl,--gc-sections -o build/host_tests/play-ui-adapter
 build/host_tests/play-ui-adapter
+python3 -m unittest host_tests.test_battle_layout
 echo "Play UI/ordered-slot adapter: OK"

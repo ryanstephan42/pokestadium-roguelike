@@ -2,6 +2,9 @@
 #include "src/22630.h"
 #include "src/2E110.h"
 #include "src/F420.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_native_relics.h"
+#endif
 
 typedef struct unk_D_843C4DA0 {
     /* 0x00 */ u16 unk_00;
@@ -522,6 +525,21 @@ s32 func_84370260(void) {
 }
 
 void func_843703BC(void) {
+#ifdef ROGUELIKE
+    u16 relic_before = D_843C4DC4;
+    u16 relic_hp = D_843C523C->unk_0C;
+    u16 relic_modified;
+    if (D_84390288 == 0 && D_84390240.unk_00->unk_48 != 0x10 &&
+        D_84390240.unk_00->unk_48 != 0x14) {
+        D_843C4DC4 = rl_native_relics_damage(D_843C5238, D_843C523C, D_843C4DC4,
+                                            D_843C5238->unk_44.unk_03,
+                                            D_843C523C->unk_4D & 0x10);
+    }
+    relic_modified = D_843C4DC4;
+    if (D_84390288 == 0 && D_843C5238->unk_4C & 4) {
+        D_843C4DA0 += (s32)relic_modified - relic_before;
+    }
+#endif
     if (D_843C523C->unk_4D & 0x10) {
         if (D_84390240.unk_00->unk_48 == 0x14) {
             func_8002D5D4(0x19, func_8430862C(D_84390010[D_84390240.unk_00->unk_2C]));
@@ -574,6 +592,14 @@ void func_843703BC(void) {
             D_843C523C->unk_0C = 0;
         }
     }
+#ifdef ROGUELIKE
+    if (D_84390288 == 0 && D_84390240.unk_00->unk_48 != 0x10 &&
+        D_84390240.unk_00->unk_48 != 0x14) {
+        rl_native_relics_damage_trace(D_843C5238, D_843C5238->unk_44.unk_03,
+                                     relic_before, relic_modified, relic_hp,
+                                     relic_hp - D_843C523C->unk_0C);
+    }
+#endif
 }
 
 void func_843706E8(s32 arg0) {
@@ -793,6 +819,16 @@ void func_84370B7C(unk_D_84390010* arg0) {
 #pragma GLOBAL_ASM("asm/us/nonmatchings/fragments/62/fragment62_359F90/func_84370B7C.s")
 #endif
 
+#ifdef ROGUELIKE
+/* Native switch-in init, then relic stat boosts; paralysis is re-applied to boosted Speed. */
+void rl_func_84370B7C(unk_D_84390010* arg0) {
+    func_84370B7C(arg0);
+    if (rl_native_relics_stats(arg0)) {
+        func_84370B0C(arg0);
+    }
+}
+#endif
+
 s32 func_84370E30(unk_D_84390010* arg0) {
     if (arg0->unk_724->unk_01C[arg0->unk_654.unk_18 - 1].unk_02 != 0) {
         return 1;
@@ -865,6 +901,9 @@ void func_84371080(void) {
 void func_8437114C(void) {
     s32 var_s0;
     s32 temp_v0;
+#ifdef ROGUELIKE
+    u16 relic_damage;
+#endif
 
     switch (D_843C5238->unk_44.unk_01) {
         case 38:
@@ -918,7 +957,16 @@ void func_8437114C(void) {
     }
 
     if (D_843C4DC4 != 0) {
+#ifdef ROGUELIKE
+        relic_damage = D_843C4DC4;
+#endif
         func_843703BC();
+#ifdef ROGUELIKE
+        /* Repeated hits reuse the native roll, not the previous relic-scaled hit. */
+        if (D_843C5238->unk_4C & 4) {
+            D_843C4DC4 = relic_damage;
+        }
+#endif
     }
 }
 
@@ -1201,6 +1249,9 @@ s32 func_84371B3C(void) {
 s32 func_84371C18(void) {
     UNUSED s32 pad;
     s32 sp18;
+#ifdef ROGUELIKE
+    s32 relic_threshold;
+#endif
 
     D_843C4DA5 = 0;
     if (D_8438AC60[0] == 1) {
@@ -1253,7 +1304,18 @@ s32 func_84371C18(void) {
         sp18 = 1;
     }
 
+#ifdef ROGUELIKE
+    relic_threshold = sp18;
+    if (D_84390288 == 0) {
+        sp18 = rl_native_relics_crit(D_843C5238, sp18);
+    }
+#endif
     D_843C4DA2 = func_8436F6D8();
+#ifdef ROGUELIKE
+    if (D_84390288 == 0) {
+        rl_native_relics_crit_trace(D_843C5238, relic_threshold, sp18, D_843C4DA2);
+    }
+#endif
     if (D_843C4DA2 >= sp18) {
         return 0;
     }
@@ -1888,7 +1950,11 @@ void func_84373570(unk_D_84390010* arg0) {
     func_8436FA80(arg0);
     func_8000E88C(&arg0->unk_448.unk_00, 0.0f, 0.0f, 0.0f);
     func_8000E88C(&arg0->unk_448.unk_0C, 0.0f, 0.0f, 0.0f);
+#ifdef ROGUELIKE
+    rl_func_84370B7C(arg0);
+#else
     func_84370B7C(arg0);
+#endif
 
     if (arg0 == D_84390010[0]) {
         func_8436F9D8(0, 1);
