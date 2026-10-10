@@ -481,6 +481,9 @@ void func_8431A780(unk_D_86002F34_00C* arg0) {
 void func_8431A7B8(unk_D_86002F34_00C* arg0) {
     UNUSED s32 pad;
     unk_D_84390010_654* sp18 = &D_84390010[D_84390240.unk_00->unk_2C]->unk_654;
+#ifdef ROGUELIKE
+    extern int gRlBattleActive;
+#endif
 
     if ((sp18->unk_2D == 0x10) || ((sp18->unk_34 & 0x4000) != 0)) {
         func_8431A4C4(arg0);
@@ -495,7 +498,11 @@ void func_8431A7B8(unk_D_86002F34_00C* arg0) {
         if (func_8431ADAC(0x5A) != 0) {
             func_8431A4C4(arg0);
         }
-    } else if (func_800174E4(&D_84390010[D_84390240.unk_00->unk_2C]->unk_000) != 0) {
+    } else if ((func_800174E4(&D_84390010[D_84390240.unk_00->unk_2C]->unk_000) != 0)
+#ifdef ROGUELIKE
+               || (gRlBattleActive && (func_8431ADAC(0x5A) != 0))
+#endif
+    ) {
         func_8431A4C4(arg0);
     }
 }

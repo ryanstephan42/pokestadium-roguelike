@@ -20,6 +20,14 @@ if grep -q '^rl:' Makefile 2>/dev/null; then
         step "roguelike boot test (title -> menu -> RL scene -> menu, x3)"
         PY=python3; [ -x .venv/bin/python3 ] && PY=.venv/bin/python3
         "$PY" tools/rl/boot_test.py 2>&1 | grep -v '^\[' | tail -12
+        if [ -f tools/rltest/test_play_run.py ]; then
+            step "playable run UI and three native battles"
+            "$PY" -m tools.rltest.test_play_run
+        fi
+        if [ -f tools/rltest/test_custom_battle.py ]; then
+            step "native adapter consecutive-battle regression"
+            "$PY" -m tools.rltest.test_custom_battle
+        fi
         if [ -f tools/rltest/save_roundtrip.py ]; then
             step "native Controller Pak roundtrip, cold reload, preservation and errors"
             "$PY" tools/rltest/save_roundtrip.py

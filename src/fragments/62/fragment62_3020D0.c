@@ -135,6 +135,10 @@ void func_84317B40(void) {
 
 void func_84317BDC(void) {
     u32 sp1C;
+#ifdef ROGUELIKE
+    u8* mon_name;
+    char* status_name;
+#endif
     unk_D_800FCB18* sp18 = &D_84390010[D_84390240.unk_00->unk_2C]->unk_654.unk_38;
 
     sp18->unk_58 = sp18->unk_44.unk_00;
@@ -152,8 +156,15 @@ void func_84317BDC(void) {
     }
 
     if ((sp18->unk_44.unk_00 == 0x76) || (sp18->unk_44.unk_00 == 0x77)) {
+#ifdef ROGUELIKE
+        mon_name = func_8430862C(D_84390010[D_84390240.unk_00->unk_2C]);
+        func_8002D5D4(0x19, (u32)mon_name);
+        status_name = func_843085F0(D_84390010[D_84390240.unk_00->unk_2C]);
+        func_8002D5D4(0x1D, (u32)status_name);
+#else
         func_8002D5D4(0x19, func_8430862C(D_84390010[D_84390240.unk_00->unk_2C]));
         func_8002D5D4(0x1D, func_843085F0(D_84390010[D_84390240.unk_00->unk_2C]));
+#endif
 
         switch (sp1C) {
             case 0:
@@ -177,8 +188,15 @@ void func_84317BDC(void) {
                 break;
         }
     } else {
+#ifdef ROGUELIKE
+        mon_name = func_8430862C(D_84390010[D_84390240.unk_00->unk_2C]);
+        func_8002D5D4(0x19, (u32)mon_name);
+        status_name = func_843085F0(D_84390010[D_84390240.unk_00->unk_2C]);
+        func_8002D5D4(0x1D, (u32)status_name);
+#else
         func_8002D5D4(0x19, func_8430862C(D_84390010[D_84390240.unk_00->unk_2C]));
         func_8002D5D4(0x1D, func_843085F0(D_84390010[D_84390240.unk_00->unk_2C]));
+#endif
 
         switch (sp1C) {
             case 0:

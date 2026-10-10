@@ -8,6 +8,7 @@
  */
 
 #include "ultra64.h"
+#include "rl_battle.h"
 
 #define RL_FRAGMENT_VRAM 0x8F800000
 
@@ -20,9 +21,38 @@ typedef struct RlMainState {
     /* 0x10 */ u32 frames;      /* frames drawn by the overlay (all visits) */
 } RlMainState; /* size = 0x14 */
 
+typedef struct RlPendingBattle {
+    RlMon player[3];
+    RlMon enemy[RL_BATTLE_MAX_MONS];
+    RlMon trainer[RL_BATTLE_MAX_MONS];
+    RlBattleRules rules;
+    unsigned char player_slots[3];
+    unsigned char player_count;
+    unsigned char enemy_count;
+    unsigned char trainer_count;
+    unsigned char pending;
+    unsigned char post_battle;
+    unsigned char error;
+    unsigned char outcome;
+} RlPendingBattle;
+
 #define RL_MAIN_MAGIC 0x524C4D30 /* 'RLM0' */
 
 extern RlMainState gRlMain;
+extern RunState gRlRun;
+extern RlPendingBattle gRlPendingBattle;
+extern volatile u32 gRlPlayScene;
+extern volatile u32 gRlPlayExit;
+extern volatile u32 gRlPlayBattleCount;
+extern volatile u32 gRlPlayTestMode;
+extern volatile u32 gRlPlayTestSeed;
+extern volatile u8 gRlPlayDraftSpecies[6];
+
+int rl_main_queue_battle(const RlMon* player, unsigned player_count,
+                         const RlMon* enemy, unsigned enemy_count,
+                         const RlBattleRules* rules,
+                         const unsigned char* player_slots,
+                         const RlMon* trainer, unsigned trainer_count);
 
 /* Called from Game_Thread for STATE_ROGUELIKE. Loads and runs fragmentRL. */
 void rl_main_state_roguelike(void);

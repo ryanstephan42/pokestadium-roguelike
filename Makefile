@@ -139,10 +139,13 @@ ifeq ($(ROGUELIKE),1)
   ifneq ($(wildcard src/fragments/rl/rl_ui.c),)
     BUILD_DEFINES += -DRL_HAVE_UI_DEMO
   endif
+  ifneq ($(wildcard src/fragments/rl/rl_play.c),)
+    BUILD_DEFINES += -DRL_HAVE_PLAY
+  endif
   ifneq ($(wildcard src/roguelike/rl_battle.c),)
     BUILD_DEFINES += -DRL_HAVE_BATTLE
   endif
-$(BUILD_DIR)/src/fragments/rl/rl_fragment.o: $(wildcard src/fragments/rl/rl_ui.c)
+$(BUILD_DIR)/src/fragments/rl/rl_fragment.o: $(wildcard src/fragments/rl/rl_ui.c src/fragments/rl/rl_play.c)
 $(BUILD_DIR)/src/roguelike/rl_main.o: $(wildcard src/roguelike/rl_battle.c)
 endif
 
@@ -264,8 +267,9 @@ LIB_DIRS      := $(foreach f, $(LIBULTRA_DIR), $f)
 C_FILES       := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 S_FILES       := $(foreach dir,$(ASM_DIRS) $(SRC_DIRS),$(wildcard $(dir)/*.s))
 
-# Roguelike sources: src/roguelike/ -> resident main segment, src/fragments/rl/ -> fragmentRL overlay.
-# They are only compiled and linked by the roguelike build.
+# Roguelike sources are only compiled and linked by the roguelike build.
+# `rl_rosters.o` is linked into fragmentRL with the scene to keep its large
+# generated trainer tables out of the native battle's resident heap.
 RL_MAIN_DIR   := src/roguelike
 RL_FRAG_DIR   := src/fragments/rl
 RL_SRC_FILTER := $(RL_MAIN_DIR)/% $(RL_FRAG_DIR)/%
@@ -416,6 +420,7 @@ rlclean:
 ifeq ($(ROGUELIKE),1)
 rlrom: $(ROM)
 	@$(PRINT) "$(GREEN)Roguelike ROM: $(BLUE)$(ROM)$(NO_COL)\n"
+	$(V)$(PYTHON) tools/rl/pad_rom.py $(ROM)
 	$(V)$(PYTHON) tools/rl/n64crc.py $(ROM) --check
 else
 rlrom:
@@ -435,6 +440,7 @@ $(RL_GEN_DIR)/rl_rosters.h: $(BASEROM) tools/rl_extract_rosters.py
 rl-rosters: $(RL_GEN_DIR)/rl_rosters.h
 ifeq ($(ROGUELIKE),1)
 $(BUILD_DIR)/src/roguelike/rl_rosters.o: $(RL_GEN_DIR)/rl_rosters.h
+$(BUILD_DIR)/src/fragments/rl/rl_play.o: $(RL_GEN_DIR)/rl_rosters.h
 endif
 
 .PHONY: all rom clean libclean distclean venv setup extract lib diff-init init run rl-rosters
