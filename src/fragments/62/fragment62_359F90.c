@@ -738,7 +738,7 @@ void func_84370B44(unk_D_84390010* arg0) {
     }
 }
 
-#if defined(NON_MATCHING) || defined(ROGUELIKE)
+#ifdef NON_MATCHING
 void func_84370B7C(unk_D_84390010* arg0) {
     unk_D_84390010_654* sp28;
     unk_D_800FCB18* sp24;
@@ -802,21 +802,14 @@ void func_84370B7C(unk_D_84390010* arg0) {
     sp24->unk_2E = sp34->unk_2C;
     sp24->unk_30 = sp34->unk_2E;
 
-#ifndef ROGUELIKE
     func_84370B0C(arg0);
     func_84370B44(arg0);
-#endif
 
     sp24->unk_36 = D_80070F84[sp24->unk_0B].baseHP;
     sp24->unk_38 = sp34->unk_28;
     sp24->unk_3A = sp34->unk_2A;
     sp24->unk_3C = sp34->unk_2C;
     sp24->unk_3E = sp34->unk_2E;
-#ifdef ROGUELIKE
-    rl_native_relics_stats(arg0);
-    func_84370B0C(arg0);
-    func_84370B44(arg0);
-#endif
 
     // clang-format off
     for (i = 0; i < 8; i++) { sp24->unk_5C[i] = 7; }
@@ -824,6 +817,16 @@ void func_84370B7C(unk_D_84390010* arg0) {
 }
 #else
 #pragma GLOBAL_ASM("asm/us/nonmatchings/fragments/62/fragment62_359F90/func_84370B7C.s")
+#endif
+
+#ifdef ROGUELIKE
+/* Native switch-in init, then relic stat boosts; paralysis is re-applied to boosted Speed. */
+void rl_func_84370B7C(unk_D_84390010* arg0) {
+    func_84370B7C(arg0);
+    if (rl_native_relics_stats(arg0)) {
+        func_84370B0C(arg0);
+    }
+}
 #endif
 
 s32 func_84370E30(unk_D_84390010* arg0) {
@@ -1947,7 +1950,11 @@ void func_84373570(unk_D_84390010* arg0) {
     func_8436FA80(arg0);
     func_8000E88C(&arg0->unk_448.unk_00, 0.0f, 0.0f, 0.0f);
     func_8000E88C(&arg0->unk_448.unk_0C, 0.0f, 0.0f, 0.0f);
+#ifdef ROGUELIKE
+    rl_func_84370B7C(arg0);
+#else
     func_84370B7C(arg0);
+#endif
 
     if (arg0 == D_84390010[0]) {
         func_8436F9D8(0, 1);

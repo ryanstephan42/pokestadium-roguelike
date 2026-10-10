@@ -54,26 +54,33 @@ void rl_native_relics_bind(RlBattleSide* player, RlBattleSide* enemy) {
     }
 }
 
-static void modify_stat(unsigned int stat, u16* effective, u16* base,
-                        unsigned int species) {
+static int modify_stat(unsigned int stat, u16* effective, u16* base,
+                       unsigned int species) {
     unsigned int before = *base;
     unsigned int effective_before = *effective;
-    *base = MIN(999, rl_relic_modify_stat(gRlNativeRelics, stat, before));
-    *effective = *base;
+    unsigned int after = MIN(999, rl_relic_modify_stat(gRlNativeRelics, stat, before));
+    if (after != before) {
+        /* Native init leaves effective == base before status penalties. */
+        *base = after;
+        *effective = after;
+    }
     trace(1, stat, before, *base, effective_before, *effective, species);
+    return after != before;
 }
 
-void rl_native_relics_stats(RlBattleSide* side) {
+int rl_native_relics_stats(RlBattleSide* side) {
     RlBattleMon* mon = rl_battle_mon(side);
+    int speed_changed;
     if (!player_mon(mon)) {
-        return;
+        return 0;
     }
     modify_stat(RL_DEFENSE, &rl_battle_defense(mon), &rl_battle_base_defense(mon),
                 rl_battle_species(mon));
-    modify_stat(RL_SPEED, &rl_battle_speed(mon), &rl_battle_base_speed(mon),
-                rl_battle_species(mon));
+    speed_changed = modify_stat(RL_SPEED, &rl_battle_speed(mon), &rl_battle_base_speed(mon),
+                                rl_battle_species(mon));
     modify_stat(RL_SPECIAL, &rl_battle_special(mon), &rl_battle_base_special(mon),
                 rl_battle_species(mon));
+    return speed_changed;
 }
 
 void rl_native_relics_open_round(void) {
@@ -98,9 +105,11 @@ int rl_native_relics_finish_round(unsigned int second_action) {
     mon.max_hp = rl_battle_max_hp(live);
     mon.fainted = before == 0;
     rl_relic_end_of_turn(gRlNativeRelics, &mon);
-    rl_battle_hp(live) = mon.cur_hp;
-    /* Phase 4 has settled action HP; keep the party display/next switch coherent. */
-    rl_battle_party_hp(original) = mon.cur_hp;
+    if (mon.cur_hp != before) {
+        rl_battle_hp(live) = mon.cur_hp;
+        /* Phase 4 has settled action HP; keep the party display/next switch coherent. */
+        rl_battle_party_hp(original) = mon.cur_hp;
+    }
     trace(3, before, mon.cur_hp, mon.max_hp,
           rl_battle_party_packed_pp(original, 0) & RL_BATTLE_PP_MASK,
           second_action, player_side->unk_654.unk_2D);

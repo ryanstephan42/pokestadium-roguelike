@@ -148,7 +148,8 @@ def _scenario(name):
             "mask": 1 << RELIC[name],
             # Chansey knows only Toxic, so later player HP loss can only be
             # native poison after Soul expires. Duplicate moves stall the engine.
-            "player": _mon(150, 100, [33]),
+            # Mewtwo only Growls, so the battle lasts until an 85%-accurate Toxic lands.
+            "player": _mon(150, 100, [45]),
             "enemy": _mon(113, 100, [92]),
             "check": {"kind": "soul"},
         }

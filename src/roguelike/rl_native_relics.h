@@ -20,7 +20,8 @@ extern unsigned int gRlNativeRelics;
 
 void rl_native_relics_reset(unsigned int relics);
 void rl_native_relics_bind(RlBattleSide* player, RlBattleSide* enemy);
-void rl_native_relics_stats(RlBattleSide* side);
+/* Returns nonzero when Speed changed, so the caller re-applies paralysis. */
+int rl_native_relics_stats(RlBattleSide* side);
 void rl_native_relics_open_round(void);
 int rl_native_relics_finish_round(unsigned int second_action);
 unsigned int rl_native_relics_damage(RlBattleMon* attacker, RlBattleMon* defender,
