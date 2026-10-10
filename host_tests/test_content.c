@@ -90,7 +90,9 @@ static void test_complete_runs(void) {
                     assert(rl_run_on_battle_result(&run, 1, 1) == RL_OK);
                     assert(run.money == old_money +
                         rl_battle_money(act, row, type, asc, 0));
-                    assert(run.party[0].exp > old_exp);
+                    assert(run.party[0].exp == old_exp +
+                        ((act + 1) * 8000U + row * 1000U) *
+                        (type == RL_BOSS ? 3U : (type == RL_ELITE ? 2U : 1U)));
                     assert(rl_run_on_battle_result(&run, 1, 1) == RL_INVALID);
                 }
                 roundtrip(&run, &restored);
@@ -106,6 +108,7 @@ static void test_complete_runs(void) {
 
 static void test_scaling_and_money(void) {
     RunState run;
+    RlEncounter encounter;
     RlMon team[6];
     unsigned asc, act, row, type, i, prev;
     rl_run_new(&run, 123, 0);
@@ -137,12 +140,52 @@ static void test_scaling_and_money(void) {
     assert(rl_battle_money(0, 0, RL_BATTLE, 10, 1U << RL_AMULET) == 75);
     assert(rl_battle_money(0, 6, RL_BOSS, 0, 0) == 570);
     assert(!rl_battle_money(3, 1, RL_BOSS, 0, 0));
+    run.act = run.row = 0;
+    run.map.lanes[0] = 255;
+    run.lane = 5;
+    assert(rl_encounter_select(&run, &encounter) == RL_INVALID);
+}
+
+static void test_unlock_offers(void) {
+    RunState run;
+    RlReward rewards[4];
+    RlShopEntry shop[10];
+    RlU32 rng;
+    unsigned seed, count, i;
+    for (seed = 0; seed < 1000; seed++) {
+        rl_run_new(&run, seed, 0);
+        count = rl_rewards_generate_unlocked(&run, 0, 0,
+            1U << RL_BOULDER, rewards, 4);
+        for (i = 0; i < count; i++) {
+            if (rewards[i].kind == RL_REWARD_RELIC)
+                assert(rewards[i].detail == RL_BOULDER);
+            if (rewards[i].kind == RL_REWARD_MONEY) assert(rewards[i].amount);
+        }
+        count = rl_shop_generate_unlocked(&run, 0,
+            1U << RL_BOULDER, shop, 10);
+        for (i = 0; i < count; i++)
+            if (shop[i].item == RL_RELIC_ITEM)
+                assert(shop[i].detail == RL_BOULDER);
+        rng = run.rng;
+        assert(rl_event_resolve_unlocked(&run,5,0,0,0,0,0) == RL_EMPTY);
+        assert(run.rng == rng && !run.relics);
+        assert(rl_event_resolve_unlocked(&run,8,0,0,0,0,0) == RL_FULL);
+        assert(run.rng == rng && !run.relics);
+    }
+    rl_run_new(&run, 123, 0);
+    run.money = 0xfffffff0U;
+    memset(&rewards[0], 0, sizeof(rewards[0]));
+    rewards[0].kind = RL_REWARD_MONEY;
+    rewards[0].amount = 100;
+    assert(rl_reward_apply(&run, &rewards[0]) == RL_OK);
+    assert(run.money == 0xffffffffU);
 }
 
 int main(void) {
     test_seed_sweep();
     test_complete_runs();
     test_scaling_and_money();
+    test_unlock_offers();
     puts("Content: 10000 seeds x 4 acts, v3 roundtrips, ascensions 0-10: OK");
     return 0;
 }

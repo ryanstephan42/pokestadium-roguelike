@@ -12,9 +12,30 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test ui-test save-test native-import-test clean
+.PHONY: test core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test clean
 
-test: core-test content-test ui-test save-test native-import-test
+test: core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test
+	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance
+
+ido-test:
+	mkdir -p ../build/host_tests
+	@set -e; for source in $(CORE) ../src/roguelike/rl_meta.c; do \
+		../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared \
+		$(INCLUDES) $$source -o ../build/host_tests/ido-$$(basename $$source .c).o; \
+	done
+	@echo "Pure core IDO 7.1 compilation: OK"
+
+battle-adapter-test:
+	cd .. && bash host_tests/run_battle_adapter.sh
+
+meta-test:
+	@set -e; trap 'rm -f test_meta test_meta_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_meta.c $(CORE) \
+	../src/roguelike/rl_meta.c -o test_meta; \
+	./test_meta; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_meta.c $(CORE) \
+	../src/roguelike/rl_meta.c -o test_meta_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_meta_san
 
 content-test:
 	@set -e; trap 'rm -f test_content test_content_san' EXIT; \

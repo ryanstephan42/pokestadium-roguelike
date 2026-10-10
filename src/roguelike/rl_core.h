@@ -119,9 +119,15 @@ int rl_item_use(RunState *run, unsigned item, unsigned slot, unsigned move);
 unsigned rl_rewards_generate(RunState *run, const RlPool *pool,
                              const RlMovePool *moves,
                              RlReward *out, unsigned capacity);
+unsigned rl_rewards_generate_unlocked(RunState *run, const RlPool *pool,
+                                      const RlMovePool *moves, RlU32 relics,
+                                      RlReward *out, unsigned capacity);
 int rl_reward_apply(RunState *run, const RlReward *reward);
 unsigned rl_shop_generate(RunState *run, const RlMovePool *moves,
                           RlShopEntry *out, unsigned capacity);
+unsigned rl_shop_generate_unlocked(RunState *run, const RlMovePool *moves,
+                                   RlU32 relics, RlShopEntry *out,
+                                   unsigned capacity);
 int rl_shop_buy(RunState *run, const RlShopEntry *entry);
 int rl_tm_teach(RunState *run, unsigned tm_slot, unsigned party_slot,
                 unsigned move_slot, RlCanLearnMove can_learn, void *context);
@@ -130,6 +136,9 @@ unsigned rl_event_wild_options(const RunState *run, const RlPool *pool,
 int rl_event_resolve(RunState *run, unsigned event, unsigned choice,
                      unsigned slot, const RlPool *pool,
                      const RlMovePool *moves);
+int rl_event_resolve_unlocked(RunState *run, unsigned event, unsigned choice,
+                              unsigned slot, const RlPool *pool,
+                              const RlMovePool *moves, RlU32 relics);
 unsigned rl_relic_modify_stat(RlU32 relics, unsigned stat, unsigned base);
 unsigned rl_relic_modify_damage(RlU32 relics, unsigned type, unsigned base);
 unsigned rl_relic_modify_money(RlU32 relics, unsigned base);

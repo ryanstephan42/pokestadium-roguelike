@@ -131,7 +131,7 @@ int rl_run_on_battle_result(RunState *run, int won, RlU8 active_mask) {
                             run->relics);
     run->money = run->money > 0xffffffffU - money ?
         0xffffffffU : run->money + money;
-    xp = (RlU32)(run->act + 1) * 3000U + (RlU32)run->row * 500U;
+    xp = (RlU32)(run->act + 1) * 8000U + (RlU32)run->row * 1000U;
     if (type == RL_ELITE) xp *= 2;
     if (type == RL_BOSS) xp *= 3;
     if (run->relics & (1U << RL_LUCKY_EGG)) xp = xp * 3 / 2;

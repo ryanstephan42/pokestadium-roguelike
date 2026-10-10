@@ -22,10 +22,10 @@ const RlEventDef rl_events[RL_EVENT_COUNT] = {
     {"Mysterious Shrine", {"Gain power and a curse", "Leave"}}
 };
 
-static int rl_random_relic(RunState *run, RlU32 owned) {
+static int rl_random_relic(RunState *run, RlU32 owned, RlU32 unlocked) {
     RlU32 available;
     unsigned i, count, selected;
-    available = (~owned) & ((1U << RL_RELIC_COUNT) - 1);
+    available = (~owned) & unlocked & ((1U << RL_RELIC_COUNT) - 1);
     count = 0;
     for (i = 0; i < RL_RELIC_COUNT; i++)
         if (available & (1U << i)) count++;
@@ -51,6 +51,13 @@ static int rl_move_pool_valid(const RlMovePool *pool) {
 unsigned rl_rewards_generate(RunState *run, const RlPool *pool,
                             const RlMovePool *moves,
                             RlReward *out, unsigned capacity) {
+    return rl_rewards_generate_unlocked(run, pool, moves,
+        (1U << RL_RELIC_COUNT) - 1, out, capacity);
+}
+
+unsigned rl_rewards_generate_unlocked(RunState *run, const RlPool *pool,
+                                      const RlMovePool *moves, RlU32 relics,
+                                      RlReward *out, unsigned capacity) {
     unsigned count, i, kind, index;
     int relic;
     RlU32 owned;
@@ -75,12 +82,15 @@ unsigned rl_rewards_generate(RunState *run, const RlPool *pool,
                 out[i].mon = pool->mons[index];
                 out[i].mon.cur_hp = out[i].mon.max_hp;
                 out[i].detail = (RlU8)index;
-            } else out[i].kind = RL_REWARD_MONEY;
+            } else {
+                out[i].kind = RL_REWARD_MONEY;
+                out[i].amount = (RlU16)(100 + run->act * 50);
+            }
             break;
         case RL_REWARD_CANDY: out[i].amount = 1 + run->act; break;
         case RL_REWARD_VITAMIN: out[i].amount = 1; break;
         case RL_REWARD_RELIC:
-            relic = rl_random_relic(run, owned);
+            relic = rl_random_relic(run, owned, relics);
             if (relic < 0) {
                 out[i].kind = RL_REWARD_MONEY;
                 out[i].amount = 200;
@@ -122,7 +132,9 @@ int rl_reward_apply(RunState *run, const RlReward *reward) {
     case RL_REWARD_MONEY:
         asc = rl_ascension(run->ascension);
         money = (unsigned)reward->amount * asc.money_percent / 100;
-        run->money += rl_relic_modify_money(run->relics, money);
+        money = rl_relic_modify_money(run->relics, money);
+        run->money = run->money > 0xffffffffU - money ?
+            0xffffffffU : run->money + money;
         return RL_OK;
     case RL_REWARD_TM:
         if (!reward->detail || reward->detail > 165) return RL_INVALID;
@@ -145,6 +157,13 @@ static RlU16 rl_price(unsigned price, unsigned act) {
 
 unsigned rl_shop_generate(RunState *run, const RlMovePool *moves,
                           RlShopEntry *out, unsigned capacity) {
+    return rl_shop_generate_unlocked(run, moves, (1U << RL_RELIC_COUNT) - 1,
+                                     out, capacity);
+}
+
+unsigned rl_shop_generate_unlocked(RunState *run, const RlMovePool *moves,
+                                   RlU32 relics, RlShopEntry *out,
+                                   unsigned capacity) {
     static const RlU8 items[10] = {
         RL_POTION, RL_SUPER_POTION, RL_HYPER_POTION, RL_FULL_RESTORE,
         RL_REVIVE, RL_ETHER, RL_CANDY, RL_VITAMIN, RL_RELIC_ITEM, RL_TM
@@ -165,7 +184,7 @@ unsigned rl_shop_generate(RunState *run, const RlMovePool *moves,
         out[i].item = items[index];
         if (out[i].item == RL_RELIC_ITEM) {
             int relic;
-            relic = rl_random_relic(run, run->relics);
+            relic = rl_random_relic(run, run->relics, relics);
             out[i].detail = relic < 0 ? RL_NO_SLOT : (RlU8)relic;
         } else if (out[i].item == RL_TM && rl_move_pool_valid(moves))
             out[i].detail = moves->moves[rl_random_bounded(&run->rng, moves->count)];
@@ -252,6 +271,13 @@ static void rl_event_heal(RunState *run, unsigned percent) {
 int rl_event_resolve(RunState *run, unsigned event, unsigned choice,
                      unsigned slot, const RlPool *pool,
                      const RlMovePool *moves) {
+    return rl_event_resolve_unlocked(run, event, choice, slot, pool, moves,
+                                     (1U << RL_RELIC_COUNT) - 1);
+}
+
+int rl_event_resolve_unlocked(RunState *run, unsigned event, unsigned choice,
+                              unsigned slot, const RlPool *pool,
+                              const RlMovePool *moves, RlU32 relics) {
     unsigned index, level, i;
     int relic;
     int result;
@@ -308,6 +334,7 @@ int rl_event_resolve(RunState *run, unsigned event, unsigned choice,
         run->party[slot] = mon;
         return RL_OK;
     case 5:
+        if (!(relics & (1U << RL_GHOST))) return RL_EMPTY;
         for (index = 0; index < run->party_count; index++)
             if (run->party[index].cur_hp > 1) run->party[index].cur_hp--;
         run->relics |= 1U << RL_GHOST;
@@ -330,7 +357,7 @@ int rl_event_resolve(RunState *run, unsigned event, unsigned choice,
         } else rl_event_heal(run, 50);
         return RL_OK;
     case 8:
-        relic = rl_random_relic(run, run->relics);
+        relic = rl_random_relic(run, run->relics, relics);
         if (relic < 0) return RL_FULL;
         run->relics |= 1U << relic;
         return RL_OK;
@@ -345,6 +372,7 @@ int rl_event_resolve(RunState *run, unsigned event, unsigned choice,
             moves->moves[rl_random_bounded(&run->rng, moves->count)];
         return RL_OK;
     case 11:
+        if (!(relics & (1U << RL_CURSED_POWER))) return RL_EMPTY;
         run->relics |= 1U << RL_CURSED_POWER;
         return RL_OK;
     default:

@@ -93,6 +93,33 @@ The canonical W5 payload is `rl_save_format` version 3: explicit little-endian
 encoding, inner IEEE CRC32, 361 bytes meta-only or 917 bytes including a run.
 Neither C structures nor padding are passed to its decoder.
 
+`rl_meta.c` owns progression policy without changing this v3 layout. A new
+profile unlocks starter-pool bit 0, relic bits 0–7, and event bits 0–7.
+Successful wins unlock Prime Cup starters on the first win and Little Cup
+starters on the fifth; each win also unlocks the next relic and event bit,
+starting at bit 8 and stopping at the end of each catalog. `meta.ascension` is
+the highest unlocked ascension (initially 0), not the current run selection.
+Clearing that highest unlocked level unlocks the next, through level 10; the
+selection helper accepts any level from 0 through the unlocked maximum without
+changing the saved maximum. A run's floor is `act * 7 + row + 1` when a row has
+been entered, or `act * 7` before its first row. Both wins and losses update
+the saturated run count and best floor; only wins update the saturated win
+count, unlocks, ascension, and Hall of Fame team. The Hall of Fame retains the
+latest winning team's records.
+
+`rl_meta_permitted_pools/relics/events` return the saved unlock bits masked to
+their catalog sizes, so reward and shop offer builders can intersect their
+candidate masks with these policies. `rl_meta_choose_event` selects uniformly
+from permitted event IDs using only the caller-provided RNG state; repeated
+calls with the same state and unlocks produce the same choice. No unlocked
+events yields `RL_EMPTY` without consuming RNG or changing the output.
+
+The recording API accepts only terminal won/lost states and refuses invalid
+or not-yet-unlocked ascensions. Version 3 has no run identifier or recorded
+flag, so the integration caller owns exactly-once recording; repeated calls
+for the same terminal run cannot be reliably deduplicated without changing the
+save layout.
+
 The note holds two 1280-byte slots. Each begins with a 32-byte little-endian
 commit header: `RLPK` magic (offset 0), framing version 1 (4), sequence (8),
 actual payload length (12), payload CRC32 (16), eight reserved zero bytes (20),

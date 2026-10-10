@@ -21,6 +21,27 @@ The smoke runner builds nothing. It steps past the intro, asserts
 `gCurrentGameState == STATE_TITLE_SCREEN` (2), allows the title prompt to
 settle, presses START, passes the Game Pak Check with N64 A, and asserts Menu
 Select (4). On success it writes the menu PNG under `.local/rltest/`. Set
+
+## W10 content, progression and balance
+
+`make -C host_tests test` includes strict C89 and ASan/UBSan content/meta
+tests, standalone IDO 7.1 compilation of every pure core module, the native
+roster/battle-adapter fixture, and extraction/balance-tool regressions.
+Content sweeps cover seeds 0–9999 across every act, matching v3 917-byte
+suspend encode/decode, node-local encounter determinism, reachable lanes and
+Centers, all boss transitions and 22-node completion at ascensions 0–10.
+The native adapter checks both rounds, all act bosses, real one-mon VS Mewtwo,
+scaled levels/DVs/HP and error paths. Its species-stat stubs test adapter
+behavior, not live native battle balance; the balance tool uses ROM-derived
+species data instead.
+
+Run `python3 tools/rl_balance.py --runs 1000 --seed 0 --sanitize` for CSV
+win-rate and per-act level curves. Output explicitly identifies the host
+power-model estimate: this does not implement native moves, typing, PP, status
+or AI. Do not cite its percentages as emulator or human win rates. The
+regression checks exactly 44 ascension/act rows and reproducibility across
+unsigned seed wraparound. Generated fixtures are temporary, not tracked
+roster/game assets. See `CORE.md` for the model and integration APIs. Set
 `RLTEST_CORE`, `RLTEST_ROM`, `RLTEST_MAP`,
 and `RLTEST_OUTPUT` to override its defaults. The core run has a wall-clock
 timeout (110 seconds by default); pass `--timeout` to adjust it.
