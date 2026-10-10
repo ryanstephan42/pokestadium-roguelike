@@ -84,10 +84,26 @@ Format (`src/memmap.h`):
 
 Fragment bss is re-zeroed on every load. Persistent state belongs in resident `src/roguelike/`.
 
-**Editing an existing native fragment** changes its layout. Its extracted header (`fragmentN_header.s`)
-and reloc table (`fragmentN_relocs.bin`) then become stale, and both must be regenerated the same way. That
-generic `RL_REGEN_FRAGMENTS` support is being added together with W3, and fragment 62 is first. Until then,
-don't change the size or layout of native fragments in the RL build.
+**Editing an existing native fragment** changes its layout. Set `RL_REGEN_FRAGMENTS` to the
+space-separated fragment numbers that need regenerated headers and relocations (default: `62`):
+`make rl RL_REGEN_FRAGMENTS="62 63"`. Empty disables native regeneration.
+
+The generated header preserves the jump/nop/`FRAGMENT` format, but resolves the entry function
+through its vanilla map symbol: a literal jump would become stale if code before the entry grows.
+The linker computes relocation offset, ROM size, and RAM size. Native input sections receive
+anchors, including BSS, so absolute symbols also follow their new positions.
+
+`gen_rl_relocs.py --section .fragmentN` collects code and symbolic data relocations from the
+pass-one ELF. It also retains original raw data-pointer entries missing from ELF relocation
+sections, remapping their locations and final pointer values with the input-section anchors.
+Tables are padded to 16 bytes and checked for stability after the final link. The original
+table's bit31 is ignored by the loader and is normalized during comparison.
+
+Run `python3 -m unittest tools.rl.test_native_relocs` after a vanilla build to compare all
+27,903 fragment62 entries against the original unmodified table. This proves table parity,
+not a modified battle's runtime behavior. The fallback cannot infer arbitrary layout changes
+inside an input section containing raw pointers; convert those pointers to named symbols
+before changing that section's internal layout.
 
 ### ROM
 
