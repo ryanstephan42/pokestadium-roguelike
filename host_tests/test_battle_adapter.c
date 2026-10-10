@@ -1,6 +1,7 @@
 #include <string.h>
 #define ROGUELIKE
 #include "src/roguelike/rl_battle.c"
+#include "src/roguelike/rl_rosters.c"
 
 #undef assert
 #define assert(condition) do { if (!(condition)) return __LINE__; } while (0)
@@ -13,7 +14,13 @@ u32 func_800224B8(s32 species, u16 level) {
 }
 
 void func_80022338(unk_func_80026268_arg0* mon) {
-    mon->unk_24 = 50;
+    int level;
+    for (level = 1; level < 100; level++) {
+        if (mon->unk_10 < func_800224B8(mon->unk_00.unk_00, level + 1)) {
+            break;
+        }
+    }
+    mon->unk_24 = level;
     mon->unk_26 = 200;
 }
 
@@ -31,10 +38,15 @@ u8 func_80022A38(s32 species) {
 void func_800228B0(unk_func_80026268_arg0* mon) {
 }
 
+void osSyncPrintf(const char* fmt, ...) {
+}
+
 int main(void) {
     RlMon source;
     RlMon returned;
     unk_func_80026268_arg0 native;
+    RlMon team[6];
+    unsigned char ai;
 
     memset(&source, 0, sizeof(source));
     source.species = 25;
@@ -84,5 +96,12 @@ int main(void) {
     assert(!rl_valid_team(&source, 1));
     assert(!rl_valid_team(&source, 7));
     assert(!rl_valid_team(NULL, 1));
+    assert(rl_load_trainer(RL_TRAINER_SET_MEWTWO, 0, team, 6, &ai) == 1);
+    assert(team[0].species == 150 && team[0].level == 100);
+    assert(team[0].cur_hp == team[0].max_hp && !team[0].fainted);
+    assert(rl_load_trainer(RL_TRAINER_SET_ELITE_FOUR, 0, team, 6, &ai) == 6);
+    assert(rl_load_trainer(RL_NUM_TRAINER_SETS, 0, team, 6, &ai) == -1);
+    assert(rl_load_trainer(RL_TRAINER_SET_ELITE_FOUR, 0, team, 1, &ai) == -1);
+    assert(rl_load_rental_pool(RL_RENTAL_SET_POKE, team, 6) == -1);
     return 0;
 }

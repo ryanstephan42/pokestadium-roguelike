@@ -185,6 +185,10 @@ the header for declarations/IDs. `RlGenMon` stores species, level, moves,
 DVs and stat EXP; consumers use the native adapter to recalculate scaled stats.
 `rl_prepare_mon(mon,full_heal)` fills native base stats, growth, HP and PP limits
 after generation/scaling; full_heal=0 preserves state, 1 restores HP/PP/status.
+`rl_load_rental_pool` and `rl_load_trainer` in `rl_rosters.h` materialize generated
+sets as ready-to-use canonical `RlMon` arrays, including native base stats and
+PP limits. The trainer helper also returns the archived AI byte. The generated
+table definitions live in one roguelike-only translation unit, `rl_rosters.c`.
 
 `src/roguelike/rl_battle.h` includes W5's canonical `rl_core.h`.
 `rl_start_battle(party,n,enemy,m,rules,return_state,out)` is synchronous on
