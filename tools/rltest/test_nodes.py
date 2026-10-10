@@ -284,6 +284,8 @@ def boot(emu):
     reenter_roguelike(emu)
     press(emu, "N64_B")
     emu.wait_state(4, frames=600)
+    emu.press("N64_A", frames=6, after=120)
+    emu.step(120)
     result = native_command(emu, 4, create=1)
     require(result[1] == 0, "explicit unlocked-profile fixture creation failed")
     reenter_roguelike(emu)
