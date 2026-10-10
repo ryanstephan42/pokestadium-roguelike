@@ -14,7 +14,21 @@ UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
 
 .PHONY: test core-test content-test ui-test save-test native-import-test clean
 
-test: core-test content-test ui-test save-test native-import-test nodes-test
+test: core-test content-test ui-test save-test native-import-test nodes-test scene-nodes-test
+
+.PHONY: scene-nodes-test
+scene-nodes-test:
+	@set -e; trap 'rm -f test_scene_nodes test_scene_nodes_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) -I.. -I../include \
+	-include scene_nodes_stubs.h test_scene_nodes.c \
+	../src/fragments/rl/rl_scene_nodes.c ../src/roguelike/rl_ui_model.c \
+	$(CORE) -o test_scene_nodes; \
+	./test_scene_nodes; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) -I.. -I../include \
+	-include scene_nodes_stubs.h test_scene_nodes.c \
+	../src/fragments/rl/rl_scene_nodes.c ../src/roguelike/rl_ui_model.c \
+	$(CORE) -o test_scene_nodes_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_scene_nodes_san
 
 .PHONY: nodes-test
 nodes-test:
