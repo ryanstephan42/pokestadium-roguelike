@@ -61,6 +61,8 @@ extern volatile int gRlBattleTestRequest;
 extern RlMon gRlRelicTestParty[6], gRlRelicTestEnemy[6];
 extern RlBattleRules gRlRelicTestRules;
 extern unsigned int gRlRelicTestPartyCount, gRlRelicTestEnemyCount, gRlRelicTestMask;
+/* Run consumed_relics carried between test requests; tests zero it per scenario. */
+extern unsigned int gRlRelicTestConsumed;
 
 /* Rebuild native stats/PP limits/base stats for generated/scaled mons.
  * full_heal=0 preserves HP/PP/status; full_heal=1 restores them. */

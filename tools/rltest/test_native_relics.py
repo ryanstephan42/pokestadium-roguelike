@@ -146,8 +146,10 @@ def _scenario(name):
     if name == "soul":
         return {
             "mask": 1 << RELIC[name],
-            "player": _mon(150, 100, [38]),
-            "enemy": _mon(113, 100, [92, 92, 92, 92]),
+            # Chansey knows only Toxic, so later player HP loss can only be
+            # native poison after Soul expires. Duplicate moves stall the engine.
+            "player": _mon(150, 100, [33]),
+            "enemy": _mon(113, 100, [92]),
             "check": {"kind": "soul"},
         }
     if name == "pp-pouch":
@@ -198,11 +200,12 @@ def _check_stat(events, player_species, stat):
                and event["f"] == player_species]
     _expect(matches, f"No native stat trace for stat {stat}, species {player_species}")
     for event in matches:
-        _expect(event["c"] == event["b"],
-                f"Relic changed base stat instead of effective stat: {event}")
-        expected = min(999, (event["d"] * 110 + 50) // 100)
-        _expect(event["e"] == expected,
-                f"Stat relic did not apply exact rounded +10%: {event}, expected {expected}")
+        expected = min(999, (event["b"] * 110 + 50) // 100)
+        _expect(event["c"] == expected,
+                f"Stat relic did not apply exact rounded +10% to the native base stat "
+                f"used by stage recalculation: {event}, expected {expected}")
+        _expect(event["e"] == event["c"],
+                f"Switch-in effective stat does not match boosted base: {event}")
 
 
 def _check_damage(events, player_species, native_type, percent, *,
@@ -260,16 +263,23 @@ def _check_leftovers(events, result, player_species, enemy_species, initial_pp):
     _expect(len(turns) >= 2, "Leftovers battle did not complete at least two full rounds")
     _expect([event["turn"] for event in turns] == list(range(len(turns))),
             f"Turn trace is not one event per completed consecutive round: {turns}")
+    previous_hp = None
     for turn in turns:
+        # Event "a" is the settled HP after both actions; "b" is after Leftovers.
         incoming = sum(event["e"] for event in events
                        if event["kind"] == 2 and event["turn"] == turn["turn"]
                        and event["f"] == enemy_species)
+        if previous_hp is not None:
+            _expect(turn["a"] == max(0, previous_hp - incoming),
+                    f"Round {turn['turn']} start HP does not chain from the previous "
+                    f"Leftovers result minus native damage: {turn}, incoming {incoming}")
         heal = max(1, turn["c"] // 16)
-        expected_hp = min(turn["c"], turn["a"] - incoming + heal)
+        expected_hp = min(turn["c"], turn["a"] + heal) if turn["a"] else 0
         _expect(turn["b"] == expected_hp,
                 f"Leftovers cadence/math mismatch in round {turn['turn']}: "
                 f"expected HP {expected_hp}, event {turn}")
         _expect(turn["e"] in (0, 1), f"Invalid second-action flag: {turn}")
+        previous_hp = turn["b"]
     _expect(result.player[0].species == player_species
             and result.enemy[0].species == enemy_species,
             "Leftovers battle did not persist both configured native combatants")
@@ -279,16 +289,20 @@ def _check_leftovers(events, result, player_species, enemy_species, initial_pp):
             "Native PP debits do not evidence both sides acting each completed round")
 
 
-def _check_soul(events):
+def _check_soul(events, result):
     blocked = [event for event in events if event["kind"] == 4]
     _expect(blocked, "Soul battle produced no blocked enemy status attempt")
-    rounds = sorted(event["turn"] for event in blocked)
-    _expect(rounds[:2] == [0, 1],
-            f"Soul did not block status attempts on the first two native turns: {blocked}")
     _expect(all(event["c"] == 92 and event["a"] != 0 for event in blocked),
             f"Soul trace was not an enemy Toxic status attempt: {blocked}")
     _expect(all(event["turn"] < 2 for event in blocked),
             f"Soul blocked a status attempt after the first two turns: {blocked}")
+    rounds = [event for event in events if event["kind"] == 3]
+    _expect(len(rounds) > 2, f"Soul battle ended before the immunity expired: {rounds}")
+    _expect(all(event["a"] == event["c"] for event in rounds[:2]),
+            f"Player lost HP while Soul blocked the Toxic-only opponent: {rounds[:2]}")
+    poisoned = [event for event in rounds[2:] if event["a"] < event["c"]]
+    _expect(poisoned or result.player[0].cur_hp < result.player[0].max_hp,
+            f"Toxic never landed after Soul expired: {rounds}")
 
 
 def _check_pp_pouch(result, expected):
@@ -326,7 +340,7 @@ def _verify(name, case, events, result, outcome):
         _check_leftovers(events, result, case["player"].species,
                          case["enemy"].species, case["player"].pp[0])
     elif check["kind"] == "soul":
-        _check_soul(events)
+        _check_soul(events, result)
     elif check["kind"] == "pp-pouch":
         _check_pp_pouch(result, check["max_pp"])
     elif check["kind"] == "cursed-tick":
@@ -367,14 +381,30 @@ def run_one(name, core, rom, map_path, output, timeout):
         emu.write_u32("gRlRelicTestPartyCount", 1)
         emu.write_u32("gRlRelicTestEnemyCount", 1)
         emu.write_u32("gRlRelicTestMask", case["mask"])
+        emu.write_u32("gRlRelicTestConsumed", 0)
         emu.write_u32("gRlBattleTestRequest", 3)
         emu.press("START", frames=10, after=10)
         live = emu.wait_battle(frames=2400)
         if case["check"]["kind"] == "pp-pouch":
             _expect(live[0]["pp"][0] == case["player"].pp[0],
                     f"PP Pouch refilled current PP before battle: {live[0]}")
-        emu.wait(lambda runner: runner.read_u32("gRlBattleCount") == before + 1,
-                 frames=36000, interval=10, description=f"{name} native battle completion")
+        try:
+            emu.wait(lambda runner: runner.read_u32("gRlBattleCount") == before + 1,
+                     frames=36000, interval=10, description=f"{name} native battle completion")
+        except HarnessError:
+            trace = RelicTrace.from_buffer_copy(
+                emu.read("gRlRelicTrace", ctypes.sizeof(RelicTrace)))
+            diagnostic = {
+                "frame": emu.frame,
+                "state": emu.read_u32("gCurrentGameState"),
+                "trace_count": trace.count,
+                "events": [[event.kind, event.turn, event.a, event.b, event.c,
+                            event.d, event.e, event.f]
+                           for event in trace.events[:min(trace.count, TRACE_CAPACITY)]],
+            }
+            (output / "timeout-diagnostic.json").write_text(json.dumps(diagnostic) + "\n")
+            emu.screenshot(output / "timeout.png")
+            raise
 
         result = Result.from_buffer_copy(
             emu.read("gRlLastBattleResult", ctypes.sizeof(Result)))
@@ -448,10 +478,17 @@ def main():
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args()
     names = SCENARIOS if args.scenario == "all" else (args.scenario,)
-    results = [
-        run_one(name, args.core, args.rom, args.map_path, args.output, args.timeout)
-        for name in names
-    ]
+    results = []
+    failures = []
+    for name in names:
+        try:
+            results.append(run_one(name, args.core, args.rom, args.map_path,
+                                   args.output, args.timeout))
+        except HarnessError as exc:
+            failures.append(name)
+            print(f"NATIVE RELIC {name} FAILED: {exc}", flush=True)
+    if failures:
+        raise SystemExit(f"NATIVE RELICS FAILED: {', '.join(failures)}")
     print(f"NATIVE RELICS PASSED ({len(results)} real battles)")
 
 

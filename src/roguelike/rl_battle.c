@@ -15,6 +15,7 @@ const unsigned int gRlBattleTestMonSize = sizeof(RlMon);
 RlMon gRlRelicTestParty[6], gRlRelicTestEnemy[6];
 RlBattleRules gRlRelicTestRules;
 unsigned int gRlRelicTestPartyCount, gRlRelicTestEnemyCount, gRlRelicTestMask;
+unsigned int gRlRelicTestConsumed;
 volatile unsigned int gRlBattleLaunchStage;
 
 static int rl_valid_team(const RlMon* team, int count) {
@@ -320,6 +321,7 @@ void rl_battle_test_entry(void) {
         if (gRlRelicTestMask & (1U << RL_PP_POUCH)) {
             bzero(&pouch_run, sizeof(pouch_run));
             pouch_run.relics = gRlRelicTestMask;
+            pouch_run.consumed_relics = gRlRelicTestConsumed;
             pouch_run.party_count = gRlRelicTestPartyCount;
             for (i = 0; i < gRlRelicTestPartyCount; i++) {
                 pouch_run.party[i] = gRlRelicTestParty[i];
@@ -333,6 +335,7 @@ void rl_battle_test_entry(void) {
             for (i = 0; i < gRlRelicTestPartyCount; i++) {
                 gRlRelicTestParty[i] = pouch_run.party[i];
             }
+            gRlRelicTestConsumed = pouch_run.consumed_relics;
         }
         for (i = 0; i < gRlRelicTestEnemyCount; i++) {
             rl_prepare_mon(&gRlRelicTestEnemy[i], 0);
