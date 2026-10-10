@@ -9,6 +9,10 @@ SceneSpeciesFlags D_80070FA0[151];
 static unk_D_80072B00 move_data = { 15 };
 static const RlUiList* shown;
 static const char* message;
+static char message_text[128];
+static char detail_text[8][128];
+static s16 detail_y[8];
+static unsigned detail_count;
 static RlMon mons[4];
 static RlPool pool;
 static RlMeta profile;
@@ -36,13 +40,88 @@ void rl_ui_list_draw(const RlUiList* list, s16 x, s16 y, s16 w) {
 
 void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
     (void)x; (void)y; (void)color;
-    if (y == 314) message = text;
+    if (y == 314) {
+        strcpy(message_text, text);
+        message = message_text;
+    }
+    if (y >= 220 && y <= 340 && detail_count < 8) {
+        strcpy(detail_text[detail_count], text);
+        detail_y[detail_count++] = y;
+    }
+}
+
+void rl_ui_text_wrap(s16 x, s16 y, s16 width, unsigned max_lines,
+                     const char* text, Color_RGBA8 color) {
+    char line[49];
+    unsigned i, start, length, row, end, space;
+    (void)width;
+    row = 0;
+    start = 0;
+    length = strlen(text);
+    while (start < length && row < max_lines) {
+        end = start;
+        space = start;
+        while (end < length && end - start < 48) {
+            if (text[end] == ' ') space = end;
+            end++;
+        }
+        if (end < length && text[end] != ' ' && space > start) end = space;
+        if (end == start) break;
+        for (i = 0; i < end - start; i++) line[i] = text[start + i];
+        line[i] = 0;
+        rl_ui_text(x, y + row * 20, line, color);
+        row++;
+        start = end;
+        while (start < length && text[start] == ' ') start++;
+    }
 }
 
 static void draw(void) {
     message = NULL;
+    detail_count = 0;
     rl_scene_nodes_draw();
     assert(shown != NULL);
+}
+
+static void assert_wrapped_effect(unsigned first_y, unsigned last_y,
+                                  const char* effect) {
+    char joined[160];
+    unsigned i, used;
+    joined[0] = 0;
+    used = 0;
+    for (i = 0; i < detail_count; i++) {
+        size_t length;
+        length = strlen(detail_text[i]);
+        if ((unsigned)detail_y[i] >= first_y &&
+            (unsigned)detail_y[i] <= last_y) {
+            assert(length <= 48);
+            if (used) joined[used++] = ' ';
+            assert(used + length < sizeof(joined));
+            memcpy(joined + used, detail_text[i], length);
+            used += (unsigned)length;
+            joined[used] = 0;
+        }
+    }
+    assert(used && !strcmp(joined, effect));
+}
+
+static int detail_has(unsigned y, const char* fragment) {
+    unsigned i;
+    for (i = 0; i < detail_count; i++)
+        if ((unsigned)detail_y[i] == y && strstr(detail_text[i], fragment)) {
+            assert(strlen(detail_text[i]) <= 48);
+            return 1;
+        }
+    return 0;
+}
+
+static void assert_relic_detail(const RunState* run, unsigned relic) {
+    unsigned i;
+    for (i = 0; i < detail_count; i++)
+        if (detail_y[i] == 220)
+            assert(!strcmp(detail_text[i], rl_relic_defs[relic].name));
+    assert_wrapped_effect(246, 286, rl_relic_defs[relic].effect);
+    assert_wrapped_effect(306, 326, rl_scene_relic_status(run, relic));
 }
 
 static int choose(unsigned index) {
@@ -229,10 +308,67 @@ static void test_bag_party(void) {
     assert(rl_scene_nodes_update(RL_UI_B) == RL_SCENE_CANCEL);
 }
 
+static void test_relic_inventory(void) {
+    RunState run;
+    unsigned i;
+    init_run(&run, 12);
+    rl_scene_nodes_begin(&run, &pool, RL_SCENE_BAG);
+    assert(rl_scene_nodes_update(0x0010) == RL_SCENE_ONGOING);
+    draw();
+    assert(!strcmp(shown->title, "Owned relics"));
+    assert(shown->count == 2 && shown->items[0].disabled);
+    assert(!strcmp(shown->items[0].text, "No relics owned"));
+    assert(rl_scene_nodes_update(RL_UI_B) == RL_SCENE_ONGOING);
+    draw();
+    assert(!strcmp(shown->title, "Bag: choose an item") && shown->count == 1);
+
+    run.relics = (1U << RL_RELIC_COUNT) - 1;
+    run.consumed_relics = 1U << RL_OLD_AMBER;
+    rl_scene_nodes_begin(&run, &pool, RL_SCENE_BAG);
+    draw();
+    assert(shown->count == 1);
+    assert(rl_scene_nodes_update(0x0010) == RL_SCENE_ONGOING);
+    draw();
+    assert(!strcmp(shown->title, "Owned relics"));
+    assert(shown->count == RL_RELIC_COUNT + 1);
+    assert(strstr(shown->items[RL_OLD_AMBER].text, "used"));
+    assert(!strstr(shown->items[RL_MASTER_BALL].text, "used"));
+    for (i = 0; i < RL_RELIC_COUNT; i++) {
+        assert(choose(i) == RL_SCENE_ONGOING);
+        draw();
+        assert_relic_detail(&run, i);
+        if (i == RL_OLD_AMBER)
+            assert(detail_has(306, "spent this run"));
+        else if (i == RL_MASTER_BALL)
+            assert(detail_has(306, "boss-only limit unenforced"));
+        else if (i == RL_RAINBOW)
+            assert(detail_has(306, "heal is active"));
+        else if (i == RL_EARTH)
+            assert(detail_has(306, "One extra choice on each reward."));
+        else if (i == RL_AMULET)
+            assert(detail_has(306, "Run money bonus is active"));
+        else if (i == RL_EXP_SHARE || i == RL_LUCKY_EGG)
+            assert(detail_has(306, "XP bonus is active"));
+        else assert(detail_has(306, "not connected yet"));
+    }
+    assert(choose(RL_RELIC_COUNT) == RL_SCENE_ONGOING);
+    assert(!strcmp(shown->title, "Bag: choose an item"));
+    assert(shown->count == 1);
+
+    rl_scene_nodes_begin(&run, &pool, RL_SCENE_PARTY);
+    draw();
+    assert(rl_scene_nodes_update(0x0010) == RL_SCENE_ONGOING);
+    draw();
+    assert(!strcmp(shown->title, "Owned relics"));
+    assert(rl_scene_nodes_update(RL_UI_B) == RL_SCENE_ONGOING);
+    draw();
+    assert(!strcmp(shown->title, "Party: select a Pokemon"));
+}
+
 static void test_shop(void) {
     RunState run, snapshot;
     char labels[12][48];
-    unsigned i, old_money, tm;
+    unsigned i, j, old_money, tm;
     init_run(&run, 7);
     snapshot = run;
     rl_scene_nodes_begin(&run, &pool, RL_MART);
@@ -240,6 +376,20 @@ static void test_shop(void) {
     assert(shown->count == 15);
     for (i = 0; i < 12; i++) strcpy(labels[i], shown->items[i].text);
     assert(!memcmp(&run, &snapshot, sizeof(run)));
+    for (i = 0; i < 12; i++) {
+        for (j = 0; j < RL_RELIC_COUNT; j++) {
+            if (!strcmp(labels[i], rl_relic_defs[j].name)) {
+                while ((unsigned)shown->cursor < i)
+                    assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
+                draw();
+                assert_wrapped_effect(276, 296, rl_relic_defs[j].effect);
+                assert_wrapped_effect(320, 340,
+                                      rl_scene_relic_status(&run, j));
+                i = 12;
+                break;
+            }
+        }
+    }
     tm = 12;
     for (i = 0; i < 12; i++) {
         if (!strncmp(labels[i], "TM move", 7)) tm = i;
@@ -328,8 +478,9 @@ int main(void) {
     test_events();
     test_center_recruit();
     test_bag_party();
+    test_relic_inventory();
     test_shop();
     test_locked_profile();
-    puts("Scene interactions: all twelve events, Center, recruit, shop, Bag, TM and Party passed");
+    puts("Scene interactions: events, Center, recruit, shop, relic details, Bag, TM and Party passed");
     return 0;
 }

@@ -6,6 +6,7 @@
 #include "src/roguelike/rl_rosters.h"
 #include "src/roguelike/rl_save.h"
 #include "src/roguelike/rl_meta.h"
+#include "src/roguelike/rl_content.h"
 #include "src/roguelike/rl_text.h"
 #include "rl_play.h"
 #include "rl_ui.h"
@@ -14,7 +15,7 @@
 #include "rl_gen/rl_rosters.h"
 
 #define RL_PLAY_DRAFT_SIZE 6
-#define RL_PLAY_REWARD_SIZE 3
+#define RL_PLAY_REWARD_SIZE 4
 #define RL_PLAY_ROUTE_SIZE 3
 #define RL_PLAY_POOL_SIZE 256
 
@@ -45,8 +46,17 @@ static RlMon sPlayDraft[RL_PLAY_DRAFT_SIZE];
 static unsigned char sPlayDraftSelected[RL_PLAY_DRAFT_SIZE];
 static unsigned char sPlayDraftOldSpecies[RL_PLAY_DRAFT_SIZE];
 static RlReward sPlayRewards[RL_PLAY_REWARD_SIZE];
-static unsigned char sPlayActiveSlots[3];
-static unsigned char sPlayActiveCount;
+static RlUiOrder sPlayActiveOrder;
+#define sPlayActiveSlots sPlayActiveOrder.slots
+#define sPlayActiveCount sPlayActiveOrder.count
+static RunState sPlayPreviewRun;
+RlMon gRlPlayPreviewTeam[RL_BATTLE_MAX_MONS];
+#define sPlayPreviewTeam gRlPlayPreviewTeam
+static RlEncounter sPlayPreviewEncounter;
+int gRlPlayPreviewCount;
+#define sPlayPreviewCount gRlPlayPreviewCount
+static int sPlayPreviewLane;
+static const char* sPlayPreviewError;
 static unsigned char sPlayChosenLane;
 static unsigned char sPlayRerollUsed;
 static int sPlayPoolCount;
@@ -69,6 +79,7 @@ static void rl_play_make_summary(void);
 static RlSaveStatus rl_play_store(int include_run);
 static void rl_play_settings(void);
 static int rl_play_begin_new(void);
+static void rl_play_preview_lane(void);
 
 static int rl_play_meta_equal(const RlMeta* a, const RlMeta* b) {
     unsigned first;
@@ -414,6 +425,40 @@ static void rl_play_make_map(void) {
     sPlayItems[lanes + 2].disabled = 0;
     rl_play_init_list("Choose the next node", (int)lanes + 3, 6);
     rl_play_set_scene(RL_PLAY_MAP);
+    sPlayPreviewLane = -1;
+    rl_play_preview_lane();
+}
+
+static void rl_play_preview_lane(void) {
+    unsigned row;
+    unsigned type;
+    unsigned char ai;
+    if (sPlayPreviewLane == sPlayList.cursor) return;
+    sPlayPreviewLane = sPlayList.cursor;
+    sPlayPreviewCount = 0;
+    sPlayPreviewError = NULL;
+    row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
+    if (sPlayList.cursor >= gRlRun.map.lanes[row]) return;
+    type = gRlRun.map.nodes[row][sPlayList.cursor].type;
+    if (type != RL_BATTLE && type != RL_ELITE && type != RL_BOSS) return;
+    if (gRlPlayTestMode) {
+        sPlayPreviewError = "Regression: random trainer at launch";
+        return;
+    }
+    sPlayPreviewRun = gRlRun;
+    sPlayPreviewRun.row = (RlU8)row;
+    sPlayPreviewRun.lane = (RlU8)sPlayList.cursor;
+    sPlayPreviewRun.phase = RL_NODE;
+    if (rl_encounter_select(&sPlayPreviewRun, &sPlayPreviewEncounter) != RL_OK) {
+        sPlayPreviewError = "Encounter descriptor unavailable";
+        return;
+    }
+    sPlayPreviewCount = rl_load_encounter(&sPlayPreviewRun, sPlayPreviewTeam,
+                                         RL_BATTLE_MAX_MONS, &ai);
+    if (sPlayPreviewCount < 1) {
+        sPlayPreviewError = "Encounter roster unavailable";
+        sPlayPreviewCount = 0;
+    }
 }
 
 static void rl_play_make_party(void) {
@@ -441,6 +486,8 @@ static void rl_play_make_party(void) {
     for (i = 0; i < gRlRun.party_count; i++) {
         rl_play_mon_label(sPlayLabels[i], &gRlRun.party[i],
                           rl_play_active_selected(i));
+        if (rl_play_active_selected(i))
+            sPlayLabels[i][0] = (char)('0' + rl_play_active_selected(i));
         sPlayItems[i].text = sPlayLabels[i];
         sPlayItems[i].disabled = gRlRun.party[i].fainted ||
             gRlRun.party[i].cur_hp == 0;
@@ -448,7 +495,7 @@ static void rl_play_make_party(void) {
     sPlayItems[gRlRun.party_count].text = "Confirm active team";
     sPlayItems[gRlRun.party_count].disabled = sPlayActiveCount != required ||
         sPlayActiveCount == 0;
-    result = rl_play_init_list("Select up to 3; fainted mons stay benched",
+    result = rl_play_init_list("Order team: 1 is the lead",
                                (int)gRlRun.party_count + 1, 6);
     if (result != RL_UI_NONE) {
         sPlayMessage = "Could not create active-team list";
@@ -465,33 +512,14 @@ static unsigned rl_play_active_required(void) {
 }
 
 static unsigned rl_play_active_selected(unsigned slot) {
-    unsigned i;
-    for (i = 0; i < sPlayActiveCount; i++) {
-        if (sPlayActiveSlots[i] == slot) {
-            return 1;
-        }
-    }
-    return 0;
+    int index;
+    index = rl_ui_order_index(&sPlayActiveOrder, slot);
+    return index >= 0 ? (unsigned)index + 1 : 0;
 }
 
 static int rl_play_active_toggle(unsigned slot) {
-    unsigned i;
-    unsigned required;
-    required = rl_play_active_required();
-    for (i = 0; i < sPlayActiveCount; i++) {
-        if (sPlayActiveSlots[i] == slot) {
-            for (; i + 1 < sPlayActiveCount; i++) {
-                sPlayActiveSlots[i] = sPlayActiveSlots[i + 1];
-            }
-            sPlayActiveCount--;
-            return 1;
-        }
-    }
-    if (sPlayActiveCount >= required || sPlayActiveCount >= 3) {
-        return 0;
-    }
-    sPlayActiveSlots[sPlayActiveCount++] = (unsigned char)slot;
-    return 1;
+    return rl_ui_order_toggle(&sPlayActiveOrder, slot,
+                              rl_play_active_required()) == RL_UI_NONE;
 }
 
 static const char* rl_play_reward_label(const RlReward* reward) {
@@ -529,12 +557,12 @@ static void rl_play_make_rewards(void) {
                                                 rl_meta_permitted_relics(&sPlayMeta),
                                                 sPlayRewards,
                                                 RL_PLAY_REWARD_SIZE);
-    if (sPlayRewardCount != RL_PLAY_REWARD_SIZE) {
+    if (sPlayRewardCount != (int)rl_relic_reward_count(gRlRun.relics)) {
         sPlayMessage = "Reward generation failed";
         gRlPlayScene = RL_PLAY_ERROR;
         return;
     }
-    for (i = 0; i < RL_PLAY_REWARD_SIZE; i++) {
+    for (i = 0; i < (unsigned)sPlayRewardCount; i++) {
         if (sPlayRewards[i].kind == RL_REWARD_RECRUIT) {
             char* label;
             label = sPlayLabels[i];
@@ -545,6 +573,9 @@ static void rl_play_make_rewards(void) {
             rl_play_number(label + 16, sPlayRewards[i].mon.level, 3);
             label[19] = '\0';
             sPlayItems[i].text = label;
+        } else if (sPlayRewards[i].kind == RL_REWARD_RELIC &&
+                   sPlayRewards[i].detail < RL_RELIC_COUNT) {
+            sPlayItems[i].text = rl_relic_defs[sPlayRewards[i].detail].name;
         } else {
             sPlayItems[i].text = rl_play_reward_label(&sPlayRewards[i]);
         }
@@ -866,6 +897,7 @@ static void rl_play_update_map(u16 pressed) {
     unsigned lane_count;
     int result;
     result = rl_ui_list(&sPlayList, pressed);
+    rl_play_preview_lane();
     row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
     lane_count = gRlRun.map.lanes[row];
     if (result >= 0 && (unsigned)result < lane_count) {
@@ -908,9 +940,21 @@ static void rl_play_update_party(u16 pressed) {
     unsigned required;
     unsigned i;
     required = rl_play_active_required();
+    if (pressed & (RL_UI_LEFT | RL_UI_RIGHT)) {
+        if (sPlayList.cursor < gRlRun.party_count &&
+            rl_ui_order_move(&sPlayActiveOrder, (unsigned)sPlayList.cursor,
+                             pressed & RL_UI_LEFT ? -1 : 1) == RL_UI_NONE) {
+            sPlayMessage = "Battle order updated; 1 is the lead";
+        } else {
+            sPlayMessage = "Select an entrant; LEFT earlier, RIGHT later";
+        }
+        pressed &= ~(RL_UI_LEFT | RL_UI_RIGHT);
+    }
     for (i = 0; i < gRlRun.party_count; i++) {
         rl_play_mon_label(sPlayLabels[i], &gRlRun.party[i],
                           rl_play_active_selected(i));
+        if (rl_play_active_selected(i))
+            sPlayLabels[i][0] = (char)('0' + rl_play_active_selected(i));
         sPlayItems[i].text = sPlayLabels[i];
         sPlayItems[i].disabled = gRlRun.party[i].fainted ||
             gRlRun.party[i].cur_hp == 0;
@@ -923,6 +967,8 @@ static void rl_play_update_party(u16 pressed) {
         slot = (unsigned)result;
         if (!rl_play_active_toggle(slot)) {
             sPlayMessage = "Select no more than three active Pokemon";
+        } else {
+            sPlayMessage = "A removes/adds; additions go last";
         }
     } else if (result == (int)gRlRun.party_count) {
         if (rl_run_advance(&gRlRun, sPlayChosenLane) != RL_OK) {
@@ -1125,27 +1171,91 @@ s32 rl_play_update(u16 pressed) {
 }
 
 static void rl_play_draw_mon_detail(const RlMon* mon, s16 x, s16 y) {
+    unsigned i;
+    char label[24];
     if (mon == NULL || mon->species == 0) {
         return;
     }
-    rl_ui_mon_icon(mon->species, x + 54, y);
-    rl_play_mon_label(sPlayLabels[8], mon, 0);
-    sPlayLabels[8][12] = '\0';
-    rl_ui_text(x, y + 52, sPlayLabels[8], sPlayWhite);
-    sPlayLabels[8][0] = 'H';
-    sPlayLabels[8][1] = 'P';
-    sPlayLabels[8][2] = ' ';
-    rl_play_number(sPlayLabels[8] + 3, mon->cur_hp, 3);
-    sPlayLabels[8][6] = '/';
-    rl_play_number(sPlayLabels[8] + 7, mon->max_hp, 3);
-    sPlayLabels[8][10] = '\0';
-    rl_ui_text(x, y + 78, sPlayLabels[8], sPlayWhite);
-    rl_ui_hp_bar(x + 4, y + 104, 156, mon->cur_hp, mon->max_hp);
+    rl_ui_mon_icon(mon->species, x + 150, y);
+    rl_ui_text(x, y, rl_ui_species_name(mon->species), sPlayGold);
+    rl_play_copy_text(label, "Level 000");
+    rl_play_number(label + 6, mon->level, 3);
+    rl_ui_text(x, y + 24, label, sPlayWhite);
+    rl_play_copy_text(label, "HP 000/000");
+    rl_play_number(label + 3, mon->cur_hp, 3);
+    rl_play_number(label + 7, mon->max_hp, 3);
+    rl_ui_text(x, y + 44, label, sPlayWhite);
+    rl_ui_hp_bar(x, y + 68, 190, mon->cur_hp, mon->max_hp);
+    for (i = 0; i < 4; i++) {
+        rl_ui_text(x, y + 92 + i * 34, rl_ui_move_name(mon->moves[i]), sPlayWhite);
+        rl_play_copy_text(label, "PP 00/00");
+        rl_play_number(label + 3, mon->pp[i], 2);
+        rl_play_number(label + 6, mon->max_pp[i], 2);
+        rl_ui_text(x + 92, y + 108 + i * 34, label, sPlayMuted);
+    }
+}
+
+static void rl_play_draw_preview(void) {
+    static const char* roster_names[RL_ROSTER_COUNT] = {
+        "Poke / Poke", "Poke / Great", "Poke / Ultra", "Poke / Master",
+        "Prime / Poke", "Prime / Great", "Prime / Ultra", "Prime / Master",
+        "Brock", "Misty", "Lt. Surge", "Erika", "Koga", "Sabrina",
+        "Blaine", "Giovanni", "Elite Four", "Rival", "Mewtwo"
+    };
+    static const char* node_help[] = {
+        "", "", "Heal living mons by 50% or revive one fainted mon.",
+        "Buy healing, Candy, vitamins, a TM or an unlocked relic.",
+        "A deterministic unlocked event. Choices shown before use.",
+        "Choose one of three rental candidates or leave.", ""
+    };
+    unsigned i;
+    unsigned row;
+    unsigned type;
+    char label[36];
+    row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
+    if (sPlayList.cursor >= gRlRun.map.lanes[row]) {
+        rl_ui_text_wrap(414, 96, 190, 9,
+            "Bag: use items and TMs.\nParty: reorder or release.\nSave: suspend on Pak.", sPlayWhite);
+        return;
+    }
+    type = gRlRun.map.nodes[row][sPlayList.cursor].type;
+    if (sPlayPreviewError) {
+        rl_ui_text_wrap(414, 96, 190, 5, sPlayPreviewError, sPlayGold);
+        return;
+    }
+    if (!sPlayPreviewCount) {
+        if (type <= RL_BOSS)
+            rl_ui_text_wrap(414, 96, 190, 7, node_help[type], sPlayWhite);
+        return;
+    }
+    rl_play_copy_text(label, roster_names[sPlayPreviewEncounter.roster]);
+    rl_ui_text(414, 78, label, sPlayGold);
+    rl_play_copy_text(label, "Trainer 0 / Round 0");
+    rl_play_number(label + 8, sPlayPreviewEncounter.trainer + 1, 1);
+    rl_play_number(label + 18, sPlayPreviewEncounter.round, 1);
+    rl_ui_text(414, 54, label, sPlayMuted);
+    for (i = 0; i < (unsigned)sPlayPreviewCount; i++) {
+        rl_play_copy_text(label, rl_ui_species_name(sPlayPreviewTeam[i].species));
+        rl_ui_text(414, 108 + i * 24, label, sPlayWhite);
+        label[0] = 'L';
+        rl_play_number(label + 1, sPlayPreviewTeam[i].level, 3);
+        label[4] = '\0';
+        rl_ui_text(556, 108 + i * 24, label, sPlayMuted);
+    }
+    rl_play_copy_text(label, "Win coins: 000000");
+    rl_play_number(label + 11, rl_battle_money(gRlRun.act, row, type,
+                                              gRlRun.ascension, gRlRun.relics), 6);
+    rl_ui_text(414, 262, label, sPlayGold);
+    rl_ui_text_wrap(414, 292, 190, 5,
+        "Win: XP + coins.\nPossible rewards:\nRoster recruit,\nCandy / vitamin,\nrelic / money.", sPlayWhite);
+    rl_ui_text_wrap(414, 390, 190, 1, "Not guaranteed.", sPlayMuted);
+    rl_ui_text_wrap(44, 376, 360, 1,
+        "Enemy: first 3 fight; roster can recruit.", sPlayMuted);
 }
 
 static void rl_play_draw_status(void) {
     if (sPlayMessage != NULL) {
-        rl_ui_text(42, 400, sPlayMessage, sPlayGold);
+        rl_ui_text_wrap(42, 394, 556, 1, sPlayMessage, sPlayGold);
     }
 }
 
@@ -1169,9 +1279,8 @@ void rl_play_draw(void) {
             rl_ui_text(44, 40, "Starter draft - select 3 of 6", sPlayGold);
             rl_ui_list_draw(&sPlayList, 44, 80, 360);
             if (sPlayList.cursor < RL_PLAY_DRAFT_SIZE) {
-                rl_play_draw_mon_detail(&sPlayDraft[sPlayList.cursor], 410, 120);
+                rl_play_draw_mon_detail(&sPlayDraft[sPlayList.cursor], 410, 94);
             }
-            rl_ui_text(410, 280, "One free reroll", sPlayWhite);
             rl_ui_text(44, 374, "Selected: ", sPlayWhite);
             rl_play_number(sPlayLabels[8], rl_play_count_selected(), 1);
             sPlayLabels[8][1] = '\0';
@@ -1181,37 +1290,31 @@ void rl_play_draw(void) {
             rl_ui_text(44, 40, "Act map - choose a connected node", sPlayGold);
             rl_ui_list_draw(&sPlayList, 44, 84, 360);
             row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
-            rl_ui_text(424, 78, "Act", sPlayWhite);
+            rl_ui_text(44, 316, "Act", sPlayWhite);
             rl_play_number(sPlayLabels[8], gRlRun.act + 1, 1);
             sPlayLabels[8][1] = '\0';
-            rl_ui_text(530, 78, sPlayLabels[8], sPlayWhite);
-            rl_ui_text(424, 110, "Encounter", sPlayWhite);
+            rl_ui_text(100, 316, sPlayLabels[8], sPlayWhite);
+            rl_ui_text(144, 316, "Node", sPlayWhite);
             rl_play_number(sPlayLabels[8], row + 1, 1);
             sPlayLabels[8][1] = '\0';
-            rl_ui_text(530, 110, sPlayLabels[8], sPlayWhite);
-            rl_ui_text(424, 150, "Run seed", sPlayWhite);
+            rl_ui_text(204, 316, sPlayLabels[8], sPlayWhite);
+            rl_ui_text(44, 350, "Seed", sPlayWhite);
             rl_play_hex(sPlayLabels[8], gRlRun.seed);
-            rl_ui_text(424, 176, sPlayLabels[8], sPlayWhite);
-            rl_ui_text(424, 224, "Party HP", sPlayWhite);
-            for (i = 0; i < gRlRun.party_count; i++) {
-                rl_play_number(sPlayLabels[8], gRlRun.party[i].species, 3);
-                sPlayLabels[8][3] = ' ';
-                rl_play_number(sPlayLabels[8] + 4, gRlRun.party[i].cur_hp, 3);
-                sPlayLabels[8][7] = '/';
-                rl_play_number(sPlayLabels[8] + 8, gRlRun.party[i].max_hp, 3);
-                sPlayLabels[8][11] = '\0';
-                rl_ui_text(424, 250 + i * 26, sPlayLabels[8], sPlayMuted);
-            }
+            rl_ui_text(104, 350, sPlayLabels[8], sPlayWhite);
+            rl_play_draw_preview();
             break;
         case RL_PLAY_PARTY:
             rl_ui_text(44, 40, "Select the active team", sPlayGold);
             rl_ui_list_draw(&sPlayList, 44, 80, 360);
-            rl_ui_text(424, 96, "Active", sPlayWhite);
-            rl_play_number(sPlayLabels[8], sPlayActiveCount, 1);
-            sPlayLabels[8][1] = '\0';
-            rl_ui_text(502, 96, sPlayLabels[8], sPlayWhite);
             if (sPlayList.cursor < gRlRun.party_count) {
-                rl_play_draw_mon_detail(&gRlRun.party[sPlayList.cursor], 410, 136);
+                rl_play_draw_mon_detail(&gRlRun.party[sPlayList.cursor], 410, 80);
+            }
+            for (i = 0; i < sPlayActiveCount; i++) {
+                rl_play_number(sPlayLabels[8], i + 1, 1);
+                sPlayLabels[8][1] = ' ';
+                rl_play_copy_text(sPlayLabels[8] + 2,
+                    rl_ui_species_name(gRlRun.party[sPlayActiveSlots[i]].species));
+                rl_ui_text(414, 328 + i * 22, sPlayLabels[8], i ? sPlayWhite : sPlayGold);
             }
             break;
         case RL_PLAY_REWARD:
@@ -1219,12 +1322,21 @@ void rl_play_draw(void) {
             rl_ui_list_draw(&sPlayList, 44, 84, 360);
             if (sPlayList.cursor < (unsigned)sPlayRewardCount &&
                 sPlayRewards[sPlayList.cursor].kind == RL_REWARD_RECRUIT) {
-                rl_play_draw_mon_detail(&sPlayRewards[sPlayList.cursor].mon, 410, 130);
+                rl_play_draw_mon_detail(&sPlayRewards[sPlayList.cursor].mon, 410, 90);
+            } else if (sPlayList.cursor < (unsigned)sPlayRewardCount &&
+                       sPlayRewards[sPlayList.cursor].kind == RL_REWARD_RELIC) {
+                unsigned relic;
+                relic = sPlayRewards[sPlayList.cursor].detail;
+                if (relic < RL_RELIC_COUNT) {
+                    rl_ui_text_wrap(414, 100, 190, 9, rl_relic_defs[relic].effect, sPlayWhite);
+                    rl_ui_text_wrap(414, 300, 190, 4,
+                        rl_scene_relic_status(&gRlRun, relic), sPlayGold);
+                }
             }
-            rl_ui_text(424, 326, "Party slots", sPlayWhite);
+            rl_ui_text(44, 326, "Party slots", sPlayWhite);
             rl_play_number(sPlayLabels[8], gRlRun.party_count, 1);
             sPlayLabels[8][1] = '\0';
-            rl_ui_text(530, 326, sPlayLabels[8], sPlayWhite);
+            rl_ui_text(200, 326, sPlayLabels[8], sPlayWhite);
             break;
         case RL_PLAY_SUMMARY:
             rl_ui_text(44, 40, gRlRun.phase == RL_WON ? "RUN COMPLETE" : "RUN ENDED",
@@ -1259,7 +1371,9 @@ void rl_play_draw(void) {
             rl_ui_text(44, 40, "Battle in progress", sPlayGold);
             return;
     }
-    rl_ui_text(44, 416, "D-pad move   A select   B back", sPlayMuted);
+    rl_ui_text_wrap(44, 416, 552, 1, gRlPlayScene == RL_PLAY_PARTY ?
+        "UP/DOWN: move  A: toggle/confirm  LEFT/RIGHT: order  B: back" :
+        "D-pad move   A select   B back", sPlayMuted);
     rl_play_draw_status();
 }
 

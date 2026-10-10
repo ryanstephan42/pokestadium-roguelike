@@ -5,9 +5,10 @@
 #include "src/232C0.h"
 
 #define NODE_ITEMS 32
+#define NODE_RELICS_TRIGGER 0x0010
 
 enum { NODE_ROOT, NODE_TARGET, NODE_MOVE, NODE_PARTY_ACTION,
-       NODE_SWAP, NODE_RELEASE, NODE_DONE, NODE_ERROR };
+       NODE_SWAP, NODE_RELEASE, NODE_DONE, NODE_ERROR, NODE_RELICS };
 
 static RunState* sRun;
 static const RlPool* sRentals;
@@ -186,6 +187,35 @@ static void node_bag(void) {
     node_list("Bag: choose an item", n + 1, NODE_ROOT);
 }
 
+static int node_relic_is_one_use(unsigned relic) {
+    return relic == RL_OLD_AMBER || relic == RL_MASTER_BALL;
+}
+
+static void node_relics(void) {
+    unsigned i, n;
+    char* label;
+    n = 0;
+    for (i = 0; i < RL_RELIC_COUNT; i++) {
+        if (!(sRun->relics & (1U << i))) continue;
+        label = sLabels[n];
+        node_copy(label, rl_relic_defs[i].name);
+        if (node_relic_is_one_use(i) && (sRun->consumed_relics & (1U << i))) {
+            unsigned length;
+            for (length = 0; label[length]; length++) {}
+            node_copy(label + length, " (used)");
+        }
+        node_add(n, label, i);
+        n++;
+    }
+    if (!n) {
+        node_add(n, "No relics owned", RL_NO_SLOT);
+        sItems[n].disabled = 1;
+        n++;
+    }
+    node_add(n, "Back", RL_NO_SLOT);
+    node_list("Owned relics", n + 1, NODE_RELICS);
+}
+
 static void node_root(void) {
     unsigned i, n;
     const char* title;
@@ -350,6 +380,13 @@ int rl_scene_nodes_update(u16 pressed) {
     }
     if (sPage == NODE_ERROR)
         return pressed & (RL_UI_A | RL_UI_B) ? RL_SCENE_CANCEL : RL_SCENE_ONGOING;
+    if (sPage == NODE_ROOT &&
+        (sMode == RL_SCENE_BAG || sMode == RL_SCENE_PARTY) &&
+        (pressed & NODE_RELICS_TRIGGER)) {
+        sMessage = NULL;
+        node_relics();
+        return RL_SCENE_ONGOING;
+    }
     selected = rl_ui_list(&sList, pressed);
     if (selected == RL_UI_NONE) return RL_SCENE_ONGOING;
     if (selected == RL_UI_CANCEL) {
@@ -371,7 +408,9 @@ int rl_scene_nodes_update(u16 pressed) {
         return sReturn;
     }
     sMessage = NULL;
-    if (sPage == NODE_ROOT) {
+    if (sPage == NODE_RELICS) {
+        if (value == RL_NO_SLOT) node_root();
+    } else if (sPage == NODE_ROOT) {
         if (sMode == RL_SCENE_BAG) {
             sItem = value;
             node_party("Use on which Pokemon?", NODE_TARGET);
@@ -503,7 +542,7 @@ void rl_scene_nodes_draw(void) {
     char label[48];
     unsigned value;
     rl_ui_list_draw(&sList, 18, 18, 604);
-    if (sRun) {
+    if (sRun && sPage != NODE_RELICS) {
         node_copy(label, "Coins 0000000000  Party 0/6");
         node_number(label + 6, sRun->money, 10);
         node_number(label + 24, sRun->party_count, 1);
@@ -518,9 +557,26 @@ void rl_scene_nodes_draw(void) {
         node_number(label + 7, sShop[value].price, 5);
         rl_ui_text(30, 250, label, sWhite);
         if (sShop[value].item == RL_RELIC_ITEM && sShop[value].detail < RL_RELIC_COUNT)
-            rl_ui_text(30, 276, rl_relic_defs[sShop[value].detail].effect, sWhite);
+            rl_ui_text_wrap(30, 276, 570, 2,
+                            rl_relic_defs[sShop[value].detail].effect, sWhite);
+        if (sShop[value].item == RL_RELIC_ITEM && sShop[value].detail < RL_RELIC_COUNT)
+            rl_ui_text_wrap(30, 320, 570, 2,
+                            rl_scene_relic_status(sRun, sShop[value].detail),
+                            sGold);
+    }
+    if (sPage == NODE_RELICS && sList.cursor >= 0 &&
+        sList.cursor < sList.count && sValues[sList.cursor] < RL_RELIC_COUNT) {
+        value = sValues[sList.cursor];
+        rl_ui_text(30, 220, rl_relic_defs[value].name, sGold);
+        rl_ui_text_wrap(30, 246, 570, 3, rl_relic_defs[value].effect, sWhite);
+        rl_ui_text_wrap(30, 306, 570, 2,
+                        rl_scene_relic_status(sRun, value), sGold);
     }
     if (sMessage) rl_ui_text(30, 314, sMessage, sRed);
-    rl_ui_text(30, 354, "D-pad: select   A: confirm   B: back", sWhite);
+    rl_ui_text(30, 354,
+               (sPage == NODE_ROOT &&
+                (sMode == RL_SCENE_BAG || sMode == RL_SCENE_PARTY)) ?
+               "D-pad: select   A: confirm   B: back   R: relics" :
+               "D-pad: select   A: confirm   B: back", sWhite);
 }
 #endif

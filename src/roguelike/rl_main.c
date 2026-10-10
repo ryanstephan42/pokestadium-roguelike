@@ -31,6 +31,7 @@ int rl_main_queue_battle(const RlMon* player, unsigned player_count,
                          const unsigned char* player_slots,
                          const RlMon* trainer, unsigned trainer_count) {
     unsigned i;
+    unsigned seen;
 
     if (gRlPendingBattle.pending || gRlPendingBattle.post_battle ||
         player == NULL || enemy == NULL || rules == NULL ||
@@ -39,6 +40,15 @@ int rl_main_queue_battle(const RlMon* player, unsigned player_count,
         enemy_count == 0 || enemy_count > RL_BATTLE_MAX_MONS ||
         trainer_count == 0 || trainer_count > RL_BATTLE_MAX_MONS) {
         return 0;
+    }
+    seen = 0;
+    for (i = 0; i < player_count; i++) {
+        if (player_slots[i] >= gRlRun.party_count ||
+            (seen & (1U << player_slots[i]))) {
+            osSyncPrintf("rl_main_queue_battle: invalid or duplicate run slot\n");
+            return 0;
+        }
+        seen |= 1U << player_slots[i];
     }
     for (i = 0; i < player_count; i++) {
         gRlPendingBattle.player[i] = player[i];

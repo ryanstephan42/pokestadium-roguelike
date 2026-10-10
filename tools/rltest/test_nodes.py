@@ -1,6 +1,7 @@
 """Exercise canonical node scenes with real controller input and Pak resumes."""
 
 import argparse
+import ctypes
 from pathlib import Path
 
 from tools.rltest.frontend import Frontend, HarnessError
@@ -11,6 +12,7 @@ from tools.rltest.test_play_run import (
     press, read_run, reenter_roguelike, require, scene,
     start_new_run, wait_scene,
 )
+from tools.rltest.test_custom_battle import Mon
 
 SCENE_NODE = 8
 # Generated from rl_run_new; no map, party, result or phase writes are used.
@@ -88,6 +90,24 @@ def enter_node(emu, seed, lane, expected):
     return before
 
 
+def verify_relic_inventory(emu, label):
+    before = identity(read_run(emu))
+    run = read_run(emu)
+    select(emu, run.map.lanes[run.row + 1] + 1)
+    wait_scene(emu, SCENE_NODE)
+    emu.step(30)
+    press(emu, "R")
+    emu.step(30)
+    emu.screenshot(emu.output / f"relic-details-{label}.png")
+    require(identity(read_run(emu)) == before,
+            "viewing relic details mutated the run")
+    press(emu, "N64_B")
+    press(emu, "N64_B")
+    wait_scene(emu, SCENE_MAP)
+    require(identity(read_run(emu)) == before,
+            "leaving relic inventory advanced or changed the run")
+
+
 def verify_events(emu, routes=EVENT_ROUTES):
     for event, (seed, lane) in routes.items():
         print(f"event {event}: seed={seed} lane={lane}", flush=True)
@@ -163,6 +183,8 @@ def verify_events(emu, routes=EVENT_ROUTES):
             require(taught, "Move Tutor fixture has no compatible starter target")
             press(emu, "N64_B")
             wait_scene(emu, SCENE_MAP)
+        if event in (5, 8, 11):
+            verify_relic_inventory(emu, f"event-{event:02d}")
         save_map_and_reenter(emu)
 
 
@@ -210,6 +232,9 @@ def verify_mart(emu):
     bought = False
     for index in range(12):
         before = read_run(emu)
+        if index == 10:
+            emu.step(30)
+            emu.screenshot(emu.output / "mart-relic-effect.png")
         press(emu, "N64_A")
         after = read_run(emu)
         if after.money != before.money:
@@ -246,9 +271,20 @@ def verify_battle_entry(emu, seed, route, expected):
             emu.step(30)
             require(identity(read_run(emu)) == before,
                     "pre-battle map suspend did not preserve route")
-        select(emu, lane)
         if row == len(route) - 1:
             require(node.type == expected, "wrong canonical encounter kind")
+            before = identity(read_run(emu))
+            for _ in range(lane):
+                press(emu, "DOWN")
+            emu.step(30)
+            emu.screenshot(emu.output / f"route-preview-{expected}.png")
+            count = emu.read_u32("gRlPlayPreviewCount")
+            preview = emu.read("gRlPlayPreviewTeam", count * ctypes.sizeof(Mon))
+            require(count == (1 if run.act == 3 else 6),
+                    "route preview did not materialize the complete canonical roster")
+            require(identity(read_run(emu)) == before,
+                    "route preview consumed RNG or mutated the run")
+            press(emu, "N64_A")
             wait_scene(emu, SCENE_PARTY)
             # Back must not commit the selected node.
             before = identity(read_run(emu))
@@ -258,13 +294,40 @@ def verify_battle_entry(emu, seed, route, expected):
                     "cancelled active selection advanced encounter")
             select(emu, lane)
             wait_scene(emu, SCENE_PARTY)
-            select(emu, read_run(emu).party_count)
+            active_run = read_run(emu)
+            slots = [i for i, mon in enumerate(active_run.party[:active_run.party_count])
+                     if mon.cur_hp and not mon.fainted][:3]
+            require(len(slots) == 3, "ordered native-entry proof needs three living mons")
+            # Move the third entrant to lead using the real order controls.
+            for _ in range(slots[2]):
+                press(emu, "DOWN")
+            press(emu, "LEFT")
+            press(emu, "LEFT")
+            emu.screenshot(emu.output / f"ordered-team-{expected}.png")
+            require(identity(read_run(emu)) == before,
+                    "editing entrant order changed run-slot identity/state")
+            for _ in range(active_run.party_count - slots[2]):
+                press(emu, "DOWN")
+            press(emu, "N64_A")
             wait_scene(emu, SCENE_BATTLE)
+            pending = emu.resolve("gRlPendingBattle")
+            mon_size = ctypes.sizeof(Mon)
+            queued_slots = list(emu.read(pending + mon_size * 15 + 8, 3))
+            require(queued_slots == [slots[2], slots[0], slots[1]],
+                    f"queued entrant order was not preserved: {queued_slots}")
+            queued_roster = emu.read(pending + mon_size * 9, count * mon_size)
+            require(queued_roster == preview,
+                    "native encounter differs from the pre-commit preview")
             live = emu.wait_battle(frames=3600)
             require(live[0]["species"] != 0 and live[1]["species"] != 0,
                     "canonical battle did not initialize both native sides")
+            lead = active_run.party[slots[2]]
+            require(live[0]["species"] == lead.species and
+                    live[0]["hp"] == lead.cur_hp and live[0]["moves"] == list(lead.moves),
+                    "native battle did not use the explicitly ordered lead")
             emu.screenshot(emu.output / f"native-node-{expected}.png")
             return
+        select(emu, lane)
         wait_scene(emu, SCENE_NODE)
         # This route contains only nonbattle nodes before the target.
         require(node.type in (2, 3, 4, 5), "route unexpectedly requires battle")

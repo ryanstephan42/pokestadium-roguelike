@@ -247,6 +247,7 @@ def start_new_run(emu, seed, test_mode):
     press(emu, "N64_A")
     wait_draft(emu)
     emu.step(30)
+    emu.screenshot(emu.output / f"draft-moves-{seed:08x}.png")
     for button in ("N64_A", "DOWN", "N64_A", "DOWN", "N64_A"):
         emu.press(button, frames=4, after=16)
     for _ in range(5):

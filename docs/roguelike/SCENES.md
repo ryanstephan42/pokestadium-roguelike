@@ -33,6 +33,73 @@ coordinate-derived candidate stream, so leaving a target-selection submenu
 or resuming does not change the displayed choice. No save layout was added.
 Fossils use the actual Kabuto/Omanyte records in the Poke Cup rental pool.
 
+## Information and battle order
+
+The selected starter shows its native species/move names, level, HP, and
+current/maximum PP for all four move slots before confirmation. Names come
+from Stadium's resident text archive, not a copied move-name catalog.
+
+Highlighting a battle lane materializes W10's complete scaled encounter on
+a private run copy. The panel shows the source roster, trainer/round, species,
+and levels; the live RNG, party, route and generated content are untouched.
+The preview matches the actual queued trainer roster. Currently the first
+three roster members fight (or the one-member Mewtwo team). Winning awards
+the displayed canonical coins and XP; recruit-from-roster, Candy, vitamin,
+relic, and money are **possible random reward choices**, not promises.
+
+Every fight opens ordered entrant selection before advancing the route.
+Living members are initially selected in party order. **A** removes a selected
+member or appends an unselected one; selection number **1** is the lead.
+**LEFT/RIGHT** moves the highlighted selected member earlier/later without
+changing the persistent party. **UP/DOWN** moves the cursor; select
+**Confirm active team** to launch, or **B** to return without advancing.
+Fainted members remain benched, duplicate species keep distinct run-slot
+identities, and battle results are restored by slot rather than species/order.
+Earth Badge now exposes the core's fourth reward choice instead of clipping
+the generated offer list to three.
+
+`host_tests/test_play_ui.c` drives the actual scene update/draw functions,
+checks side-effect-free canonical previews, move/PP detail draws, ordered
+launch/result mapping with duplicate species and an unchanged bench, and the
+fourth Earth reward. Native trainer/elite/boss entry scenarios capture route
+and ordered-party screens, reorder through real inputs, compare the preview
+against the queued roster, and check the native lead. Native visual acceptance
+is pending the shared emulator validation queue.
+
+## Relics
+
+From the between-node Bag or Party root, press **R** (`R_TRIG`) to open the
+owned-relic list; **B** returns to the same root without changing its Back
+index. The selected relic shows the canonical `rl_relic_defs` name and wrapped
+effect text. Old Amber and Master Ball also show whether their one-time recruit
+use is spent. Each detail and shop preview also marks its runtime status:
+run-core effects that currently work are identified as active, while native
+battle-only effects are explicitly marked as not connected yet. These are
+run-wide relics, not items in the consumable Bag.
+
+Relics can be offered as battle rewards or at the Mart, and the Hidden Grotto
+event grants a random unowned relic from the profile-permitted set. Lavender
+Tower grants Ghost Relic after its HP cost; Mysterious Shrine grants Cursed
+Power. Old Amber and Master Ball are the only relics with `consumed_relics`
+state: their pure-core recruit helper spends them only after recruitment
+succeeds. The helper currently does not enforce that Master Ball is used for
+a boss.
+
+Several run-core effects already work after a native battle result: Amulet Coin
+increases battle money, Exp. Share and Lucky Egg modify awarded XP, Rainbow
+Badge heals the living party after a win, and Earth Badge adds a reward choice.
+Most battle-time effects are still inactive in native Stadium battles: the
+battle adapter does not invoke the stat, damage, turn-end, status, critical-hit,
+or PP relic helpers. Silph Scope's pre-battle reveal is also not wired into the
+native selection UI.
+
+Old Amber and Master Ball are recruit-only, with no passive effect. Their
+one-time core helper consumes them only if recruitment succeeds, but no
+recruit UI currently calls that helper. Master Ball's boss-only restriction is
+not enforced. The inventory labels these unavailable recruit options and
+shows an already-spent one-use relic. Do not interpret the effect description
+alone as proof of native battle integration.
+
 **START** in a nonbattle scene saves to the separately named Controller Pak
 note and returns to Menu Select. Resume restores the selected `RL_NODE`
 without advancing it again; a Bag/Party suspension from the map resumes the
