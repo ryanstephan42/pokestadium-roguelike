@@ -9,6 +9,8 @@ typedef enum RlTextId {
     RL_TEXT_ICON_ERROR,
     RL_TEXT_HP,
     RL_TEXT_BULBASAUR,
+    RL_TEXT_CHARMANDER,
+    RL_TEXT_SQUIRTLE,
     RL_TEXT_COUNT
 } RlTextId;
 

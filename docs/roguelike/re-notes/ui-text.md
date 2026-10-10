@@ -93,7 +93,9 @@ The RL overlay API is `rl_ui_demo_init`, `rl_ui_demo_update(pressed)`,
 and `rl_ui_demo_draw`. Init runs inside the scene's pool after display
 workspace/context setup; update follows controller polling; draw is called
 between frame begin and submission. Demo uses a 10-entry list with 5
-visible rows, a Bulbasaur icon, and a sample HP bar.
+visible rows, a starter icon, and a sample HP bar. The icon cycles through
+Bulbasaur, Charmander, and Squirtle as the cursor moves, so repeated frames
+exercise cache reuse across multiple species.
 The caller must establish the 640x480 orthographic viewport/projection each
 frame before drawing; the UI kit appends 2D display-list commands but does
 not own the scene's projection state.

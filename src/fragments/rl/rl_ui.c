@@ -202,11 +202,14 @@ s32 rl_ui_demo_update(u16 pressed) {
 }
 
 void rl_ui_demo_draw(void) {
+    s32 mon_index = sDemoList.cursor % 3;
+    s32 species = 1 + mon_index * 3;
+
     rl_ui_window(24, 24, 592, 432);
     rl_ui_text(44, 40, rl_text[RL_TEXT_TITLE], sGold);
     rl_ui_list_draw(&sDemoList, 44, 78, 350);
-    rl_ui_mon_icon(1, 476, 108);
-    rl_ui_text(428, 158, rl_text[RL_TEXT_BULBASAUR], sWhite);
+    rl_ui_mon_icon(species, 476, 108);
+    rl_ui_text(428, 158, rl_text[RL_TEXT_BULBASAUR + mon_index], sWhite);
     rl_ui_text(428, 190, rl_text[RL_TEXT_HP], sWhite);
     rl_ui_hp_bar(428, 216, 160, 65, 100);
     rl_ui_text(428, 238, "65 / 100", sWhite);

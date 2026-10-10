@@ -9,7 +9,9 @@ const char* const rl_text[RL_TEXT_COUNT] = {
     "No choices available",
     "Icon unavailable",
     "HP",
-    "Bulbasaur"
+    "Bulbasaur",
+    "Charmander",
+    "Squirtle"
 };
 
 const char* const rl_text_demo_items[10] = {
