@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes as ct
 import hashlib
 import json
+import os
 import re
 import struct
 import sys
@@ -46,8 +47,12 @@ class LogInterface(ct.Structure):
     _fields_ = [("log", LogPrint)]
 
 # RETRO_DEVICE_ID_JOYPAD_* indices used by the core.
-BUTTONS = {"B": 0, "START": 3, "UP": 4, "DOWN": 5, "LEFT": 6, "RIGHT": 7,
-           "A": 8, "X": 9, "L": 10, "R": 11, "Y": 1, "Z": 12}
+# Names A/B/Y match libretro joypad IDs (not the N64 physical button labels).
+# On the installed Mupen core, RetroPad B (0) maps to N64 A and RetroPad Y (1)
+# maps to N64 B. N64_A/N64_B aliases make game-intent scenarios explicit.
+BUTTONS = {"B": 0, "Y": 1, "SELECT": 2, "START": 3, "UP": 4, "DOWN": 5,
+           "LEFT": 6, "RIGHT": 7, "A": 8, "X": 9, "L": 10, "R": 11,
+           "Z": 12, "N64_A": 0, "N64_B": 1}
 SOFTWARE_OPTIONS = {
     "parallel-n64-rdp-plugin": "angrylion",
     "parallel-n64-rsp-plugin": "cxd4",
@@ -163,7 +168,7 @@ class Frontend:
             InputPoll(lambda: None), InputState(self._input),
         )
         try:
-            debug = "RLTEST_DEBUG" in __import__("os").environ
+            debug = "RLTEST_DEBUG" in os.environ
             for name, callback in zip(
                 ("environment", "video_refresh", "audio_sample", "audio_sample_batch",
                  "input_poll", "input_state"), self.callbacks
@@ -243,7 +248,7 @@ class Frontend:
                     return False
                 self.pixel_format = value
             elif command == 14:  # SET_HW_RENDER: no hidden GL context
-                if "RLTEST_DEBUG" in __import__("os").environ:
+                if "RLTEST_DEBUG" in os.environ:
                     print(f"[rltest] core requested hardware renderer; options={self.options}", file=sys.stderr)
                 self.hardware_requested = True
                 return False
@@ -263,7 +268,7 @@ class Frontend:
                     if key in self.options and self.options[key] not in choices:
                         raise HarnessError(f"Unsupported core option {key}={self.options[key]}")
                     self.options.setdefault(key, choices[0])
-                    if "RLTEST_DEBUG" in __import__("os").environ:
+                    if "RLTEST_DEBUG" in os.environ:
                         print(f"[rltest] {key}={self.options[key]} choices={choices}", file=sys.stderr)
                     index += 1
             elif command == 17:  # GET_VARIABLE_UPDATE
@@ -294,7 +299,7 @@ class Frontend:
 
     @staticmethod
     def _log_message(level, message):
-        if message:
+        if message and level >= 2:
             print(f"[libretro:{level}] {message.decode(errors='replace').rstrip()}", file=sys.stderr)
 
     def _video(self, data, width, height, pitch):
@@ -462,6 +467,7 @@ class Frontend:
                 result.append({
                     "side": side, "species": species, "hp": hp, "max_hp": max_hp,
                     "status": status, "level": level,
+                    "moves": list(self.read(mon + 0x1F, 4)),
                     "pp": [value & 0x3F for value in pp],
                 })
             return result
@@ -470,8 +476,7 @@ class Frontend:
 
     def wait_battle(self, frames=60 * 60):
         """Wait for both fragment-62 active battle mons to be initialized."""
-        found = []
-        self.wait(lambda emu: bool(found := emu.battle_mons()),
+        self.wait(lambda emu: emu.battle_mons() is not None,
                   frames=frames, description="initialized fragment-62 battle mons")
         return self.battle_mons()
 
