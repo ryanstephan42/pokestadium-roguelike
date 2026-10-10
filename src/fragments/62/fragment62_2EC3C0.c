@@ -1512,8 +1512,6 @@ s32 func_84305B6C(unk_D_84390010* arg0, s32 arg1) {
 }
 
 s32 func_84305BD8(unk_D_84390010* arg0, s32 arg1) {
-    u8 temp_v0;
-
     D_84390020 = D_84384570[func_84307F00(arg0)]->unkA60;
     if (func_84305AFC(arg0) != 0) {
         if (func_8431ADAC(arg1) != 0) {
@@ -1532,7 +1530,6 @@ s32 func_84305BD8(unk_D_84390010* arg0, s32 arg1) {
     if (func_8431ADAC(D_84390020->unk_0A + 1) != 0) {
         return 1;
     }
-
     return 0;
 }
 

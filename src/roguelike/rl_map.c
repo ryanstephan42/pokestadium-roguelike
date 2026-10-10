@@ -56,6 +56,29 @@ void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension) {
     }
 }
 
+int rl_map_prepare_battle_route(RlMap *map, unsigned route_rows) {
+    unsigned row, lane;
+    int has_center;
+
+    if (!map || route_rows == 0 || route_rows >= RL_ROWS ||
+        !rl_map_valid(map) || map->lanes[0] == 1) return RL_INVALID;
+    for (row = 0; row < route_rows; row++) {
+        for (lane = 0; lane < map->lanes[row]; lane++) {
+            map->nodes[row][lane].type = RL_BATTLE;
+        }
+    }
+    has_center = 0;
+    for (row = 0; row < RL_ROWS - 1; row++) {
+        for (lane = 0; lane < map->lanes[row]; lane++) {
+            if (map->nodes[row][lane].type == RL_CENTER) has_center = 1;
+        }
+    }
+    if (!has_center) {
+        map->nodes[route_rows][0].type = RL_CENTER;
+    }
+    return rl_map_valid(map) ? RL_OK : RL_INVALID;
+}
+
 int rl_map_valid(const RlMap *map) {
     unsigned row, lane, reachable, next, center, rows;
     if (!map) return 0;

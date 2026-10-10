@@ -147,6 +147,8 @@ int main(void) {
     assert(!rl_valid_team(&source, 7));
     assert(!rl_valid_team(NULL, 1));
     assert(rl_load_trainer(RL_TRAINER_SET_MEWTWO, 0, team, 6, &ai) == 1);
+    assert(rl_trainer_count(RL_TRAINER_SET_POKE_POKE) == 8);
+    assert(rl_trainer_count(RL_NUM_TRAINER_SETS) == -1);
     assert(team[0].species == 150 && team[0].level == 100);
     assert(team[0].cur_hp == team[0].max_hp && !team[0].fainted);
     assert(team[0].current_stats[0] == 200 && team[0].current_stats[1] == 201);

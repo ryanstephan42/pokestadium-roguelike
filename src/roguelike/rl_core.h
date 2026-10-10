@@ -99,6 +99,7 @@ int rl_run_finish_node(RunState *run);
 int rl_run_on_battle_result(RunState *run, int won, RlU8 active_mask);
 int rl_run_is_over(const RunState *run);
 void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension);
+int rl_map_prepare_battle_route(RlMap *map, unsigned route_rows);
 int rl_map_valid(const RlMap *map);
 unsigned rl_map_rows(unsigned act);
 RlAscension rl_ascension(unsigned level);
