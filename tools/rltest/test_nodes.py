@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from tools.rltest.frontend import Frontend
+from tools.rltest.frontend import Frontend, HarnessError
 from tools.rltest.run import default_core
 from tools.rltest.save_roundtrip import native_command
 from tools.rltest.test_play_run import (
@@ -298,20 +298,29 @@ def main():
     with Frontend(default_core(), Path("build_rl/pokestadium-rl.z64"),
                   Path("build_rl/pokestadium-rl.map"), output=output,
                   options={"mupen64plus-pak1": "memory"}, timeout=3600) as emu:
-        boot(emu)
-        if args.event is not None:
-            verify_events(emu, {args.event: EVENT_ROUTES[args.event]})
-        elif args.battle_kind:
-            seed, route, kind = {
-                "trainer": (3, [2], 0),
-                "elite": (1, [0, 0, 0, 0, 0], 1),
-                "boss": (1, [0, 0, 0, 0, 1, 1, 1], 6),
-            }[args.battle_kind]
-            verify_battle_entry(emu, seed, route, kind)
-        else:
-            verify_events(emu)
-            verify_center_recruit_and_tools(emu)
-            verify_mart(emu)
+        try:
+            boot(emu)
+            if args.event is not None:
+                verify_events(emu, {args.event: EVENT_ROUTES[args.event]})
+            elif args.battle_kind:
+                seed, route, kind = {
+                    "trainer": (3, [2], 0),
+                    "elite": (1, [0, 0, 0, 0, 0], 1),
+                    "boss": (1, [0, 0, 0, 0, 1, 1, 1], 6),
+                }[args.battle_kind]
+                verify_battle_entry(emu, seed, route, kind)
+            else:
+                verify_events(emu)
+                verify_center_recruit_and_tools(emu)
+                verify_mart(emu)
+        except HarnessError:
+            failed = read_run(emu)
+            print(f"Node failure frame={emu.frame} scene={scene(emu)} "
+                  f"seed={failed.seed} act={failed.act} row={failed.row} "
+                  f"lane={failed.lane} phase={failed.phase}", flush=True)
+            if emu.framebuffer is not None:
+                emu.screenshot(output / "failure.png")
+            raise
         print(f"NODE SCENARIOS PASSED at frame {emu.frame}")
 
 
