@@ -122,6 +122,11 @@ static void rl_from_native(const unk_func_80026268_arg0* native, RlMon* mon) {
     mon->base_stats[2] = D_80070F84[mon->species].baseSpeed;
     mon->base_stats[3] = D_80070F84[mon->species].baseDefense;
     mon->base_stats[4] = D_80070F84[mon->species].baseAttack;
+    mon->current_stats[0] = native->unk_26;
+    mon->current_stats[1] = native->unk_28;
+    mon->current_stats[2] = native->unk_2A;
+    mon->current_stats[3] = native->unk_2C;
+    mon->current_stats[4] = native->unk_2E;
     for (i = 0; i < 10; i++) {
         if (native->unk_30[i] == 0) {
             break;
@@ -239,7 +244,7 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     return result->outcome;
 }
 
-void rl_battle_test_state(void) {
+void rl_battle_test_entry(void) {
     RlMon party[3];
     RlMon enemy[3];
     RlBattleRules rules;

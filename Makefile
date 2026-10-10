@@ -427,7 +427,7 @@ endif
 	$(N64_EMULATOR) $<
 
 # Roguelike: trainer rosters / rental pools generated from the baserom (never committed).
-RL_GEN_DIR := build/rl_gen
+RL_GEN_DIR := $(BUILD_DIR)/rl_gen
 $(RL_GEN_DIR)/rl_rosters.h: $(BASEROM) tools/rl_extract_rosters.py
 	$(PYTHON) tools/rl_extract_rosters.py --rom $(BASEROM) --out $(RL_GEN_DIR)
 rl-rosters: $(RL_GEN_DIR)/rl_rosters.h

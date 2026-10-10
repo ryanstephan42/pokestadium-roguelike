@@ -49,8 +49,8 @@ def run(core, rom, map_path, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core", default="/usr/lib/libretro/mupen64plus_next_libretro.so")
-    parser.add_argument("--rom", default="build/roguelike/pokestadium-us.z64")
-    parser.add_argument("--map", dest="map_path", default="build/roguelike/pokestadium-us.map")
+    parser.add_argument("--rom", default="build_rl/pokestadium-rl.z64")
+    parser.add_argument("--map", dest="map_path", default="build_rl/pokestadium-rl.map")
     parser.add_argument("--output", default="build/w3-harness")
     args = parser.parse_args()
     run(args.core, args.rom, args.map_path, args.output)

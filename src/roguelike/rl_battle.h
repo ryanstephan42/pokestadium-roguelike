@@ -71,6 +71,6 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
                     const RlBattleRules* rules, int return_state, RlLaunchResult* out);
 
 /* STATE_RL_BATTLE_TEST handler: fixed custom party vs custom enemy. */
-void rl_battle_test_state(void);
+void rl_battle_test_entry(void);
 
 #endif

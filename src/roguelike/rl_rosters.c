@@ -3,7 +3,7 @@
 #include "src/roguelike/rl_battle.h"
 #include "global.h"
 #define RL_ROSTERS_DEFINE
-#include "build/rl_gen/rl_rosters.h"
+#include "rl_gen/rl_rosters.h"
 
 static int rl_roster_mon(const RlGenMon* source, RlMon* output) {
     int i;

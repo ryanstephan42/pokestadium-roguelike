@@ -1358,11 +1358,6 @@ void Game_Thread(UNUSED LEODiskID* arg) {
 #endif
 
         switch (state) {
-#ifdef ROGUELIKE
-            case STATE_RL_BATTLE_TEST:
-                rl_battle_test_state();
-                break;
-#endif
             case STATE_N64_LOGO_INTRO:
                 func_80029310();
                 break;

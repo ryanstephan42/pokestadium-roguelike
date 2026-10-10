@@ -22,6 +22,10 @@ void func_80022338(unk_func_80026268_arg0* mon) {
     }
     mon->unk_24 = level;
     mon->unk_26 = 200;
+    mon->unk_28 = 201;
+    mon->unk_2A = 202;
+    mon->unk_2C = 203;
+    mon->unk_2E = 204;
 }
 
 unk_func_80026268_arg0* func_8002B924(unk_func_80026268_arg0* mon, u8 species, s16 level) {
@@ -80,6 +84,9 @@ int main(void) {
     assert(returned.pp[0] == 3 && returned.max_pp[0] == 24);
     assert(returned.pp[1] == 9 && returned.max_pp[1] == 61);
     assert(returned.cur_hp == 71 && returned.max_hp == 200);
+    assert(returned.current_stats[0] == 200 && returned.current_stats[1] == 201);
+    assert(returned.current_stats[2] == 202 && returned.current_stats[3] == 203);
+    assert(returned.current_stats[4] == 204);
     assert(returned.status == 0x40 && !returned.fainted);
     native.unk_02 = 0;
     rl_from_native(&native, &returned);
@@ -92,6 +99,13 @@ int main(void) {
     rl_to_native(&source, &native, 0);
     assert(native.unk_02 == 200 && native.unk_05 == 0);
     assert((native.unk_20[1] & 0x3F) == 61);
+    source.dvs = 0x1234;
+    rl_to_native(&source, &native, 1);
+    assert(GetPokemonDV(STAT_HP, native.unk_1E) == 10);
+    assert(GetPokemonDV(STAT_SPECIAL, native.unk_1E) == 1); /* Combat Attack. */
+    assert(GetPokemonDV(STAT_SPEED, native.unk_1E) == 2); /* Combat Defense. */
+    assert(GetPokemonDV(STAT_DEFENSE, native.unk_1E) == 3); /* Combat Speed. */
+    assert(GetPokemonDV(STAT_ATTACK, native.unk_1E) == 4); /* Combat Special. */
     source.moves[0] = 166;
     assert(!rl_valid_team(&source, 1));
     assert(!rl_valid_team(&source, 7));
@@ -99,6 +113,9 @@ int main(void) {
     assert(rl_load_trainer(RL_TRAINER_SET_MEWTWO, 0, team, 6, &ai) == 1);
     assert(team[0].species == 150 && team[0].level == 100);
     assert(team[0].cur_hp == team[0].max_hp && !team[0].fainted);
+    assert(team[0].current_stats[0] == 200 && team[0].current_stats[1] == 201);
+    assert(team[0].current_stats[2] == 202 && team[0].current_stats[3] == 203);
+    assert(team[0].current_stats[4] == 204);
     assert(rl_load_trainer(RL_TRAINER_SET_ELITE_FOUR, 0, team, 6, &ai) == 6);
     assert(rl_load_trainer(RL_NUM_TRAINER_SETS, 0, team, 6, &ai) == -1);
     assert(rl_load_trainer(RL_TRAINER_SET_ELITE_FOUR, 0, team, 1, &ai) == -1);
