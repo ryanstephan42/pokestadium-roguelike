@@ -10,8 +10,9 @@
 | `tools/rl/boot_test.py` | Headless smoke test using W1's `tools/rltest` frontend and a mupen64plus_next libretro core (`RL_CORE=` overrides the path). It goes title → Menu Select → RL scene → B → Menu Select, three times. |
 | `scripts/rl-gate.sh` | Runs the vanilla match, `make rl`, the RL boot test (when `tools/rltest` exists), host tests and smoke tests. |
 
-`build_rl/` is git-ignored. Objects don't depend on CFLAGS, so `make rlclean` after changing
-build flags.
+`build_rl/` is git-ignored. The roguelike fragment and main bridge objects depend on their optional
+UI and battle source files, respectively, so they rebuild automatically when those modules arrive.
+Objects don't track arbitrary compiler-flag changes, so run `make rlclean` after changing build flags.
 
 ### NON_MATCHING
 
@@ -101,9 +102,21 @@ table's bit31 is ignored by the loader and is normalized during comparison.
 
 Run `python3 -m unittest tools.rl.test_native_relocs` after a vanilla build to compare all
 27,903 fragment62 entries against the original unmodified table. This proves table parity,
-not a modified battle's runtime behavior. The fallback cannot infer arbitrary layout changes
-inside an input section containing raw pointers; convert those pointers to named symbols
-before changing that section's internal layout.
+not a modified battle's runtime behavior. The fallback preserves offsets relative to an
+input-section anchor; it does not map individual function addresses. It cannot infer changes
+to either a raw pointer's location or its target within a grown C input section. Convert
+such pointers to named symbols before changing that section's internal layout.
+
+**External asset references are not covered by native fragment regeneration.** The fallback
+only processes the selected `.fragmentN` output sections, not external animation archives or
+their embedded import stubs. W3 traced an animation geometry command through archive fragment
+0 to an `R_MIPS_26` jump targeting vanilla `func_8434D890` in fragment 62. After fragment 62's
+code grew, that original address landed inside a different function. Regenerating fragment
+62's own header and table does not repair this external reference. Symbol-based references
+linked against the current function resolve correctly; original archive imports require a
+separate, provenance-aware old-address-to-linked-symbol repair. It must not remap references
+that already contain current linked addresses. Table parity and the fragment 57 boot test
+below do not establish animation correctness or runtime battle acceptance for grown fragment 62.
 
 Two more points:
 - Header metadata words (offsets 0x10–0x1F) are linker constants, so they are excluded from all tables.

@@ -142,6 +142,8 @@ ifeq ($(ROGUELIKE),1)
   ifneq ($(wildcard src/roguelike/rl_battle.c),)
     BUILD_DEFINES += -DRL_HAVE_BATTLE
   endif
+$(BUILD_DIR)/src/fragments/rl/rl_fragment.o: $(wildcard src/fragments/rl/rl_ui.c)
+$(BUILD_DIR)/src/roguelike/rl_main.o: $(wildcard src/roguelike/rl_battle.c)
 endif
 
 MAKE = make

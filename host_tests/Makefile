@@ -11,15 +11,23 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test ui-test clean
+.PHONY: test core-test ui-test save-test native-import-test clean
 
-test: core-test ui-test native-import-test
+test: core-test ui-test save-test native-import-test
 
 native-import-test:
 	mkdir -p ../build/host_tests
 	$(CC) $(CFLAGS) test_native_imports.c ../src/roguelike/rl_native_imports.c -o ../build/host_tests/native-imports
 	../build/host_tests/native-imports
 	cd .. && python3 -m unittest host_tests.test_archive_import_generator
+save-test:
+	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \
+	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save; \
+	./test_save; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_save.c $(CORE) \
+	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_save_san
 
 core-test:
 	@set -e; trap 'rm -f test_core test_core_san' EXIT; \
@@ -36,4 +44,4 @@ $(UI_TEST_BIN): $(UI_TEST_SOURCES) ../src/roguelike/rl_ui_model.h ../src/rogueli
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) $(UI_TEST_SOURCES) -o $@
 
 clean:
-	rm -f test_core test_core_san $(UI_TEST_BIN)
+	rm -f test_core test_core_san test_save test_save_san $(UI_TEST_BIN)
