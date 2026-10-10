@@ -236,7 +236,7 @@ def run_one(name, core, rom, map_path, output, timeout):
         rules = BattleRules()
         rules.stadium = 3
         rules.ai_level = 11
-        rules.player_count = 1
+        rules.player_count = len(case["party"])
         rules.player_cpu = 0
         rules.use_state = 1
         rules.relics = case["mask"]
