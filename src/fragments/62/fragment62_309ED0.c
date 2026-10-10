@@ -392,7 +392,7 @@ void func_84320108(void) {
     temp_s0 = &D_84390010[0]->unk_654;
     temp_s1 = &D_84390010[1]->unk_654;
 #ifdef ROGUELIKE
-    rl_native_relics_open_round();
+    rl_native_relics_open_round(D_84390010[1]);
 #endif
     func_8431AFE4(1, 1);
 
@@ -435,7 +435,7 @@ void func_843202A0(void) {
     sp28 = &D_84390010[0]->unk_654;
     sp24 = &D_84390010[1]->unk_654;
 #ifdef ROGUELIKE
-    rl_native_relics_open_round();
+    rl_native_relics_open_round(D_84390010[1]);
 #endif
     func_8431AFE4(1, 1);
 

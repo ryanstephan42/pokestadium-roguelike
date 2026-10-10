@@ -50,15 +50,47 @@ int main(void) {
     CHECK(!rl_native_relics_block_status(opponent, 8, 92));
     CHECK(!rl_native_relics_finish_round(1));
     CHECK(live->unk_0C == 50);
-    rl_native_relics_open_round();
+    rl_native_relics_open_round(&enemy);
     CHECK(!rl_native_relics_finish_round(1));
     CHECK(live->unk_0C == 60 && party.unk_01C[0].unk_02 == 60);
     CHECK(!rl_native_relics_finish_round(1));
     CHECK(live->unk_0C == 60);
     CHECK(rl_native_relics_block_status(live, 0x40, 86));
-    rl_native_relics_open_round();
+    rl_native_relics_open_round(&enemy);
     CHECK(!rl_native_relics_finish_round(0));
     CHECK(!rl_native_relics_block_status(live, 0x40, 86));
+    /* Fainted-mon replacement sends neither tick nor advance the Soul window. */
+    enemy.unk_654.unk_2D = RL_BATTLE_SWITCH_FAINTED;
+    {
+        unsigned int before = gRlRelicTrace.count;
+        rl_native_relics_open_round(&enemy);
+        CHECK(gRlRelicTrace.count == before + 1);
+        CHECK(gRlRelicTrace.events[before].kind == 8 && gRlRelicTrace.events[before].e == 0);
+        CHECK(gRlRelicTrace.events[before].d == RL_BATTLE_SWITCH_FAINTED);
+    }
+    CHECK(!rl_native_relics_finish_round(0));
+    CHECK(live->unk_0C == 70);
+    CHECK(!rl_native_relics_block_status(live, 0x40, 86));
+    enemy.unk_654.unk_2D = 0;
+    player.unk_654.unk_2D = RL_BATTLE_SWITCH_FAINTED;
+    rl_native_relics_open_round(&enemy);
+    CHECK(!rl_native_relics_finish_round(0));
+    CHECK(live->unk_0C == 70);
+    /* A voluntary switch is a real turn. */
+    player.unk_654.unk_2D = RL_BATTLE_SWITCH_VOLUNTARY;
+    rl_native_relics_open_round(&enemy);
+    CHECK(gRlRelicTrace.events[gRlRelicTrace.count - 1].e == 1);
+    CHECK(!rl_native_relics_finish_round(0));
+    CHECK(live->unk_0C == 80);
+    player.unk_654.unk_2D = 0;
+    /* An unclosed turn is reported, not silently merged. */
+    rl_native_relics_open_round(&enemy);
+    rl_native_relics_open_round(&enemy);
+    CHECK(gRlRelicTrace.events[gRlRelicTrace.count - 2].kind == 9);
+    CHECK(!rl_native_relics_finish_round(0));
+    CHECK(live->unk_0C == 90);
+    CHECK(!rl_native_relics_finish_round(0));
+    CHECK(live->unk_0C == 90);
     rl_native_relics_end(1);
     CHECK(rl_native_relics_damage(live, opponent, 100, 0x15, 0) == 100);
     CHECK(!rl_native_relics_block_status(live, 8, 92));
@@ -67,10 +99,10 @@ int main(void) {
     rl_native_relics_bind(&player, &enemy);
     live->unk_0C = 1;
     CHECK(rl_native_relics_damage(live, opponent, 100, 0, 0) == 110);
-    rl_native_relics_open_round();
+    rl_native_relics_open_round(&enemy);
     CHECK(rl_native_relics_finish_round(1));
     CHECK(live->unk_0C == 0 && party.unk_01C[0].unk_02 == 0);
-    rl_native_relics_open_round();
+    rl_native_relics_open_round(&enemy);
     CHECK(!rl_native_relics_finish_round(1));
     CHECK(live->unk_0C == 0);
     return 0;

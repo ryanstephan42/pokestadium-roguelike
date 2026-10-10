@@ -455,10 +455,8 @@ SCENARIOS = (
 )
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", choices=("all", *SCENARIOS), default="all",
-                        help="run all checks or a targeted native battle")
+def default_paths(output_name):
+    """Return default core, ROM, map and output paths (env overrides honoured)."""
     core_candidates = (
         Path.home() / ".config/retroarch/cores/mupen64plus_next_libretro.so",
         Path("/usr/lib/libretro/mupen64plus_next_libretro.so"),
@@ -466,16 +464,24 @@ def main():
         Path("/usr/lib/libretro/parallel_n64_libretro.so"),
     )
     configured_core = os.environ.get("RLTEST_CORE")
-    default_core = next((path for path in
-                         ([Path(configured_core)] if configured_core else []) + list(core_candidates)
-                         if path.is_file()), core_candidates[0])
-    parser.add_argument("--core", default=str(default_core))
-    parser.add_argument("--rom", default=os.environ.get(
-        "RLTEST_ROM", str(ROOT / "build_rl/pokestadium-rl.z64")))
-    parser.add_argument("--map", dest="map_path", default=os.environ.get(
-        "RLTEST_MAP", str(ROOT / "build_rl/pokestadium-rl.map")))
-    parser.add_argument("--output", default=os.environ.get(
-        "RLTEST_OUTPUT", str(ROOT / ".local/rltest/native-relics")))
+    core = next((path for path in
+                 ([Path(configured_core)] if configured_core else []) + list(core_candidates)
+                 if path.is_file()), core_candidates[0])
+    return (str(core),
+            os.environ.get("RLTEST_ROM", str(ROOT / "build_rl/pokestadium-rl.z64")),
+            os.environ.get("RLTEST_MAP", str(ROOT / "build_rl/pokestadium-rl.map")),
+            os.environ.get("RLTEST_OUTPUT", str(ROOT / ".local/rltest" / output_name)))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--scenario", choices=("all", *SCENARIOS), default="all",
+                        help="run all checks or a targeted native battle")
+    core, rom, map_path, output = default_paths("native-relics")
+    parser.add_argument("--core", default=core)
+    parser.add_argument("--rom", default=rom)
+    parser.add_argument("--map", dest="map_path", default=map_path)
+    parser.add_argument("--output", default=output)
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args()
     names = SCENARIOS if args.scenario == "all" else (args.scenario,)

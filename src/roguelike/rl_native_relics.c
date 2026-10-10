@@ -83,8 +83,21 @@ int rl_native_relics_stats(RlBattleSide* side) {
     return speed_changed;
 }
 
-void rl_native_relics_open_round(void) {
-    if (owned()) {
+void rl_native_relics_open_round(RlBattleSide* enemy) {
+    int replacement;
+    if (!owned() || enemy == NULL) {
+        return;
+    }
+    replacement = rl_battle_switch_state(player_side) == RL_BATTLE_SWITCH_FAINTED ||
+                  rl_battle_switch_state(enemy) == RL_BATTLE_SWITCH_FAINTED;
+    if (round_open) {
+        /* A prior turn never reached phase 4; acceptance requires none. */
+        trace(9, replacement, completed_rounds, 0, 0, 0, 0);
+    }
+    trace(8, rl_battle_command(player_side), rl_battle_command(enemy),
+          rl_battle_switch_state(player_side), rl_battle_switch_state(enemy), !replacement,
+          rl_battle_active_index(player_side));
+    if (!replacement) {
         round_open = 1;
     }
 }

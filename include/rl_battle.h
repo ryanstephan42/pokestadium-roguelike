@@ -46,6 +46,12 @@ typedef enum RlBattleStage {
 #define rl_battle_trainer_index(side) ((side)->unk_654.unk_2B)
 #define rl_battle_incoming_trainer_index(side) ((side)->unk_654.unk_2C)
 #define rl_battle_move_slot(side) ((side)->unk_654.unk_0C)
+/* Committed command: 1 fight, 2 switch (func_8430EF4C/func_8430F350). */
+#define rl_battle_command(side) ((side)->unk_654.unk_04)
+/* 0xF voluntary switch, 0x10 fainted mon awaiting replacement (func_8430E490). */
+#define rl_battle_switch_state(side) ((side)->unk_654.unk_2D)
+#define RL_BATTLE_SWITCH_VOLUNTARY 0x0F
+#define RL_BATTLE_SWITCH_FAINTED 0x10
 #define rl_battle_party_mon(side, index) (&(side)->unk_724->unk_01C[index])
 
 #define rl_battle_species(mon) ((mon)->unk_0B)

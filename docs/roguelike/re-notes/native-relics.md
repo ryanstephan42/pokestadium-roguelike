@@ -104,9 +104,37 @@ The fainted active mon is never revived by Leftovers. Cursed lethal loss sets
 native phase 5 with side 0 as the fainted defender, letting the existing
 animation, replacement, and party-exhaustion logic determine the result.
 
-Switches, charging moves, canceled second actions, residual deaths, and terminal
-rounds still need dynamic cadence coverage; the latch's host test alone is not
-proof of those controller transitions.
+**Faint replacement is not a turn.** After a KO, `func_8430F350` forces the
+surviving side to a committed no-op command (`unk_10 = 3`, `unk_04 = 1`).
+The fainted side (`unk_654.unk_2D == 0x10`) chooses a switch, and
+`func_8430F8B8` then dispatches `func_843202A0` exactly as for a real switch
+turn. The same path covers the opening send-out. A human-controlled W7 trace
+showed the result: rounds with no actions alternated with action rounds.
+`rl_native_relics_open_round(enemy)` therefore records every commit (trace kind 8:
+player/enemy command, player/enemy switch state, counted flag, active index).
+It opens a turn only when neither side is in replacement state. A voluntary
+switch (`unk_2D == 0xF`) is a turn. If a turn opens before the previous one
+closed, trace kind 9 records the anomaly instead of merging silently.
+
+`python3 -m tools.rltest.test_relic_cadence` drives human-controlled custom
+battles (`player_cpu = 0`) with controller input only:
+
+- `enemy-replacement` (Leftovers, Cursed and Soul): turn 0 KOs Magikarp, and
+  Chansey's replacement send must be uncounted. Chansey's first Thunder Wave is
+  then turn 1, which Soul must block. Thunder Wave must land after expiry.
+  Every tick must equal exactly `min(hp + max/16, max) - 1`, chained with no HP
+  change between ticks. The first two turns must each spend one PP. There is no
+  terminal tick, and the persisted HP must equal the last settled tick.
+- `player-switch` (Cursed): turn 0's tick KOs slot 0 through the
+  `func_84328734` phase-5 route, which sets `unk_2C = 1`, `unk_38 = 5`, and
+  clears `unk_20`/`unk_14`. The human replacement (slot 1) must be uncounted
+  and must never tick. The voluntary switch to slot 2 is a counted turn and
+  ticks once, and the turn-2 KO must produce a normal native win.
+- Before every command, both scenarios idle 900 frames in the menu and require
+  an unchanged trace and live HP.
+
+Status: implemented and host-tested. Emulator proof is pending the shared
+emulator queue. Charging moves and canceled second actions remain uncovered.
 
 ## PP Pouch replacement
 
