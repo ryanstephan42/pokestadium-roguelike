@@ -24,8 +24,15 @@ class HelperTests(unittest.TestCase):
 
         with patch.object(test_nodes, "reenter_roguelike"), \
                 patch.object(test_nodes, "press"), \
+                patch.object(test_nodes, "wait_scene"), \
                 patch.object(test_nodes, "native_command", side_effect=create_fixture):
             test_nodes.boot(emu)
+        self.assertEqual(emu.mock_calls[-4:], [
+            call.hold("L"),
+            call.press("N64_A", frames=6, after=120),
+            call.wait_state(0x30, frames=600),
+            call.release("L"),
+        ])
 
     def test_symbol_lookup_and_nearest(self):
         with tempfile.TemporaryDirectory() as directory:

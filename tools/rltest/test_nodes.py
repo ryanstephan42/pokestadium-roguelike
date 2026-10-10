@@ -351,7 +351,11 @@ def boot(emu):
     emu.step(120)
     result = native_command(emu, 4, create=1)
     require(result[1] == 0, "explicit unlocked-profile fixture creation failed")
-    reenter_roguelike(emu)
+    emu.hold("L")
+    emu.press("N64_A", frames=6, after=120)
+    emu.wait_state(0x30, frames=600)
+    emu.release("L")
+    wait_scene(emu, SCENE_MENU)
 
 
 def main():
