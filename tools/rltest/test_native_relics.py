@@ -105,15 +105,22 @@ def _scenario(name):
         "volcano": (1 << RELIC["volcano"], 6, 53, 0x14, 115),
         "ghost": (1 << RELIC["ghost"], 94, 122, 8, 115),
         "cursed-power": (1 << RELIC["cursed-power"], 150, 1, 0, 110),
+        "cursed-multihit": (1 << RELIC["cursed-power"], 15, 41, 7, 110),
+        "cursed-fixed": (1 << RELIC["cursed-power"], 150, 49, 0, 110),
     }
     if name in damage:
         mask, species, move, native_type, percent = damage[name]
+        check = {"kind": "damage", "native_type": native_type, "percent": percent}
+        if name == "cursed-multihit":
+            check["min_hits_per_turn"] = 2
+        elif name == "cursed-fixed":
+            check["input_damage"] = 20
         return {
             "mask": mask,
             "player": _mon(species, 50, [move]),
-            "enemy": _mon(10, 50, [33]),
-            "check": {"kind": "damage", "native_type": native_type,
-                      "percent": percent},
+            "enemy": _mon(113, 50, [33]) if name in ("cursed-multihit", "cursed-fixed")
+            else _mon(10, 50, [33]),
+            "check": check,
         }
     if name == "scope-lens":
         return {
@@ -198,17 +205,29 @@ def _check_stat(events, player_species, stat):
                 f"Stat relic did not apply exact rounded +10%: {event}, expected {expected}")
 
 
-def _check_damage(events, player_species, native_type, percent):
+def _check_damage(events, player_species, native_type, percent, *,
+                  min_hits_per_turn=1, input_damage=None):
     matches = [event for event in events
                if event["kind"] == 2 and event["a"] == native_type
                and event["f"] == player_species and event["b"] > 0]
     _expect(matches, f"No committed move trace for native type {native_type:#x}")
+    if input_damage is not None:
+        _expect(any(event["b"] == input_damage for event in matches),
+                f"Fixed-damage move did not retain its native input damage "
+                f"{input_damage}: {matches}")
     for event in matches:
         expected = (event["b"] * percent + 50) // 100
         _expect(event["c"] == expected,
                 f"Damage relic math/type mapping mismatch: {event}, expected {expected}")
         _expect(0 < event["e"] <= event["d"],
                 f"Damage trace has invalid committed HP loss: {event}")
+    if min_hits_per_turn > 1:
+        counts = {}
+        for event in matches:
+            counts[event["turn"]] = counts.get(event["turn"], 0) + 1
+        _expect(max(counts.values(), default=0) >= min_hits_per_turn,
+                f"Multihit move did not produce {min_hits_per_turn} hit commits "
+                f"in one turn: {matches}")
 
 
 def _check_scope(events, player_species):
@@ -296,7 +315,9 @@ def _verify(name, case, events, result, outcome):
     if check["kind"] == "stat":
         _check_stat(events, case["player"].species, check["stat"])
     elif check["kind"] == "damage":
-        _check_damage(events, case["player"].species, check["native_type"], check["percent"])
+        _check_damage(events, case["player"].species, check["native_type"], check["percent"],
+                      min_hits_per_turn=check.get("min_hits_per_turn", 1),
+                      input_damage=check.get("input_damage"))
     elif check["kind"] == "scope":
         _check_scope(events, case["player"].species)
     elif check["kind"] == "focus":
@@ -397,7 +418,8 @@ def run_one(name, core, rom, map_path, output, timeout):
 
 SCENARIOS = (
     "boulder", "thunder", "marsh", "cascade", "volcano", "ghost",
-    "cursed-power", "scope-lens", "focus", "leftovers", "soul",
+    "cursed-power", "cursed-multihit", "cursed-fixed",
+    "scope-lens", "focus", "leftovers", "soul",
     "pp-pouch", "pp-pouch-capped", "cursed-tick",
 )
 
