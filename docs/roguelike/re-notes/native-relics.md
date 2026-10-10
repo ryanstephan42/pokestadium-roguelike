@@ -2,16 +2,28 @@
 
 ## Acceptance status
 
-Implementation and host checks are present. **Native relic acceptance is pending**:
-the first custom-battle launch stalled before fragment62 was mapped with the
-large roster object resident; the root cause is not yet established. The W7
-layout prerequisite moves that object into fragmentRL.
-The subsequent native run was stopped at the integration coordinator's request
-to serialize emulator work. No native relic measurements are claimed here yet.
+At `fbc416f` (after merging master with PRs #10–#12), vanilla `make` prints
+`build/pokestadium-us.z64: OK`, `make rl` passes its CRC check, and
+`scripts/rl-gate.sh` ends with `GATE PASSED`. The gate includes W7
+`test_play_run`: three human-controlled native wins at frame 49495 with seed
+`0x13579bdf`.
 
-Vanilla `make` prints `build/pokestadium-us.z64: OK`. `make rl` and the host
-suite, including the 32-bit native adapter checks, pass. The full integration
-gate must still run after the emulator queue is released.
+Native custom-battle acceptance used `python3 -m tools.rltest.test_native_relics
+--scenario all` on the same ROM. All 16 scenarios passed: boulder, thunder,
+marsh, cascade, volcano, ghost, cursed-power, cursed-multihit, cursed-fixed,
+scope-lens, focus, leftovers, pp-pouch, pp-pouch-capped and cursed-tick in one
+run, plus soul rerun after its scenario was made deterministic (harness-only
+change). Each check reads native trace values from the hooked engine
+execution and the settled persisted result; no battle state is forced.
+For example, the Soul run blocked Toxic at round indices 0 and 1, the Toxic at
+round 2 missed natively, and native toxic damage then ramped 22/44/66/88/110 HP
+until faint.
+
+Remaining caveat: human-controlled battles may count non-action phases as
+completed rounds, such as a faint replacement with `unk_34 == 3`. That would
+add Leftovers/Cursed ticks and shorten the Soul window. Custom CPU battles
+showed one action pair per round. Switch, charge-move and replacement cadence
+still needs dedicated dynamic coverage.
 
 ## Integration contract
 
@@ -25,7 +37,9 @@ the relic bit. It returns 1 if applied, 0 if absent/already consumed, or -1
 with a native diagnostic for invalid input. Surface -1 in the scene instead
 of treating it as a successful pickup. It never runs inside `rl_start_battle`.
 
-W7 owns those two call sites. This branch does not include W7's playable scene.
+Both call sites are wired in `src/fragments/rl/rl_play.c` (agreed with W7):
+the mask is set once after rules initialization, and the Pouch helper runs only
+after a successful PP Pouch reward apply. A negative return becomes a scene error.
 Native post-battle copying still settles live HP/status into original records
 before overlay release. W7 then maps selected indices back into the run and
 calls the existing `rl_run_on_battle_result` for XP and Rainbow healing.
@@ -62,10 +76,16 @@ moves and Counter are included in direct-damage bonuses; Focus also handles
 lethal direct fixed damage. Multi-hit moves reuse the unscaled roll on each hit,
 rather than repeatedly multiplying the preceding scaled hit.
 
-`func_84370B7C` uses its C body for the RL build only. The matching build
-continues to use the original assembly. Boosts are applied to effective and
-unmodified values before burn/paralysis, on initial copy and every switch-in;
-no modified stats are written back into the persistent stat records.
+The RL build keeps the matching assembly for `func_84370B7C`, the native
+switch-in stat initialization. An earlier revision forced the unverified
+NON_MATCHING C body. That changed native battles even with no relics: W7's
+`test_play_run` lead was never damaged, reproducibly across input timing
+perturbations, while master passed. Its two callers now use the guarded
+`rl_func_84370B7C`, which runs native initialization first and then applies
+relic boosts to effective and unmodified Defense/Speed/Special. It writes only
+values a relic changed. When Speed changed, it re-applies the native paralysis
+quarter. This applies on initial copy and on every switch-in. No modified
+stats are written back into persistent stat records.
 
 ## Actual-round boundary
 
