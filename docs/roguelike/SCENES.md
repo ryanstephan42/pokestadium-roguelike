@@ -63,8 +63,12 @@ checks side-effect-free canonical previews, move/PP detail draws, ordered
 launch/result mapping with duplicate species and an unchanged bench, and the
 fourth Earth reward. Native trainer/elite/boss entry scenarios capture route
 and ordered-party screens, reorder through real inputs, compare the preview
-against the queued roster, and check the native lead. Native visual acceptance
-is pending the shared emulator validation queue.
+against the queued roster, and check the native lead. Owner native checks
+passed trainer/elite/boss entry at frames 3813/4108/4260, with readable draft,
+route and ordered-party captures. Full node checks passed at frame 22981,
+including native Thunderbolt teaching to seed 61's Nidoking, rejected
+incompatible targets, Rare Candy, release, and all twelve event/Pak resumes.
+These targeted results do not replace the final exact-head full gate.
 
 ## Relics
 
@@ -78,7 +82,7 @@ battle-only effects are explicitly marked as not connected yet. These are
 run-wide relics, not items in the consumable Bag.
 
 Relics can be offered as battle rewards or at the Mart, and the Hidden Grotto
-event grants a random unowned relic from the profile-permitted set. Lavender
+event grants a random unowned usable relic from the profile-permitted set. Lavender
 Tower grants Ghost Relic after its HP cost; Mysterious Shrine grants Cursed
 Power. Old Amber and Master Ball are the only relics with `consumed_relics`
 state: their pure-core recruit helper spends them only after recruitment
@@ -90,13 +94,15 @@ increases battle money, Exp. Share and Lucky Egg modify awarded XP, Rainbow
 Badge heals the living party after a win, and Earth Badge adds a reward choice.
 Most battle-time effects are still inactive in native Stadium battles: the
 battle adapter does not invoke the stat, damage, turn-end, status, critical-hit,
-or PP relic helpers. Silph Scope's pre-battle reveal is also not wired into the
-native selection UI.
+or PP relic helpers. Silph Scope adds no extra reveal because the roster preview is always available.
 
 Old Amber and Master Ball are recruit-only, with no passive effect. Their
 one-time core helper consumes them only if recruitment succeeds, but no
 recruit UI currently calls that helper. Master Ball's boss-only restriction is
-not enforced. The inventory labels these unavailable recruit options and
+not enforced. `rl_scene_available_relics` excludes both from new shop, event
+and reward acquisition without changing profile unlock masks. Shop/reward
+screens explain that their recruit actions are unavailable; existing inventory
+entries remain visible with explicit status. The inventory labels these unavailable recruit options and
 shows an already-spent one-use relic. Do not interpret the effect description
 alone as proof of native battle integration.
 

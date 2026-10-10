@@ -14,6 +14,7 @@ static RunState* sRun;
 static const RlPool* sRentals;
 static const RlMeta* sMeta;
 static unsigned sMode, sPage, sItem, sSlot, sChoice, sEvent;
+RlU32 gRlSceneEvent;
 static unsigned sShopCount, sWildCount;
 static int sReturn;
 static const char* sMessage;
@@ -241,10 +242,14 @@ static void node_root(void) {
             } else if (sShop[i].item == RL_RELIC_ITEM &&
                        sShop[i].detail < RL_RELIC_COUNT) {
                 node_copy(sLabels[n], rl_relic_defs[sShop[i].detail].name);
+            } else if (sShop[i].item == RL_RELIC_ITEM) {
+                node_copy(sLabels[n], "Relic unavailable");
             }
             node_add(n, sLabels[n], i);
             if (sShop[i].item == RL_RELIC_ITEM &&
                 (sShop[i].detail >= RL_RELIC_COUNT ||
+                 sShop[i].detail == RL_OLD_AMBER ||
+                 sShop[i].detail == RL_MASTER_BALL ||
                  (sRun->relics & (1U << sShop[i].detail))))
                 sItems[n].disabled = 1;
             n++;
@@ -292,8 +297,9 @@ static int node_event(unsigned choice, unsigned slot) {
     copy.rng = node_seed(0x45564E54U);
     if (sEvent == 7 && choice == 0 && copy.bag[RL_CANDY] >= 999)
         return RL_FULL;
-    result = rl_event_resolve_unlocked(&copy, sEvent, choice, slot, sRentals,
-                                       &sMovePool, rl_meta_permitted_relics(sMeta));
+    result = rl_event_resolve_unlocked(
+        &copy, sEvent, choice, slot, sRentals, &sMovePool,
+        rl_scene_available_relics(rl_meta_permitted_relics(sMeta)));
     if (result == RL_OK) {
         copy.rng = rng;
         *sRun = copy;
@@ -328,7 +334,7 @@ void rl_scene_nodes_begin(RunState* run, const RlPool* rentals, unsigned mode,
     /* Owned relics affect purchase validity, not the identity of this node's offer. */
     copy.relics = 0;
     sShopCount = rl_shop_generate_unlocked(&copy, &sMovePool,
-                                           rl_meta_permitted_relics(meta), sShop, 12);
+        rl_scene_available_relics(rl_meta_permitted_relics(meta)), sShop, 12);
     copy = *run;
     copy.rng = node_seed(0x45564E54U);
     event_rng = node_seed(0x45564944U);
@@ -340,6 +346,7 @@ void rl_scene_nodes_begin(RunState* run, const RlPool* rentals, unsigned mode,
         return;
     }
     if (mode == RL_EVENT) sEvent = event;
+    gRlSceneEvent = sEvent;
     sWildCount = rl_event_wild_options(&copy, rentals, sWild, 3);
     node_root();
     if ((mode == RL_RECRUIT || (mode == RL_EVENT && sEvent == 6)) && !sWildCount)
@@ -397,7 +404,21 @@ int rl_scene_nodes_update(u16 pressed) {
         return sReturn;
     }
     if (selected < 0) {
-        sMessage = "This offer is unavailable or its relic is already owned.";
+        if (selected == RL_UI_DISABLED && sPage == NODE_ROOT &&
+            sMode == RL_MART && sList.cursor >= 0 &&
+            (unsigned)sList.cursor < sShopCount &&
+            sShop[sValues[sList.cursor]].item == RL_RELIC_ITEM &&
+            (sShop[sValues[sList.cursor]].detail == RL_OLD_AMBER ||
+             sShop[sValues[sList.cursor]].detail == RL_MASTER_BALL)) {
+            sMessage = "Recruit action not implemented; relic unavailable.";
+        } else if (selected == RL_UI_DISABLED && sPage == NODE_ROOT &&
+                   sMode == RL_MART && sList.cursor >= 0 &&
+                   (unsigned)sList.cursor < sShopCount &&
+                   sShop[sValues[sList.cursor]].item == RL_RELIC_ITEM) {
+            sMessage = "Recruit action not implemented; Amber/Master Ball unavailable.";
+        } else {
+            sMessage = "This offer is unavailable or its relic is already owned.";
+        }
         return RL_SCENE_ONGOING;
     }
     value = sValues[selected];
@@ -458,6 +479,8 @@ int rl_scene_nodes_update(u16 pressed) {
                 if (result == RL_OK) node_done("Event resolved.");
                 else if (sEvent == 0 && result == RL_INVALID)
                     sMessage = "Chosen fossil is missing from canonical rentals.";
+                else if (sEvent == 8 && result == RL_FULL)
+                    sMessage = "No available relics. Amber/Master Ball recruit unavailable.";
                 else node_error(result);
             }
         }
@@ -541,6 +564,10 @@ int rl_scene_nodes_update(u16 pressed) {
 void rl_scene_nodes_draw(void) {
     char label[48];
     unsigned value;
+    int relic_shop;
+    relic_shop = sPage == NODE_ROOT && sMode == RL_MART &&
+        sList.cursor >= 0 && (unsigned)sList.cursor < sShopCount &&
+        sShop[sValues[sList.cursor]].item == RL_RELIC_ITEM;
     rl_ui_list_draw(&sList, 18, 18, 604);
     if (sRun && sPage != NODE_RELICS) {
         node_copy(label, "Coins 0000000000  Party 0/6");
@@ -548,8 +575,12 @@ void rl_scene_nodes_draw(void) {
         node_number(label + 24, sRun->party_count, 1);
         rl_ui_text(30, 220, label, sGold);
     }
-    if (sPage == NODE_ROOT && sMode == RL_EVENT)
+    if (sPage == NODE_ROOT && sMode == RL_EVENT) {
         rl_ui_text(30, 250, sDescriptions[sEvent], sWhite);
+        if (sEvent == 8)
+            rl_ui_text_wrap(30, 276, 570, 1,
+                            "Amber/Master Ball recruit unavailable.", sGold);
+    }
     if (sPage == NODE_ROOT && sMode == RL_MART && sList.cursor >= 0 &&
         sValues[sList.cursor] < sShopCount) {
         value = sValues[sList.cursor];
@@ -563,6 +594,9 @@ void rl_scene_nodes_draw(void) {
             rl_ui_text_wrap(30, 320, 570, 2,
                             rl_scene_relic_status(sRun, sShop[value].detail),
                             sGold);
+        if (sShop[value].item == RL_RELIC_ITEM)
+            rl_ui_text_wrap(30, 354, 570, 1,
+                            "Amber/Master Ball recruit unavailable.", sRed);
     }
     if (sPage == NODE_RELICS && sList.cursor >= 0 &&
         sList.cursor < sList.count && sValues[sList.cursor] < RL_RELIC_COUNT) {
@@ -573,7 +607,7 @@ void rl_scene_nodes_draw(void) {
                         rl_scene_relic_status(sRun, value), sGold);
     }
     if (sMessage) rl_ui_text(30, 314, sMessage, sRed);
-    rl_ui_text(30, 354,
+    rl_ui_text(30, relic_shop ? 394 : 354,
                (sPage == NODE_ROOT &&
                 (sMode == RL_SCENE_BAG || sMode == RL_SCENE_PARTY)) ?
                "D-pad: select   A: confirm   B: back   R: relics" :

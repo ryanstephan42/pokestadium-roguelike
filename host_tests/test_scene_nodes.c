@@ -44,7 +44,7 @@ void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
         strcpy(message_text, text);
         message = message_text;
     }
-    if (y >= 220 && y <= 340 && detail_count < 8) {
+    if (y >= 220 && y <= 360 && detail_count < 8) {
         strcpy(detail_text[detail_count], text);
         detail_y[detail_count++] = y;
     }
@@ -83,6 +83,14 @@ static void draw(void) {
     assert(shown != NULL);
 }
 
+static int text_at(unsigned y, const char* text) {
+    unsigned i;
+    for (i = 0; i < detail_count; i++)
+        if ((unsigned)detail_y[i] == y && !strcmp(detail_text[i], text))
+            return 1;
+    return 0;
+}
+
 static void assert_wrapped_effect(unsigned first_y, unsigned last_y,
                                   const char* effect) {
     char joined[160];
@@ -103,16 +111,6 @@ static void assert_wrapped_effect(unsigned first_y, unsigned last_y,
         }
     }
     assert(used && !strcmp(joined, effect));
-}
-
-static int detail_has(unsigned y, const char* fragment) {
-    unsigned i;
-    for (i = 0; i < detail_count; i++)
-        if ((unsigned)detail_y[i] == y && strstr(detail_text[i], fragment)) {
-            assert(strlen(detail_text[i]) <= 48);
-            return 1;
-        }
-    return 0;
 }
 
 static void assert_relic_detail(const RunState* run, unsigned relic) {
@@ -173,6 +171,7 @@ static void test_events(void) {
             init_run(&run, seed);
             snapshot = run;
             rl_scene_nodes_begin(&run, &pool, RL_EVENT);
+            assert(gRlSceneEvent == event);
             draw();
             assert(!strcmp(shown->title, rl_events[event].name));
             assert(!memcmp(&run, &snapshot, sizeof(run)));
@@ -180,6 +179,7 @@ static void test_events(void) {
             run.rng ^= 0x12345678U;
             snapshot.rng = run.rng;
             rl_scene_nodes_begin(&run, &pool, RL_EVENT);
+            assert(gRlSceneEvent == event);
             draw();
             assert(!strcmp(shown->title, rl_events[event].name));
             assert(rl_scene_nodes_update(RL_UI_B) == RL_SCENE_ONGOING);
@@ -196,6 +196,11 @@ static void test_events(void) {
                 assert(run.party[2].species >= 1);
             if (event == 10 && choice == 0)
                 assert(run.tm_count == 1 && run.tm_moves[0]);
+            if (event == 8 && choice == 0) {
+                assert(!(run.relics & ((1U << RL_OLD_AMBER) |
+                                      (1U << RL_MASTER_BALL))));
+                assert(text_at(276, "Amber/Master Ball recruit unavailable."));
+            }
         }
     }
     init_run(&run, event_seed(0));
@@ -337,19 +342,9 @@ static void test_relic_inventory(void) {
         assert(choose(i) == RL_SCENE_ONGOING);
         draw();
         assert_relic_detail(&run, i);
-        if (i == RL_OLD_AMBER)
-            assert(detail_has(306, "spent this run"));
-        else if (i == RL_MASTER_BALL)
-            assert(detail_has(306, "boss-only limit unenforced"));
-        else if (i == RL_RAINBOW)
-            assert(detail_has(306, "heal is active"));
-        else if (i == RL_EARTH)
-            assert(detail_has(306, "One extra choice on each reward."));
-        else if (i == RL_AMULET)
-            assert(detail_has(306, "Run money bonus is active"));
-        else if (i == RL_EXP_SHARE || i == RL_LUCKY_EGG)
-            assert(detail_has(306, "XP bonus is active"));
-        else assert(detail_has(306, "not connected yet"));
+        if (i == RL_SILPH_SCOPE)
+            assert(!strcmp(rl_scene_relic_status(&run, i),
+                           "Roster preview is always available; no extra effect."));
     }
     assert(choose(RL_RELIC_COUNT) == RL_SCENE_ONGOING);
     assert(!strcmp(shown->title, "Bag: choose an item"));
@@ -419,6 +414,50 @@ static void test_shop(void) {
     assert(choose(14) == RL_SCENE_COMPLETED);
 }
 
+static void test_unavailable_relics(void) {
+    RunState run;
+    unsigned i, item, old_money;
+    RlU32 unavailable;
+    unavailable = (1U << RL_OLD_AMBER) | (1U << RL_MASTER_BALL);
+    assert(rl_scene_available_relics((1U << RL_RELIC_COUNT) - 1) ==
+           (((1U << RL_RELIC_COUNT) - 1) & ~unavailable));
+    profile.unlocked_relics = unavailable;
+    init_run(&run, 37);
+    old_money = run.money;
+    rl_scene_nodes_begin(&run, &pool, RL_MART);
+    draw();
+    item = shown->count;
+    for (i = 0; i < (unsigned)shown->count; i++) {
+        if (!strcmp(shown->items[i].text, "Relic unavailable")) {
+            item = i;
+            break;
+        }
+    }
+    assert(item < (unsigned)shown->count && shown->items[item].disabled);
+    assert(choose(item) == RL_SCENE_ONGOING);
+    draw();
+    assert(message && strstr(message, "Recruit action not implemented"));
+    assert(strstr(message, "Amber/Master Ball unavailable"));
+    assert(run.relics == 0 && run.money == old_money);
+    assert(text_at(354, "Amber/Master Ball recruit unavailable."));
+
+    profile.unlocked_events = 1U << 8;
+    init_run(&run, 99);
+    old_money = run.rng;
+    rl_scene_nodes_begin(&run, &pool, RL_EVENT);
+    draw();
+    assert(!strcmp(shown->title, rl_events[8].name));
+    assert(text_at(276, "Amber/Master Ball recruit unavailable."));
+    assert(choose(0) == RL_SCENE_ONGOING);
+    draw();
+    assert(message &&
+           strstr(message, "No available relics. Amber/Master Ball recruit unavailable."));
+    assert(run.relics == 0 && run.rng == old_money);
+    rl_meta_init(&profile);
+    profile.unlocked_events = (1U << RL_EVENT_COUNT) - 1;
+    profile.unlocked_relics = (1U << RL_RELIC_COUNT) - 1;
+}
+
 static void test_locked_profile(void) {
     RunState run;
     unsigned seed, event, i;
@@ -480,6 +519,7 @@ int main(void) {
     test_bag_party();
     test_relic_inventory();
     test_shop();
+    test_unavailable_relics();
     test_locked_profile();
     puts("Scene interactions: events, Center, recruit, shop, relic details, Bag, TM and Party passed");
     return 0;

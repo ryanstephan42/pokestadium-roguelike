@@ -91,6 +91,7 @@ extern const RlPool rl_placeholder_pool;
 extern const RlEventDef rl_events[RL_EVENT_COUNT];
 extern const RlRelicDef rl_relic_defs[RL_RELIC_COUNT];
 const char *rl_scene_relic_status(const RunState *run, unsigned relic);
+RlU32 rl_scene_available_relics(RlU32 permitted);
 
 RlU32 rl_random(RlU32 *state);
 RlU32 rl_random_bounded(RlU32 *state, RlU32 limit);

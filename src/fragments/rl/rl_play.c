@@ -554,7 +554,8 @@ static void rl_play_make_rewards(void) {
     sPlayRewardPool.count = gRlPendingBattle.trainer_count;
     sPlayRewardPool.fixed_order = 0;
     sPlayRewardCount = (int)rl_rewards_generate_unlocked(&gRlRun, &sPlayRewardPool, NULL,
-                                                rl_meta_permitted_relics(&sPlayMeta),
+                                                rl_scene_available_relics(
+                                                    rl_meta_permitted_relics(&sPlayMeta)),
                                                 sPlayRewards,
                                                 RL_PLAY_REWARD_SIZE);
     if (sPlayRewardCount != (int)rl_relic_reward_count(gRlRun.relics)) {
@@ -1337,6 +1338,8 @@ void rl_play_draw(void) {
             rl_play_number(sPlayLabels[8], gRlRun.party_count, 1);
             sPlayLabels[8][1] = '\0';
             rl_ui_text(200, 326, sPlayLabels[8], sPlayWhite);
+            rl_ui_text_wrap(44, 356, 360, 2,
+                "Amber / Master Ball unavailable:\nrecruit actions not implemented.", sPlayMuted);
             break;
         case RL_PLAY_SUMMARY:
             rl_ui_text(44, 40, gRlRun.phase == RL_WON ? "RUN COMPLETE" : "RUN ENDED",

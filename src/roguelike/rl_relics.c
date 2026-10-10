@@ -32,6 +32,8 @@ const char *rl_scene_relic_status(const RunState *run, unsigned relic) {
     case RL_AMULET: return "Run money bonus is active.";
     case RL_EXP_SHARE:
     case RL_LUCKY_EGG: return "Battle XP bonus is active after wins.";
+    case RL_SILPH_SCOPE:
+        return "Roster preview is always available; no extra effect.";
     case RL_OLD_AMBER:
         if (run->consumed_relics & (1U << relic))
             return "Recruit use spent this run.";
@@ -42,6 +44,11 @@ const char *rl_scene_relic_status(const RunState *run, unsigned relic) {
         return "Recruit UI missing; boss-only limit unenforced.";
     default: return "Native battle effect not connected yet.";
     }
+}
+
+RlU32 rl_scene_available_relics(RlU32 permitted) {
+    return permitted & (((1U << RL_RELIC_COUNT) - 1U) &
+                        ~((1U << RL_OLD_AMBER) | (1U << RL_MASTER_BALL)));
 }
 
 static const RlAscension ascensions[11] = {

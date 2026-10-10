@@ -11,7 +11,7 @@ from tools.rltest.frontend import Frontend
 from tools.rltest.run import default_core
 from tools.rltest.save_roundtrip import boot, native_command, save_ram
 from tools.rltest.test_play_run import (
-    SCENE_MAP, press, read_run, enter_roguelike_from_menu, require,
+    SCENE_MAP, press, read_run, enter_roguelike_from_menu, reenter_roguelike, require,
     run_native_loss_only, start_new_run, wait_scene,
 )
 
@@ -46,6 +46,18 @@ def phase(directory, reload_only):
                 f"new profile was reset or granted locked content: {masks}")
         if reload_only:
             enter_roguelike_from_menu(emu)
+            start_new_run(emu, 99, 0)
+            for _ in range(3):
+                press(emu, "DOWN")
+            press(emu, "N64_A")
+            wait_scene(emu, 8)
+            emu.step(30)
+            event = emu.read_u32("gRlSceneEvent")
+            require(event < 8, f"new profile offered locked event {event}")
+            emu.screenshot(directory / "locked-profile-event.png")
+            press(emu, "START", after=80)
+            emu.wait_state(4, frames=600)
+            reenter_roguelike(emu)
             start_new_run(emu, 8, 0)
             run = read_run(emu)
             require(run.ascension == 0, "new profile selected locked ascension")
@@ -57,7 +69,8 @@ def phase(directory, reload_only):
             again, again_masks = load_profile(emu, from_exit=True)
             require(again[4:7] == (1, 0, 1) and again_masks == masks,
                     "re-entry counted the terminal loss twice or reset profile")
-            print("META COLD RELOAD PASSED: one native loss, retained unlock masks")
+            print(f"META COLD RELOAD PASSED: one native loss, retained unlock masks, "
+                  f"locked profile selected permitted event {event}")
         else:
             _, data = save_ram(emu)
             (directory / "meta-save.bin").write_bytes(data)
