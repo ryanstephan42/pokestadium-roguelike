@@ -136,6 +136,14 @@ Fragment* func_80018FF4(MainPoolState* arg0, unk_func_800041C0* arg1, PERSSZP* a
 }
 
 void func_80019128(MainPoolState* arg0, u32 arg1, Fragment* arg2) {
+#ifdef ROGUELIKE
+    extern int rl_relocate_archive_imports(unsigned int, unsigned int*);
+    if (rl_relocate_archive_imports(arg1, (unsigned int*)arg2) < 0) {
+        osSyncPrintf("Unsupported original archive battle import\n");
+        osStopThread(NULL);
+    }
+    osWritebackDCache(arg2, arg2->sizeInRam);
+#endif
     Memmap_RelocateFragment(arg1, arg2);
     func_80002E3C(arg0, ((u32)arg2 + arg2->sizeInRam) - (u32)arg0->listHeadR);
 }

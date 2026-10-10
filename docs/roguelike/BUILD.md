@@ -107,7 +107,36 @@ before changing that section's internal layout.
 
 Two more points:
 - Header metadata words (offsets 0x10–0x1F) are linker constants, so they are excluded from all tables.
-- With `RL_REGEN_FRAGMENTS=62`, the real RL build's fragment 62 table matches the original set exactly (27,903 entries).
+- The unmodified fragment62 parity test covers 27,903 original entries. Modified
+  code can add relocations; parity alone does not prove callback execution.
+
+### Original animation archive imports
+
+The common animation import archive (fragment ID0) contains typed R_MIPS_26
+jump stubs into fragment62. Native fragment regeneration does not process this
+external archive, and an input-section anchor cannot track functions moving
+inside a grown C object. `gen_archive_imports.py` reads exact original global
+`func_*` symbols from the vanilla ELF and emits original-address/final-linked
+symbol pairs. IDO uses NOTYPE for some functions; OBJECT symbols are excluded
+and ambiguous aliases fail generation. Output stays under `build_rl/`.
+
+When fragment62 is selected for regeneration, the original archive load routes
+in `3FB0.c` and `19840.c` translate only fragment0 R_MIPS_26 targets into62.
+The lookup requires an exact function start, preserves J/JAL opcode and
+alignment/virtual-region constraints, and rejects unknown/unsupported battle
+imports with a logged loader-thread halt rather than guessing. Generated ELF
+fragments do not enter this translation: a new address may equal another old
+function address, so address ranges alone cannot determine provenance.
+Local/self, resident and other-fragment targets remain untouched. Native
+relocation then calls `Memmap_GetFragmentVaddr`, clears the original relocation
+table, and handles instruction/data cache synchronization; the pre-relocation
+repair also writes back modified data before native cache invalidation.
+
+This is not a general raw-pointer repair. Other archives, untyped callback
+words, interior-function targets and movement in other fragments still need
+separately proven provenance. Run `make -C host_tests native-import-test` and
+`python3 -m tools.rltest.test_custom_battle` for targeted import regressions
+and actual consecutive animation/KO/result/persistence proof.
 
 Some fragments' original tables leave out relocations to resident (0x80…) targets. For fragment 57,
 the regenerated table has 1,417 entries against the original 608, and the original is a strict subset. The

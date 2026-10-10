@@ -13,7 +13,13 @@ UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
 
 .PHONY: test core-test ui-test clean
 
-test: core-test ui-test
+test: core-test ui-test native-import-test
+
+native-import-test:
+	mkdir -p ../build/host_tests
+	$(CC) $(CFLAGS) test_native_imports.c ../src/roguelike/rl_native_imports.c -o ../build/host_tests/native-imports
+	../build/host_tests/native-imports
+	cd .. && python3 -m unittest host_tests.test_archive_import_generator
 
 core-test:
 	@set -e; trap 'rm -f test_core test_core_san' EXIT; \
