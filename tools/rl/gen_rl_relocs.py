@@ -64,6 +64,9 @@ def read_relocs(elf_path, section=FRAG_SECTION, original=None, anchors=None, map
                 frag_off = r_offset - target_addr
                 if not 0 <= frag_off < 0x1000000:
                     sys.exit(f"gen_rl_relocs: reloc outside fragment at 0x{r_offset:08X}")
+                if 0x10 <= frag_off < 0x20:
+                    # Header size/offset words are linker constants, not pointers.
+                    continue
                 out.append((rtype << 24) | frag_off)
         elif sh_type == 4 and sh_info == target_idx:  # SHT_RELA
             sys.exit("gen_rl_relocs: RELA relocations are not supported")
