@@ -14,6 +14,7 @@ new worktree with `scripts/rl-worktree-setup.sh`, then run:
 ```sh
 tools/rltest/run_smoke.sh
 python3 -m unittest tools.rltest.tests.test_helpers
+python3 -m tools.rltest.run battle-fixture
 ```
 
 The smoke runner builds nothing. It steps past the intro, asserts
@@ -87,14 +88,19 @@ loaded overlay symbol.
 
 ## Battle scenarios and generated files
 
-`python3 -m tools.rltest.run battle-fixture` is an experimental Battle Now! 1P
-navigation scenario. It advances the default setup using timed N64 A inputs and
-only saves a state/screenshot/RDRAM snapshot if both active fragment-62 mons
-are detected. The generic Battle Now confirmation flow is not yet reliable on
-all screens; if it cannot reach battle, it exits non-zero and writes an
-`battle-now-incomplete` screenshot/snapshot for diagnosis instead of claiming
-that a battle fixture was created. The output is under `.local/rltest/` and
-never belongs in Git.
+`python3 -m tools.rltest.run battle-fixture` boots through Stadium's Poke Cup,
+chooses a six-rental team containing Bulbasaur, Ivysaur and Squirtle, selects
+those three for battle, and waits for initialized fragment-62 mons. It asserts
+the live lead is the expected level-50 Bulbasaur with moves `[73, 92, 34, 75]`,
+then saves a battle state, screenshot and RDRAM snapshot under
+`.local/rltest/`. It also saves `battle-now-attack-menu.state` after entering
+the move-selection screen for W2's live HP/PP verifier. A real Body Slam was
+verified from this freshly booted state: slot-2 PP decremented once, both
+live HP values changed, party HP converged after animation, and PP-Up bits
+were preserved. Damage and hit outcomes depend on the game's time-based RNG.
+If navigation or the lead assertion fails, the command exits non-zero rather
+than claiming fixture success. ROM-derived states, snapshots, and screenshots
+are local-only and never belong in Git.
 
 After W0/W3 add their RL dispatcher test script, run its custom-battle test
 against `build_rl/pokestadium-us.z64` and `build_rl/pokestadium-us.map`. It uses
