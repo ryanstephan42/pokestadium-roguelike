@@ -10,6 +10,7 @@
 #define RL_ITEM_COUNT 13
 #define RL_EVENT_COUNT 12
 #define RL_NO_SLOT 255
+#define RL_TM_CAPACITY 16
 
 enum RlResult { RL_OK, RL_INVALID, RL_FULL, RL_EMPTY, RL_FUNDS, RL_CORRUPT };
 enum RlNodeType { RL_BATTLE, RL_ELITE, RL_CENTER, RL_MART,
@@ -43,13 +44,14 @@ typedef struct RlMon {
     RlU32 exp;
     RlU16 dvs, stat_exp[5];
     RlU8 base_stats[5];
+    RlU16 current_stats[5];
     RlU8 moves[4], pp[4], max_pp[4];
     RlU16 cur_hp, max_hp;
     RlU8 status, held_relic;
     char nickname[11];
 } RlMon;
 
-typedef struct RlNode { RlU8 type, edges; } RlNode;
+typedef struct RlNode { RlU8 type, edges, target_species; } RlNode;
 typedef struct RlMap {
     RlU8 lanes[RL_ROWS];
     RlNode nodes[RL_ROWS][RL_LANES];
@@ -62,6 +64,7 @@ typedef struct RunState {
     RlMon party[RL_PARTY];
     RlU16 bag[RL_ITEM_COUNT];
     RlU32 money, relics, consumed_relics;
+    RlU8 tm_count, tm_moves[RL_TM_CAPACITY];
     RlStats stats;
     RlMon daycare;
     RlU8 daycare_nodes, daycare_active;
@@ -71,6 +74,9 @@ typedef struct RlPool {
     RlU16 count;
     RlU8 fixed_order;
 } RlPool;
+typedef struct RlMovePool { const RlU8 *moves; RlU8 count; } RlMovePool;
+typedef int (*RlCanLearnMove)(const RlMon *mon, RlU8 move, RlU8 *max_pp,
+                              void *context);
 typedef struct RlReward { RlU8 kind, detail; RlU16 amount; RlMon mon; } RlReward;
 typedef struct RlShopEntry { RlU8 item, detail; RlU16 price; } RlShopEntry;
 typedef struct RlEventDef { const char *name; const char *choices[2]; } RlEventDef;
@@ -94,27 +100,36 @@ int rl_run_on_battle_result(RunState *run, int won, RlU8 active_mask);
 int rl_run_is_over(const RunState *run);
 void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension);
 int rl_map_valid(const RlMap *map);
+unsigned rl_map_rows(unsigned act);
 RlAscension rl_ascension(unsigned level);
 unsigned rl_enemy_level(unsigned act, unsigned row, unsigned type, unsigned ascension);
 int rl_enemy_generate(RunState *run, const RlPool *pool, unsigned type,
                       RlMon *team, unsigned count);
 RlU32 rl_xp_for_level(unsigned level, unsigned growth);
 int rl_mon_add_xp(RlMon *mon, RlU32 xp);
+unsigned rl_mon_stat_value(const RlMon *mon, unsigned stat, unsigned level);
+void rl_mon_recalculate_stats(RlMon *mon, int preserve_hp);
 void rl_mon_heal(RlMon *mon, unsigned percent);
+void rl_mon_restore_hp(RlMon *mon, unsigned amount);
 int rl_party_recruit(RunState *run, const RlMon *mon);
 int rl_party_release(RunState *run, unsigned slot);
 int rl_party_swap(RunState *run, unsigned a, unsigned b);
 int rl_party_revive(RunState *run, unsigned slot);
 int rl_item_use(RunState *run, unsigned item, unsigned slot, unsigned move);
 unsigned rl_rewards_generate(RunState *run, const RlPool *pool,
+                             const RlMovePool *moves,
                              RlReward *out, unsigned capacity);
 int rl_reward_apply(RunState *run, const RlReward *reward);
-unsigned rl_shop_generate(RunState *run, RlShopEntry *out, unsigned capacity);
+unsigned rl_shop_generate(RunState *run, const RlMovePool *moves,
+                          RlShopEntry *out, unsigned capacity);
 int rl_shop_buy(RunState *run, const RlShopEntry *entry);
+int rl_tm_teach(RunState *run, unsigned tm_slot, unsigned party_slot,
+                unsigned move_slot, RlCanLearnMove can_learn, void *context);
 unsigned rl_event_wild_options(const RunState *run, const RlPool *pool,
                                RlMon *out, unsigned capacity);
 int rl_event_resolve(RunState *run, unsigned event, unsigned choice,
-                     unsigned slot, const RlPool *pool);
+                     unsigned slot, const RlPool *pool,
+                     const RlMovePool *moves);
 unsigned rl_relic_modify_stat(RlU32 relics, unsigned stat, unsigned base);
 unsigned rl_relic_modify_damage(RlU32 relics, unsigned type, unsigned base);
 unsigned rl_relic_modify_money(RlU32 relics, unsigned base);

@@ -1,7 +1,5 @@
 /* PURE */
 #include "rl_save_format.h"
-#include <string.h>
-
 #define RL_SAVE_MAGIC 0x56534c52U
 
 typedef struct RlWriter {
@@ -12,6 +10,15 @@ typedef struct RlReader {
     const RlU8 *data;
     unsigned len, pos, failed;
 } RlReader;
+
+static void copy_bytes(void *target, const void *source, unsigned size) {
+    volatile unsigned char *to;
+    const volatile unsigned char *from;
+    unsigned i;
+    to = (volatile unsigned char *)target;
+    from = (const volatile unsigned char *)source;
+    for (i = 0; i < size; i++) to[i] = from[i];
+}
 
 static void put8(RlWriter *w, RlU8 value) {
     if (w->pos >= w->cap) { w->failed = 1; return; }
@@ -64,6 +71,7 @@ static void write_mon(RlWriter *w, const RlMon *mon) {
 
 static void read_mon(RlReader *r, RlMon *mon) {
     unsigned i;
+    for (i = 0; i < 5; i++) mon->current_stats[i] = 0;
     mon->species = get8(r); mon->level = get8(r);
     mon->growth = get8(r); mon->fainted = get8(r);
     mon->exp = get32(r); mon->dvs = get16(r);
@@ -75,6 +83,14 @@ static void read_mon(RlReader *r, RlMon *mon) {
     mon->cur_hp = get16(r); mon->max_hp = get16(r);
     mon->status = get8(r); mon->held_relic = get8(r);
     for (i = 0; i < 11; i++) mon->nickname[i] = (char)get8(r);
+    if (mon->species && mon->level) {
+        RlU16 max_hp;
+        max_hp = mon->max_hp;
+        if (rl_mon_stat_value(mon, RL_HP, mon->level) != max_hp)
+            r->failed = 1;
+        rl_mon_recalculate_stats(mon, 0);
+        if (mon->max_hp != max_hp) r->failed = 1;
+    }
 }
 
 static void write_run(RlWriter *w, const RunState *run) {
@@ -87,6 +103,7 @@ static void write_run(RlWriter *w, const RunState *run) {
         for (j = 0; j < RL_LANES; j++) {
             put8(w, run->map.nodes[i][j].type);
             put8(w, run->map.nodes[i][j].edges);
+            put8(w, run->map.nodes[i][j].target_species);
         }
     }
     for (i = 0; i < RL_PARTY; i++) write_mon(w, &run->party[i]);
@@ -94,6 +111,8 @@ static void write_run(RlWriter *w, const RunState *run) {
     put32(w, run->money); put32(w, run->relics); put32(w, run->consumed_relics);
     put32(w, run->stats.battles); put32(w, run->stats.wins);
     put32(w, run->stats.nodes); put32(w, run->stats.recruits);
+    put8(w, run->tm_count);
+    for (i = 0; i < RL_TM_CAPACITY; i++) put8(w, run->tm_moves[i]);
     write_mon(w, &run->daycare);
     put8(w, run->daycare_nodes); put8(w, run->daycare_active);
 }
@@ -108,6 +127,7 @@ static void read_run(RlReader *r, RunState *run) {
         for (j = 0; j < RL_LANES; j++) {
             run->map.nodes[i][j].type = get8(r);
             run->map.nodes[i][j].edges = get8(r);
+            run->map.nodes[i][j].target_species = get8(r);
         }
     }
     for (i = 0; i < RL_PARTY; i++) read_mon(r, &run->party[i]);
@@ -116,30 +136,73 @@ static void read_run(RlReader *r, RunState *run) {
     run->consumed_relics = get32(r);
     run->stats.battles = get32(r); run->stats.wins = get32(r);
     run->stats.nodes = get32(r); run->stats.recruits = get32(r);
+    run->tm_count = get8(r);
+    for (i = 0; i < RL_TM_CAPACITY; i++) run->tm_moves[i] = get8(r);
     read_mon(r, &run->daycare);
     run->daycare_nodes = get8(r); run->daycare_active = get8(r);
 }
 
 static int valid_mon(const RlMon *mon, int required) {
+    unsigned i;
     if (!mon) return 0;
-    if (!mon->species) return !required;
-    if (!mon->level || mon->level > 100 || mon->growth > RL_MEDIUM_SLOW ||
-        mon->cur_hp > mon->max_hp || mon->nickname[10] != '\0') return 0;
+    if (!mon->species) {
+        if (required || mon->level || mon->exp || mon->dvs ||
+            mon->cur_hp || mon->max_hp || mon->fainted || mon->growth ||
+            mon->status || mon->held_relic) return 0;
+        for (i = 0; i < 5; i++)
+            if (mon->stat_exp[i] || mon->base_stats[i] ||
+                mon->current_stats[i]) return 0;
+        for (i = 0; i < 4; i++)
+            if (mon->moves[i] || mon->pp[i] || mon->max_pp[i]) return 0;
+        for (i = 0; i < 11; i++)
+            if (mon->nickname[i]) return 0;
+        return 1;
+    }
+    if (mon->species > 151 || !mon->level || mon->level > 100 ||
+        mon->growth > RL_MEDIUM_SLOW || mon->cur_hp > mon->max_hp ||
+        !mon->max_hp || mon->fainted > 1 ||
+        mon->fainted != (mon->cur_hp == 0) || mon->nickname[10] != '\0' ||
+        (mon->held_relic != RL_NO_SLOT &&
+         mon->held_relic >= RL_RELIC_COUNT)) return 0;
+    for (i = 0; i < 4; i++)
+        if (mon->pp[i] > mon->max_pp[i]) return 0;
+    if (rl_mon_stat_value(mon, RL_HP, mon->level) != mon->max_hp) return 0;
     return 1;
 }
 
 static int valid_run(const RunState *run) {
-    unsigned i;
-    if (!run || run->act > 4 || run->phase > RL_LOST ||
+    unsigned i, j;
+    if (!run || run->act > 3 || run->phase > RL_LOST ||
         run->ascension > 10 || run->party_count > RL_PARTY ||
-        run->daycare_active > 2 || !rl_map_valid(&run->map)) return 0;
+        run->daycare_active > 2 || run->tm_count > RL_TM_CAPACITY ||
+        (run->consumed_relics & ~run->relics) ||
+        (run->relics >> RL_RELIC_COUNT) || !rl_map_valid(&run->map))
+        return 0;
+    for (i = 0; i < RL_ITEM_COUNT; i++)
+        if (run->bag[i] > 999) return 0;
+    for (i = 0; i < RL_TM_CAPACITY; i++) {
+        if (i < run->tm_count) {
+            if (!run->tm_moves[i] || run->tm_moves[i] > 165) return 0;
+        } else if (run->tm_moves[i]) return 0;
+    }
+    for (i = 0; i < RL_ROWS; i++)
+        for (j = 0; j < RL_LANES; j++) {
+            if (run->map.nodes[i][j].target_species > 151) return 0;
+            if (i == RL_ROWS - 1 &&
+                run->map.nodes[i][j].target_species !=
+                    (run->act == 3 ? 150 : 0)) return 0;
+        }
     if (run->row == RL_NO_SLOT) {
         if (run->lane != RL_NO_SLOT) return 0;
     } else if (run->row >= RL_ROWS ||
                run->lane >= run->map.lanes[run->row]) return 0;
     for (i = 0; i < RL_PARTY; i++)
         if (!valid_mon(&run->party[i], i < run->party_count)) return 0;
-    if (run->daycare_active && !valid_mon(&run->daycare, 1)) return 0;
+    if (run->daycare_active) {
+        if (!valid_mon(&run->daycare, 1)) return 0;
+        if ((run->daycare_active == 1 && run->daycare_nodes > 1) ||
+            (run->daycare_active == 2 && run->daycare_nodes != 2)) return 0;
+    } else if (run->daycare_nodes || !valid_mon(&run->daycare, 0)) return 0;
     return 1;
 }
 
@@ -222,8 +285,8 @@ int rl_save_decode(RlMeta *meta, RunState *run, RlU8 *has_run,
         if (!valid_run(&decoded_run)) return RL_CORRUPT;
     }
     if (r.failed || r.pos != r.len) return RL_CORRUPT;
-    *meta = decoded_meta;
-    if (flag) *run = decoded_run;
+    copy_bytes(meta, &decoded_meta, sizeof(*meta));
+    if (flag) copy_bytes(run, &decoded_run, sizeof(*run));
     *has_run = (RlU8)flag;
     return RL_OK;
 }

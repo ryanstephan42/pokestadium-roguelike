@@ -1,13 +1,24 @@
 /* PURE */
 #include "rl_core.h"
-#include <string.h>
+
+static void rl_zero_bytes(void *target, unsigned size) {
+    volatile unsigned char *bytes;
+    unsigned i;
+    bytes = (volatile unsigned char *)target;
+    for (i = 0; i < size; i++) bytes[i] = 0;
+}
+
+unsigned rl_map_rows(unsigned act) {
+    (void)act;
+    return RL_ROWS;
+}
 
 void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension) {
     unsigned row, lane, center_row, center_lane, next, type;
     RlAscension asc;
-    (void)act;
     if (!map || !rng) return;
-    memset(map, 0, sizeof(*map));
+    if (act > 3) act = 3;
+    rl_zero_bytes(map, sizeof(*map));
     asc = rl_ascension(ascension);
     center_row = 2 + rl_random_bounded(rng, 4);
     for (row = 0; row < RL_ROWS; row++) {
@@ -23,6 +34,9 @@ void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension) {
     map->nodes[center_row][center_lane].type = RL_CENTER;
     for (lane = 0; lane < map->lanes[RL_ROWS - 1]; lane++)
         map->nodes[RL_ROWS - 1][lane].type = RL_BOSS;
+    if (act == 3)
+        for (lane = 0; lane < map->lanes[RL_ROWS - 1]; lane++)
+            map->nodes[RL_ROWS - 1][lane].target_species = 150;
     for (row = 0; row < RL_ROWS - 1; row++) {
         next = map->lanes[row + 1];
         for (lane = 0; lane < map->lanes[row]; lane++) {
@@ -54,6 +68,8 @@ int rl_map_valid(const RlMap *map) {
             const RlNode *node;
             node = &map->nodes[row][lane];
             if (node->type > RL_BOSS) return 0;
+            if (node->target_species > 151) return 0;
+            if (row < RL_ROWS - 1 && node->target_species) return 0;
             if ((row == RL_ROWS - 1) != (node->type == RL_BOSS)) return 0;
             if (row < 2 && node->type == RL_ELITE) return 0;
             if (node->type == RL_CENTER && row < RL_ROWS - 1) center = 1;

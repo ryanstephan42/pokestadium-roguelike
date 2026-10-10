@@ -3,13 +3,17 @@
 
 static const RlMon placeholder[] = {
     {1,30,RL_MEDIUM_SLOW,0,21760,0x8888,{0,0,0,0,0},{45,49,49,45,65},
-     {33,45,73,22},{35,40,10,25},{35,40,10,25},80,80,0,RL_NO_SLOT,"Bulbasaur"},
+     {0,0,0,0,0},
+     {33,45,73,22},{35,40,10,25},{35,40,10,25},67,67,0,RL_NO_SLOT,"Bulbasaur"},
     {4,30,RL_MEDIUM_SLOW,0,21760,0x8888,{0,0,0,0,0},{39,52,43,65,50},
-     {10,45,52,43},{35,40,25,30},{35,40,25,30},75,75,0,RL_NO_SLOT,"Charmander"},
+     {0,0,0,0,0},
+     {10,45,52,43},{35,40,25,30},{35,40,25,30},63,63,0,RL_NO_SLOT,"Charmander"},
     {7,30,RL_MEDIUM_SLOW,0,21760,0x8888,{0,0,0,0,0},{44,48,65,43,50},
-     {33,39,55,44},{35,30,25,25},{35,30,25,25},85,85,0,RL_NO_SLOT,"Squirtle"},
+     {0,0,0,0,0},
+     {33,39,55,44},{35,30,25,25},{35,30,25,25},66,66,0,RL_NO_SLOT,"Squirtle"},
     {25,30,RL_MEDIUM_FAST,0,27000,0x8888,{0,0,0,0,0},{35,55,30,90,50},
-     {84,45,98,86},{30,40,30,20},{30,40,30,20},70,70,0,RL_NO_SLOT,"Pikachu"}
+     {0,0,0,0,0},
+     {84,45,98,86},{30,40,30,20},{30,40,30,20},61,61,0,RL_NO_SLOT,"Pikachu"}
 };
 const RlPool rl_placeholder_pool = { placeholder, 4, 0 };
 
@@ -28,8 +32,7 @@ unsigned rl_enemy_level(unsigned act, unsigned row, unsigned type, unsigned asce
 
 int rl_enemy_generate(RunState *run, const RlPool *pool, unsigned type,
                       RlMon *team, unsigned count) {
-    unsigned i, j, dv, level, base_level;
-    RlU16 hp;
+    unsigned i, j, dv, level;
     RlAscension asc;
     if (!run || !pool || !pool->mons || !pool->count || !team ||
         !count || count > RL_PARTY || run->row >= RL_ROWS ||
@@ -43,16 +46,13 @@ int rl_enemy_generate(RunState *run, const RlPool *pool, unsigned type,
         index = pool->fixed_order ? i % pool->count :
             rl_random_bounded(&run->rng, pool->count);
         team[i] = pool->mons[index];
-        base_level = team[i].level ? team[i].level : 1;
-        hp = team[i].max_hp;
-        team[i].max_hp = (RlU16)((unsigned)hp * level / base_level);
-        if (!team[i].max_hp) team[i].max_hp = 1;
-        team[i].cur_hp = team[i].max_hp;
         team[i].level = (RlU8)level;
         team[i].exp = rl_xp_for_level(level, team[i].growth);
         team[i].dvs = (RlU16)(dv * 0x1111U);
         for (j = 0; j < 5; j++)
             team[i].stat_exp[j] = (RlU16)((run->act * 7 + run->row + 1) * 2000);
+        rl_mon_recalculate_stats(&team[i], 0);
+        team[i].cur_hp = team[i].max_hp;
         team[i].fainted = 0;
         team[i].status = 0;
     }

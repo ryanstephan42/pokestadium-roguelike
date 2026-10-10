@@ -1,10 +1,10 @@
 # Roguelike pure-C core
 
 `src/roguelike/rl_*.c` is the platform-independent run model. The modules marked
-`PURE` include only `rl_core.h`, `rl_types.h`, and standard C library facilities
-(`string.h` where needed). They do not use libultra, game headers, heap
-allocation, floats, or global game RNG. The public interface is C89-compatible
-and can be built by host GCC or the decomp's IDO compiler.
+`PURE` use only `rl_core.h`, `rl_types.h`, and C89 language facilities. They do
+not use libultra, game headers, libc memory functions, heap allocation, floats,
+or global game RNG. The public interface is C89-compatible and can be built by
+host GCC or the decomp's IDO compiler.
 
 ## Battle record boundary
 
@@ -15,8 +15,9 @@ arrays. The Pokémon base-stat table is species-indexed (including its dummy
 species-zero entry); the adapter is responsible for table lookup and translates
 the decomp's legacy field names into the combat order above.
 
-`dvs` is the Gen 1 packed DV word; zero is a real DV value and must not trigger
-a default. `moves`, current `pp`, and `max_pp` are separate unpacked byte arrays.
+`dvs` is the Gen 1 packed DV word (Attack, Defense, Speed, Special nibbles in
+ascending bit order); zero is a real DV value and must not trigger a default.
+`moves`, current `pp`, and `max_pp` are separate unpacked byte arrays.
 The battle adapter owns conversion to/from native packed PP-Up representation,
 game-encoded nicknames, and concrete expanded/party records. `status` and
 `fainted` remain separate: HP zero is authoritative for fainting, while status
@@ -47,7 +48,8 @@ subset does not shift persistent run slots.
    battles call `rl_run_on_battle_result`.
 4. A won battle enters `RL_REWARD`; call `rl_rewards_generate` and
    `rl_reward_apply` for the player's selected offer. `rl_run_finish_node`
-   advances the map or creates the next act; finishing act 3's boss marks `RL_WON`.
+   advances the map or creates the next act. Acts 0–2 are followed by a finale
+   map at act 3; winning its boss node marks `RL_WON`.
 5. Loss of the entire party or a lost boss battle marks `RL_LOST`.
 
 `rl_run_advance` requires at least one party member. `active_mask` passed to the
@@ -68,11 +70,15 @@ ascension money reduction before the Amulet Coin bonus.
 - `rl_enemy_generate` accepts an `RlPool` supplied by the caller. Pools from
   extracted trainer/rental tables can be passed without changing core logic.
   `fixed_order` preserves source order for signature teams; otherwise selections
-  use the run RNG. The built-in four-mon pool is fixture data only, not final
-  Stadium roster content. Boss scripts should pass their signature pool.
+  use the run RNG. In act 3, map boss nodes carry `target_species == 150` to
+  identify the Mewtwo finale encounter; the integrator must supply its complete
+  VS Mewtwo signature team, not a one-Pokémon Mewtwo record. The built-in
+  four-mon pool is fixture data only, not final Stadium roster content.
 - `rl_enemy_level` applies act base + 2 per row + ascension level bonus,
   +3 for elites and +5 for bosses, capped at 100. Elite/boss DVs are max;
-  ordinary DVs and stat experience rise with depth. Supplied records are copied;
+  ordinary DVs and stat experience rise with depth. Scaled stats use the shared
+  Gen 1 recalculation helper rather than linear HP scaling; level-ups preserve
+  the Pokémon's absolute missing HP. Supplied records are copied and zero
   DVs/stat experience are not silently defaulted.
 - `rl_xp_for_level` implements Gen 1 Fast, Medium Fast, Medium Slow and Slow
   growth curves. `rl_mon_add_xp` updates level/HP using Gen 1 stat math and
@@ -82,14 +88,29 @@ ascension money reduction before the Amulet Coin bonus.
 ## Party, rewards, events, relics
 
 Party helpers cover recruiting/releasing/swapping/reviving, healing, and
-between-node item use (`rl_item_use`). Rewards return three choices, or four
-with Earth Badge. Shop inventory has act-scaled prices and includes consumables,
-a relic offer and a TM offer. `rl_event_resolve` uses event and choice indices
-matching `rl_events`; it mutates run data only and performs no UI or battle
-transition. `rl_event_wild_options` previews three Safari Zone candidates from a
-copy of the run RNG; resolving option 0–2 consumes the same draws and recruits
-the displayed candidate. The twelve event entries include the eight launch-plan events and
-four data-driven extensions. The placeholder pool is also used by tests;
+between-node item use (`rl_item_use`). Potion, Super Potion, and Hyper Potion
+restore fixed 20/50/200 HP respectively; Full Restore restores HP and status.
+None can revive a fainted Pokémon—use Revive or a Center's explicit revive
+choice. Percentage-based party/event/relic heals also leave fainted Pokémon
+fainted. Rewards return three choices, or four with Earth Badge. Shop inventory
+has act-scaled prices and includes consumables and a relic offer. A TM offer is
+included only when the caller supplies a valid `RlMovePool`; its actual move ID
+is stored in the run. Reward, shop, and Move Tutor TM IDs are carried forward
+without pretending that arbitrary moves are legal. `rl_tm_teach` requires the
+integrator to supply a species/move callback that confirms legality and returns
+that move's correct maximum PP before teaching it.
+
+Fossil resolution requires a canonical pool entry for the chosen fossil species
+(Kabuto 140 or Omanyte 138) and recalculates its stats at the event's level; it
+does not relabel unrelated data. Silph Co. similarly recalculates the selected
+canonical pool record at its new level. `rl_event_resolve` uses event and choice
+indices matching `rl_events`; its final `RlMovePool` argument provides candidate
+move IDs for Move Tutor and it mutates run data only, performing no UI or battle
+transition. `rl_event_wild_options` returns up to three candidates, bounded by
+both caller capacity and pool size. Resolving a displayed choice consumes the
+same RNG draws and recruits that candidate; a failed full-party recruit does
+not advance RNG. The twelve event entries include the eight launch-plan events
+and four data-driven extensions. The placeholder pool is fixture data only;
 W3/W10 extracted data should replace it at the integration boundary.
 
 Relics are a 32-bit bitset indexed by `enum RlRelic`. Hooks expose stat and
@@ -101,22 +122,25 @@ base game unless its caller opts in.
 
 ## Save wire format
 
-`rl_save_format.h` exposes version-1 little-endian serialization and CRC-32
+`rl_save_format.h` exposes version-2 little-endian serialization and CRC-32
 (IEEE polynomial `0xedb88320`). The 8-byte prefix contains `RLSV` magic,
 version, suspend flag, and ascension. Fixed-width meta fields and six fixed
 Hall-of-Fame records serialize to **361 bytes** including checksum, under the
-512-byte meta budget. An optional fixed-layout run suspend record adds 511
-bytes, for a maximum current record size of **872 bytes**. Buffer capacity is
-provided by the caller; the serializer allocates nothing and rejects malformed,
-wrong-version, truncated, oversized, or CRC-invalid records. Future layout
-changes must increment the version and preserve explicit byte encoding rather
-than dumping compiler structs.
+512-byte meta budget. An optional fixed-layout run suspend record adds 556
+bytes, for a maximum current record size of **917 bytes**. The suspend record
+includes map encounter targets and stored TM move IDs; derived current stats
+are recalculated from serialized base data on decode. Buffer capacity is
+provided by the caller; the serializer allocates nothing and rejects malformed
+species/PP/HP state, inconsistent derived HP, wrong-version, truncated,
+oversized, or CRC-invalid records. Future layout changes must increment the
+version and preserve explicit byte encoding rather than dumping compiler
+structs.
 
 ## Host validation
 
 Run `make -C host_tests test` for strict C89 compilation, seeded determinism,
-10,000 generated map validity checks, scaling, rewards/shop, relic math, Gen 1
-XP, party operations, and meta/suspend save round-trips and corruption
-detection. The target repeats the suite under AddressSanitizer and
-UndefinedBehaviorSanitizer. `scripts/rl-gate.sh` invokes this target when the
-host test Makefile exists.
+10,000 generated map validity checks, scaling, rewards/shop/TM detail, event
+pool and RNG behavior, healing/revive rules, relic math, Gen 1 XP, party
+operations, and meta/suspend save round-trips and corruption detection. The
+target repeats the suite under AddressSanitizer and UndefinedBehaviorSanitizer.
+`scripts/rl-gate.sh` invokes this target when the host test Makefile exists.
