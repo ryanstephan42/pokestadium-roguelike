@@ -28,7 +28,7 @@ Select (4). On success it writes the menu PNG under `.local/rltest/`. Set
 `make -C host_tests test` includes strict C89 and ASan/UBSan content/meta
 tests, standalone IDO 7.1 compilation of every pure core module, the native
 roster/battle-adapter fixture, and extraction/balance-tool regressions.
-Content sweeps cover seeds 0–9999 across every act, matching v3 917-byte
+Content sweeps cover seeds 0–9999 across every act, matching v4 972-byte
 suspend encode/decode, node-local encounter determinism, reachable lanes and
 Centers, all boss transitions and 22-node completion at ascensions 0–10.
 The native adapter checks both rounds, all act bosses, real one-mon VS Mewtwo,

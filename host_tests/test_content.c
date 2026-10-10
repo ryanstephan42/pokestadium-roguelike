@@ -10,7 +10,7 @@ static void roundtrip(const RunState *run, RunState *restored) {
     unsigned size;
     memset(&meta, 0, sizeof(meta));
     assert(rl_save_encode(&meta, run, bytes, sizeof(bytes), &size) == RL_OK);
-    assert(size == 917);
+    assert(size == 972);
     assert(rl_save_decode(&loaded, restored, &has_run, bytes, size) == RL_OK);
     assert(has_run && restored->rng == run->rng);
     assert(!memcmp(&restored->map, &run->map, sizeof(run->map)));
@@ -186,6 +186,6 @@ int main(void) {
     test_complete_runs();
     test_scaling_and_money();
     test_unlock_offers();
-    puts("Content: 10000 seeds x 4 acts, v3 roundtrips, ascensions 0-10: OK");
+    puts("Content: 10000 seeds x 4 acts, v4 roundtrips, ascensions 0-10: OK");
     return 0;
 }

@@ -14,6 +14,7 @@ gcc "${flags[@]}" host_tests/test_battle_adapter.c build/host_tests/native-stat-
     src/roguelike/rl_content.c src/roguelike/rl_enemy.c \
     src/roguelike/rl_party.c src/roguelike/rl_relics.c \
     src/roguelike/rl_core.c src/roguelike/rl_map.c \
+    src/roguelike/rl_meta.c src/roguelike/rl_meta_content.c \
     -Wl,--gc-sections -o build/host_tests/battle-adapter
 build/host_tests/battle-adapter
 echo "Battle adapter: OK"

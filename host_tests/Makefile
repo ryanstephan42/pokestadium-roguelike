@@ -12,14 +12,15 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test clean
+.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test clean
 
-test: core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test
+test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test
 	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance
 
 ido-test:
 	mkdir -p ../build/host_tests
-	@set -e; for source in $(CORE) ../src/roguelike/rl_meta.c; do \
+	@set -e; for source in $(CORE) ../src/roguelike/rl_meta.c \
+		../src/roguelike/rl_meta_content.c; do \
 		../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared \
 		$(INCLUDES) $$source -o ../build/host_tests/ido-$$(basename $$source .c).o; \
 	done
@@ -36,6 +37,17 @@ meta-test:
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_meta.c $(CORE) \
 	../src/roguelike/rl_meta.c -o test_meta_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_meta_san
+
+meta-content-test:
+	@set -e; trap 'rm -f test_meta_content test_meta_content_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_meta_content.c $(CORE) \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_meta_content.c \
+	-o test_meta_content; \
+	./test_meta_content; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_meta_content.c $(CORE) \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_meta_content.c \
+	-o test_meta_content_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_meta_content_san
 
 .PHONY: scene-nodes-test
 scene-nodes-test:
@@ -85,10 +97,12 @@ native-import-test:
 save-test:
 	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \
-	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save; \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_save.c \
+	../src/roguelike/rl_pak.c -o test_save; \
 	./test_save; \
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_save.c $(CORE) \
-	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save_san; \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_save.c \
+	../src/roguelike/rl_pak.c -o test_save_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_save_san
 
 core-test:

@@ -541,13 +541,13 @@ static void test_save(void) {
     run.tm_count = 1;
     run.tm_moves[0] = 85;
     assert(rl_save_encode(&meta, 0, buffer, sizeof(buffer), &length) == RL_OK);
-    assert(length == 361);
+    assert(length == 416);
     assert(length <= RL_META_MAX_SIZE);
     assert(rl_save_decode(&loaded, 0, &has_run, buffer, length) == RL_OK);
     assert(!has_run && loaded.runs == meta.runs);
     assert(loaded.hall[0].species == meta.hall[0].species);
     assert(rl_save_encode(&meta, &run, buffer, sizeof(buffer), &length) == RL_OK);
-    assert(length == 917);
+    assert(length == 972);
     assert(rl_save_decode(&loaded, &restored, &has_run, buffer, length) == RL_OK);
     assert(has_run && restored.seed == run.seed);
     assert(restored.party_count == 1 && restored.party[0].species == run.party[0].species);
