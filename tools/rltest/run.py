@@ -76,37 +76,78 @@ def smoke(emu):
     emu.screenshot(emu.output / "menu-select.png")
 
 
-def battle_fixture(emu, attempts=80):
+def battle_fixture(emu):
+    """Boot a Poke Cup rental battle and save live-battle fixtures."""
     emu.wait_state(0x02, frames=60 * 60)
     emu.step(120)
     emu.press("START", frames=12, after=30)
     emu.wait_state(0x04, frames=60 * 20)
     emu.step(60)
     emu.press("N64_A", frames=12, after=45)
-    # Menu Select index 0 is the default. Left selects Battle Now; Down enters
-    # its 1P/2P submenu, and three A confirmations reach Battle Now! (1P).
-    emu.press("LEFT", frames=12, after=30)
-    emu.press("DOWN", frames=12, after=30)
-    for _ in range(3):
-        emu.press("N64_A", frames=12, after=30)
-    emu.wait_state(0x28, frames=60 * 20)
-    for _ in range(attempts):
-        mons = emu.battle_mons()
-        if mons:
-            path = emu.output / "battle-now.state"
-            emu.save(path)
-            emu.screenshot(emu.output / "battle-now.png")
-            emu.snapshot(emu.output / "battle-now.rdram")
-            print(f"Battle active at frame {emu.frame}; sides: {mons}")
-            print(f"Local fixture saved to {path}")
-            return
-        emu.press("N64_A", frames=12, after=18)
-    emu.snapshot(emu.output / "battle-now-incomplete.rdram")
-    emu.screenshot(emu.output / "battle-now-incomplete.png")
-    raise HarnessError(
-        "Battle Now setup did not reach fragment-62 active mons. "
-        "Inspect the latest screenshot/RAM snapshot, then adjust menu input."
-    )
+    emu.wait_state(0x04, frames=60 * 20)
+    emu.screenshot(emu.output / "battle-menu-select.png")
+
+    # Enter Stadium, select Poke Cup, Poke Ball, then Battle.
+    emu.press("N64_A", frames=12, after=180)
+    emu.wait_state(0x10, frames=60 * 20)
+    emu.press("N64_A", frames=12, after=240)
+    emu.wait_state(0x20, frames=60 * 20)
+    emu.press("N64_A", frames=12, after=150)
+    emu.press("N64_A", frames=12, after=180)
+    emu.press("N64_A", frames=12, after=180)
+    emu.press("N64_A", frames=12, after=150)
+    emu.screenshot(emu.output / "battle-rentals.png")
+
+    # Rent Bulbasaur and Ivysaur, navigate to Squirtle, then take the next
+    # three distinct rentals. Each rental uses a details screen and a Yes press.
+    for _ in range(2):
+        emu.press("N64_A", frames=12, after=150)
+        emu.press("N64_A", frames=12, after=180)
+    for button in ("LEFT", "LEFT", "DOWN", "DOWN"):
+        emu.press(button, frames=12, after=120)
+    for _ in range(4):
+        emu.press("N64_A", frames=12, after=150)
+        emu.press("N64_A", frames=12, after=180)
+    emu.press("N64_A", frames=12, after=180)  # OK to Register
+    emu.screenshot(emu.output / "battle-roster-registered.png")
+
+    # Finish tournament presentation and enter the three-Pokemon pre-battle
+    # selection. Native B selects Bulbasaur; the right stick selects Ivy/Squirtle.
+    emu.press("START", frames=12, after=180)
+    emu.step(240)
+    emu.press("N64_A", frames=12, after=180)
+    emu.step(120)
+    emu.press("N64_B", frames=12, after=120)
+    for x, y in ((-32767, 0), (0, -32767)):
+        emu.stick(x, y, right=True)
+        emu.step(12)
+        emu.stick(right=True)
+        emu.step(120)
+    emu.screenshot(emu.output / "battle-team-selected.png")
+
+    emu.press("START", frames=12, after=1200)
+    emu.screenshot(emu.output / "battle-confirmation.png")
+    emu.press("N64_A", frames=12, after=1200)
+    mons = emu.wait_battle(frames=60 * 60)
+    expected_moves = [73, 92, 34, 75]
+    if mons[0]["species"] != 1 or mons[0]["moves"] != expected_moves:
+        emu.snapshot(emu.output / "battle-now-incomplete.rdram")
+        emu.screenshot(emu.output / "battle-now-incomplete.png")
+        raise HarnessError(f"Unexpected lead Pokemon in fresh battle: {mons[0]}")
+
+    path = emu.output / "battle-now.state"
+    emu.save(path)
+    emu.snapshot(emu.output / "battle-now.rdram")
+    emu.screenshot(emu.output / "battle-now.png")
+    print(f"Battle active at frame {emu.frame}; sides: {mons}")
+    print(f"Local fixture saved to {path}")
+
+    # W2's live HP/PP verifier expects the attack-selection menu as its entry.
+    emu.press("N64_A", frames=12, after=120)
+    emu.step(240)
+    emu.save(emu.output / "battle-now-attack-menu.state")
+    emu.snapshot(emu.output / "battle-now-attack-menu.rdram")
+    emu.screenshot(emu.output / "battle-now-attack-menu.png")
 
 
 def main():
