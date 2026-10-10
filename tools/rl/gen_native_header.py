@@ -31,7 +31,7 @@ def main():
         raise ValueError(f"native entry symbol not found at {target:08X}")
     name = f"fragment{args.fragment}"
     Path(args.output).write_text(
-        '.section .text, "ax"\n'
+        '.set noreorder\n.section .text, "ax"\n'
         f"j {entry}\nnop\n.ascii \"FRAGMENT\"\n.word 0x20\n"
         f".word {name}_HDR_RELOC_OFFSET\n.word {name}_HDR_SIZE_IN_ROM\n"
         f".word {name}_HDR_SIZE_IN_RAM\n")
