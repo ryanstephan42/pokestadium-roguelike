@@ -4,6 +4,7 @@
 #include "src/20470.h"
 #include "src/3FB0.h"
 #include "src/49790.h"
+#include "src/2E110.h"
 #include "src/roguelike/rl_text.h"
 #include "src/stage_loader.h"
 
@@ -11,6 +12,8 @@ extern u8 pokemon_icons_ROM_START[];
 extern u8 pokemon_icons_ROM_END[];
 
 static BinArchive* sIconArchive;
+static char** sMoveNames;
+static char** sSpeciesNames;
 static const Color_RGBA8 sWhite = { 255, 255, 255, 255 };
 static const Color_RGBA8 sGold = { 255, 224, 96, 255 };
 static const Color_RGBA8 sDisabled = { 128, 144, 160, 255 };
@@ -26,11 +29,74 @@ s32 rl_ui_init(void) {
         func_8001E9F0(0x1C);
     }
     sIconArchive = ASSET_LOAD2(pokemon_icons, 1, 0);
-    if (D_800AC870 == NULL || sIconArchive == NULL || sIconArchive->num_files < 151) {
+    func_8002D510();
+    sMoveNames = func_8002D5AC(0x25);
+    sSpeciesNames = func_8002D5AC(0x24);
+    if (D_800AC870 == NULL || sIconArchive == NULL || sIconArchive->num_files < 151 ||
+        sMoveNames == NULL || sSpeciesNames == NULL) {
         HAL_Printf(8, 8, "RL UI: resources unavailable");
         return RL_UI_INVALID;
     }
     return RL_UI_NONE;
+}
+
+const char* rl_ui_move_name(unsigned move) {
+    if (!move) return "--";
+    if (move > 165 || sMoveNames == NULL) {
+        HAL_Printf(8, 8, "RL UI: move names unavailable");
+        return "Invalid move";
+    }
+    return func_8002D7C0(NULL, 0, sMoveNames, move - 1);
+}
+
+const char* rl_ui_species_name(unsigned species) {
+    if (!species || species > 151 || sSpeciesNames == NULL) {
+        HAL_Printf(8, 8, "RL UI: species names unavailable");
+        return "Invalid Pokemon";
+    }
+    return func_8002D7C0(NULL, 0, sSpeciesNames, species - 1);
+}
+
+void rl_ui_text_wrap(s16 x, s16 y, s16 width, unsigned max_lines,
+                     const char* str, Color_RGBA8 color) {
+    char line[96];
+    unsigned count;
+    unsigned end;
+    unsigned space;
+    unsigned row;
+    const char* remaining;
+    if (!str || width < 16 || !max_lines || D_800AC870 == NULL) {
+        HAL_Printf(8, 8, "RL UI: invalid text geometry");
+        return;
+    }
+    remaining = str;
+    for (row = 0; *remaining && row < max_lines; row++) {
+        if (*remaining == '\n') {
+            remaining++;
+            continue;
+        }
+        count = 0;
+        space = 0;
+        while (remaining[count] && remaining[count] != '\n' && count < 95) {
+            line[count] = remaining[count];
+            line[count + 1] = '\0';
+            if (func_8001F5B0(8, 0, "%s", line) > width) break;
+            if (remaining[count] == ' ') space = count;
+            count++;
+        }
+        end = count;
+        if (remaining[count] && remaining[count] != '\n' && space) end = space;
+        if (!end) {
+            HAL_Printf(8, 8, "RL UI: text does not fit");
+            return;
+        }
+        line[end] = '\0';
+        rl_ui_text(x, y + row * 20, line, color);
+        remaining += end;
+        while (*remaining == ' ') remaining++;
+        if (*remaining == '\n') remaining++;
+    }
+    if (*remaining) HAL_Printf(8, 8, "RL UI: text exceeds panel");
 }
 
 void rl_ui_window(s16 x, s16 y, s16 w, s16 h) {

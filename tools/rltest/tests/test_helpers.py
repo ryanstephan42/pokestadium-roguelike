@@ -1,11 +1,40 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, call, patch
 
 from tools.rltest.frontend import HarnessError, Symbols, _png
 
 
 class HelperTests(unittest.TestCase):
+    def test_node_fixture_enters_menu_before_native_probe(self):
+        from tools.rltest import test_nodes
+
+        emu = Mock()
+
+        def create_fixture(frontend, command, *, create):
+            self.assertIs(frontend, emu)
+            self.assertEqual((command, create), (4, 1))
+            self.assertEqual(emu.mock_calls[-3:], [
+                call.wait_state(4, frames=600),
+                call.press("N64_A", frames=6, after=120),
+                call.step(120),
+            ])
+            return (0, 0)
+
+        with patch.object(test_nodes, "reenter_roguelike"), \
+                patch.object(test_nodes, "press"), \
+                patch.object(test_nodes, "wait_scene"), \
+                patch("tools.rltest.test_play_run.wait_scene"), \
+                patch.object(test_nodes, "native_command", side_effect=create_fixture):
+            test_nodes.boot(emu)
+        self.assertEqual(emu.mock_calls[-4:], [
+            call.hold("L"),
+            call.press("N64_A", frames=6, after=120),
+            call.wait_state(0x30, frames=600),
+            call.release("L"),
+        ])
+
     def test_symbol_lookup_and_nearest(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "test.map"
