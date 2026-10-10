@@ -31,15 +31,12 @@ core-test:
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_core.c $(CORE) -o test_core_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_core_san
 
-ui-test:
-	@if [ -f ../src/roguelike/rl_ui_model.c ] && \
-	    [ -f ../src/roguelike/rl_text.c ] && [ -f rl_ui_model_test.c ]; then \
-		mkdir -p ../build/host_tests; \
-		$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) $(UI_TEST_SOURCES) -o $(UI_TEST_BIN); \
-		$(UI_TEST_BIN); \
-	else \
-		echo "(skip) W4 UI model test sources are not in this worktree"; \
-	fi
+ui-test: $(UI_TEST_BIN)
+	$(UI_TEST_BIN)
+
+$(UI_TEST_BIN): $(UI_TEST_SOURCES) ../src/roguelike/rl_ui_model.h ../src/roguelike/rl_text.h
+	mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) $(UI_TEST_SOURCES) -o $@
 
 clean:
 	rm -f test_core test_core_san test_save test_save_san $(UI_TEST_BIN)
