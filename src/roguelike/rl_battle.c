@@ -263,7 +263,7 @@ void rl_battle_test_entry(void) {
         party[i].moves[0] = 94;
         enemy[i].species = 10 + i;
         enemy[i].level = 5;
-        enemy[i].moves[0] = 33;
+        enemy[i].moves[0] = 98;
     }
     rules.stadium = 3;
     rules.player_count = 3;

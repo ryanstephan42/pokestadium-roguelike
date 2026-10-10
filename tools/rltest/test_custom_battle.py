@@ -65,7 +65,7 @@ def battle(emu, request, count):
         raise HarnessError(f"Wrong custom enemy: {live[1]}")
     if emu.read(live[0]["side"] + 0x68C + 0x1F, 4) != bytes([94, 0, 0, 0]):
         raise HarnessError("Player custom moves were not preserved")
-    if emu.read(live[1]["side"] + 0x68C + 0x1F, 4) != bytes([33, 0, 0, 0]):
+    if emu.read(live[1]["side"] + 0x68C + 0x1F, 4) != bytes([98, 0, 0, 0]):
         raise HarnessError("Enemy custom moves were not preserved")
     if (live[0]["hp"], live[0]["status"], live[0]["pp"][0]) != (initial_hp, 0x40, initial_pp):
         raise HarnessError(f"Persistent state was healed/overwritten: {live[0]}")
@@ -83,11 +83,13 @@ def battle(emu, request, count):
         raise HarnessError("Custom battle did not return to chosen Title state")
     stored = Result.from_buffer_copy(emu.read("gRlLastBattleResult", ctypes.sizeof(Result)))
     actual = [persistent(stored.player[i]) for i in range(2)]
-    if (not 0 < actual[0][0] <= initial_hp or not 0 <= actual[0][1] <= initial_pp - 3
+    if (not 0 < actual[0][0] < initial_hp or not 0 <= actual[0][1] <= initial_pp - 3
             or actual[0][2:] != [0x40, 0, 2] or actual[1] != [73, 10, 0x40, 0, 3]):
         raise HarnessError(f"Post-battle state mismatch: {actual}")
     if any(not stored.enemy[i].fainted or stored.enemy[i].cur_hp for i in range(3)):
         raise HarnessError("Native opponent fainting was not persisted")
+    if not any(stored.enemy[i].pp[0] < 30 for i in range(3)):
+        raise HarnessError("No native enemy Quick Attack PP debit")
     emu.step(120)
     return {"live": live, "result": result, "persisted": actual,
             "original_indices": list(stored.indices[:2])}

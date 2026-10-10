@@ -206,10 +206,13 @@ check asymmetric `0x1234`: HP10, Attack1, Defense2, Speed3, Special4.
 
 Runtime proof: the CPU-vs-CPU fixture completes two consecutive battles with
 three actual KOs each, native winner flags, and Title state2 return. Player
-HP72, paralysis0x40 and relic2 carried through the initial proof; Psychic PP
-went 9 -> 6 -> 3. Native RNG can allow enemy damage or misses, so the scenario
-requires each next battle's HP/PP to equal the actual prior result, not a
-constant fixture value, and at least three real PP debits per three KOs.
+The damage fixture gives each enemy Quick Attack98, whose priority allows real
+native enemy attacks before Psychic KOs. It requires HP loss in each battle
+and enemy PP debit, then compares battle2 initial HP/PP with the actual battle1
+result. The observed HP sequence is 72 -> 69 -> 64, Psychic PP9 -> 6 -> 3,
+with paralysis0x40 and relic2 retained. Damage/misses remain native RNG-driven;
+the assertions fail explicitly if no damage occurs rather than silently
+accepting an unchanged-HP run.
 The bench duplicate retains HP73/PP10/status0x40/relic3, and selected original
 indices remain [1,2]. Opponent HP0/fainted flags are captured after each battle.
 Run `python3 -m tools.rltest.test_custom_battle`; its ignored JSON evidence
@@ -236,8 +239,10 @@ unchanged. `gRlBattleActive`, `gRlBattleCount`, `gRlLastBattleResult` are
 resident instrumentation for W1; result codes are 0 loss, 1 win, 2 draw.
 State0x31 is a guarded CPU-vs-CPU fixture, distinct from W0's state0x30:
 three lv100 Mewtwo/Psychic (original slot0 fainted and excluded, slot1/2
-persisted HP72/73, PP9/10, paralysis) vs three lv5 bug mons/Tackle, returning
-to Title. Duplicate species exercise original-index identity, not matching by
+persisted HP72/73, PP9/10, paralysis) vs three lv5 bug mons/Quick Attack, returning
+to Title. Enemies use Quick Attack rather than the former Tackle fixture,
+so the scenario requires actual damage as well as completion. Duplicate species
+exercise original-index identity, not matching by
 species. The scenario asserts input state was not healed, win/result counts,
 original indices, post-battle HP/PP/status/relic/fainting, consecutive-battle
 carry-in and chosen-state return. Only launch requests are injected; no action,
