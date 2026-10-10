@@ -1,0 +1,11 @@
+instructions: |
+  Read AGENTS.md and docs/roguelike/PLAN.md first. The vanilla `make` build must stay byte-matching;
+  run scripts/rl-gate.sh before declaring work done.
+
+scripts:
+  - name: Setup worktree
+    command: scripts/rl-worktree-setup.sh
+    triggers:
+      - session.create
+  - name: Gate
+    command: scripts/rl-gate.sh
