@@ -70,9 +70,11 @@ def decode_name(raw):
 
 
 def yay0_decompress(src):
-    if src[:4] != b"Yay0":
+    if len(src) < 16 or src[:4] != b"Yay0":
         raise ValueError("not Yay0")
     size, link_off, chunk_off = struct.unpack(">III", src[4:16])
+    if size > 0x2000000 or not (16 <= link_off <= chunk_off <= len(src)):
+        raise ValueError("invalid Yay0 sizes/stream offsets")
     dst = bytearray()
     mask_off = 16
     mask = bits = 0
@@ -94,6 +96,8 @@ def yay0_decompress(src):
                 chunk_off += 1
             else:
                 n += 2
+            if dist > len(dst) or len(dst) + n > size:
+                raise ValueError("invalid Yay0 back-reference")
             for _ in range(n):
                 dst.append(dst[-dist])
         mask = (mask << 1) & 0xFFFFFFFF
@@ -106,29 +110,43 @@ def unpack_file(data):
     if data[:8] != b"PERS-SZP":
         return data
     hdr_size, dsize1, dsize2, n_relocs = struct.unpack(">IIII", data[8:24])
+    if not (24 + n_relocs * 8 <= hdr_size <= len(data)) or not (dsize1 <= dsize2 <= 0x2000000):
+        raise ValueError("invalid PERS-SZP header")
     out = bytearray(yay0_decompress(data[hdr_size:]))
-    out[dsize1:] = b""
-    out += bytes(max(0, dsize2 - len(out)))
+    if len(out) != dsize1:
+        raise ValueError("PERS-SZP decompressed size mismatch")
+    out += bytes(dsize2 - dsize1)
     rel = 24
     for _ in range(n_relocs):
         value, off = struct.unpack(">II", data[rel:rel + 8])
+        if off % 4 or off + 4 > dsize2:
+            raise ValueError("invalid PERS-SZP relocation")
         out[off:off + 4] = struct.pack(">I", value)
         rel += 8
+    out[dsize1:] = bytes(dsize2 - dsize1)
     return bytes(out)
 
 
 def read_archive(rom):
     flags, _, _, total, count = struct.unpack(">HHIII", rom[ARCHIVE_ROM:ARCHIVE_ROM + 16])
+    if flags != 0 or count != 62 or total < 16 + count * 16 or ARCHIVE_ROM + total > len(rom):
+        raise ValueError("not the Stadium 1 US roster archive")
     files = []
     for i in range(count):
         e = ARCHIVE_ROM + 16 + i * 16
         off, size = struct.unpack(">II", rom[e:e + 8])
+        if off < 16 + count * 16 or off + size > total:
+            raise ValueError("archive entry %d is out of bounds" % i)
         files.append(unpack_file(rom[ARCHIVE_ROM + off:ARCHIVE_ROM + off + size]))
     return files
 
 
 def parse_mon(b):
     """Decode one 0x54 battle-format mon (struct unk_func_80026268_arg0, src/29BA0.h)."""
+    if len(b) != MON_SIZE or not 1 <= b[0] <= 151 or not 1 <= b[0x24] <= 100:
+        raise ValueError("invalid Stadium mon record")
+    if any(move > 165 for move in b[9:13]):
+        raise ValueError("invalid Stadium move id")
     u16 = lambda o: struct.unpack(">H", b[o:o + 2])[0]
     return {
         "species": b[0x00],
@@ -153,11 +171,15 @@ def parse_mon(b):
 
 def parse_trainer_file(data):
     count = struct.unpack(">I", data[:4])[0]
+    if count == 0 or 4 + count * TRAINER_STRIDE > len(data):
+        raise ValueError("invalid trainer file count")
     trainers = []
     for t in range(count):
         base = 4 + t * TRAINER_STRIDE
         rec = data[base:base + TRAINER_STRIDE]
         tid, n = struct.unpack(">HH", rec[0x34:0x38])
+        if not 1 <= n <= 6:
+            raise ValueError("invalid trainer team count")
         trainers.append({
             "index": t,
             "name": decode_name(rec[0x00:0x0C]),
@@ -171,6 +193,8 @@ def parse_trainer_file(data):
 
 def parse_rental_file(data):
     count = struct.unpack(">I", data[:4])[0]
+    if not 1 <= count <= 151 or 4 + count * MON_SIZE > len(data):
+        raise ValueError("invalid rental file count")
     return [parse_mon(data[4 + k * MON_SIZE:4 + (k + 1) * MON_SIZE]) for k in range(count)]
 
 
@@ -200,7 +224,7 @@ def c_ident(s):
 
 
 def c_str(s):
-    return '"' + "".join(c if (c.isascii() and c.isprintable() and c not in '"\\') else "\\x%02X" % (
+    return '"' + "".join(c if (c.isascii() and c.isprintable() and c not in '"\\') else "\\%03o" % (
         0xA9 if c == "\u2642" else 0xBE if c == "\u2640" else ord("?")) for c in s) + '"'
 
 
@@ -271,7 +295,7 @@ def main():
 
     with open(args.rom, "rb") as f:
         rom = f.read()
-    if rom[:4] != b"\x80\x37\x12\x40":
+    if rom[:4] != b"\x80\x37\x12\x40" or rom[0x3B:0x3F] != b"NPOE":
         sys.exit("error: %s is not a big-endian .z64 ROM" % args.rom)
 
     data = extract(rom)
