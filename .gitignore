@@ -12,6 +12,7 @@ pokestadium-*yaml
 
 __pycache__/
 .make_options
+.local/rltest/
 
 ctx.c
 ctx.c.m2c
