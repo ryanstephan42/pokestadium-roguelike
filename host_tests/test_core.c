@@ -23,6 +23,14 @@ static void test_rng_and_map(void) {
         assert(memcmp(&map_a, &map_b, sizeof(map_a)) == 0);
         assert(ra == rb);
     }
+    a = 1;
+    rl_map_generate(&map_a, &a, 0, 0);
+    map_a.lanes[1] = 255;
+    assert(!rl_map_valid(&map_a));
+    a = 1;
+    rl_map_generate(&map_a, &a, 3, 0);
+    map_a.nodes[1][0].type = RL_BOSS;
+    assert(!rl_map_valid(&map_a));
 }
 
 static void test_enemy_scaling(void) {
@@ -31,7 +39,6 @@ static void test_enemy_scaling(void) {
     RlMon mewtwo;
     RlPool boss_pool;
     RlU32 rng;
-    unsigned i;
     assert(rl_enemy_level(0, 0, RL_BATTLE, 0) == 30);
     assert(rl_enemy_level(0, 0, RL_ELITE, 0) == 33);
     assert(rl_enemy_level(0, 6, RL_BOSS, 0) == 47);
@@ -45,15 +52,15 @@ static void test_enemy_scaling(void) {
     assert(team[0].current_stats[RL_HP] == 102);
     assert(team[0].cur_hp == team[0].max_hp);
     rl_map_generate(&run.map, &run.rng, 3, 0);
-    for (i = 0; i < run.map.lanes[RL_ROWS - 1]; i++)
-        assert(run.map.nodes[RL_ROWS - 1][i].target_species == 150);
+    assert(run.map.lanes[0] == 1);
+    assert(run.map.nodes[0][0].target_species == 150);
     mewtwo = rl_placeholder_pool.mons[0];
     mewtwo.species = 150;
     boss_pool.mons = &mewtwo;
     boss_pool.count = 1;
     boss_pool.fixed_order = 1;
     run.act = 3;
-    run.row = RL_ROWS - 1;
+    run.row = 0;
     assert(rl_enemy_generate(&run, &boss_pool, RL_BOSS, team, 1) == RL_OK);
     boss_pool.mons = &rl_placeholder_pool.mons[0];
     rng = run.rng;
@@ -336,13 +343,169 @@ static void test_run_lifecycle(void) {
     assert(rl_party_recruit(&run, &active) == RL_OK);
     run.act = 3;
     rl_map_generate(&run.map, &run.rng, 3, 0);
-    run.row = RL_ROWS - 1;
-    run.lane = 0;
-    run.phase = RL_NODE;
+    run.phase = RL_MAP;
+    assert(rl_run_advance(&run, 0) == RL_OK);
     assert(run.map.nodes[run.row][run.lane].target_species == 150);
     assert(rl_run_on_battle_result(&run, 1, 1) == RL_OK);
     assert(rl_run_finish_node(&run) == RL_OK);
     assert(rl_run_is_over(&run) && run.phase == RL_WON);
+}
+
+static void assert_suspend_roundtrip(const RunState *run) {
+    RlMeta meta, loaded;
+    RunState restored;
+    RlU8 buffer[RL_SAVE_MAX_SIZE], has_run;
+    unsigned length;
+    memset(&meta, 0, sizeof(meta));
+    assert(rl_save_encode(&meta, run, buffer, sizeof(buffer), &length) == RL_OK);
+    assert(rl_save_decode(&loaded, &restored, &has_run, buffer, length) == RL_OK);
+    assert(has_run);
+    assert(restored.act == run->act && restored.row == run->row);
+    assert(restored.lane == run->lane && restored.phase == run->phase);
+    assert(restored.party_count == run->party_count);
+    assert(restored.daycare_active == run->daycare_active);
+    assert(restored.daycare_nodes == run->daycare_nodes);
+    assert(restored.daycare.species == run->daycare.species);
+    assert(restored.tm_count == run->tm_count);
+    assert(memcmp(restored.tm_moves, run->tm_moves, RL_TM_CAPACITY) == 0);
+    assert(memcmp(&restored.map, &run->map, sizeof(run->map)) == 0);
+}
+
+static void test_suspend_transitions(void) {
+    RunState run;
+    RlU8 move;
+    unsigned i, lane, seed, widths;
+    rl_run_new(&run, 9, 0);
+    assert(rl_party_recruit(&run, &rl_placeholder_pool.mons[0]) == RL_OK);
+    run.tm_count = 3;
+    run.tm_moves[0] = 85;
+    run.tm_moves[1] = 87;
+    run.tm_moves[2] = 22;
+    move = 87;
+    assert(rl_tm_teach(&run, 1, 0, 0, can_learn_test, &move) == RL_OK);
+    assert(run.tm_moves[0] == 85 && run.tm_moves[1] == 22);
+    assert(run.tm_moves[2] == 0);
+    assert_suspend_roundtrip(&run);
+    move = 85;
+    assert(rl_tm_teach(&run, 0, 0, 0, can_learn_test, &move) == RL_OK);
+    assert_suspend_roundtrip(&run);
+    move = 22;
+    assert(rl_tm_teach(&run, 0, 0, 0, can_learn_test, &move) == RL_OK);
+    assert(run.tm_count == 0 && run.tm_moves[0] == 0);
+    assert_suspend_roundtrip(&run);
+
+    assert(rl_party_recruit(&run, &rl_placeholder_pool.mons[1]) == RL_OK);
+    assert(rl_event_resolve(&run, 2, 0, 1, 0, 0) == RL_OK);
+    assert_suspend_roundtrip(&run);
+    run.phase = RL_MAP;
+    for (i = 0; i < 2; i++) {
+        lane = 0;
+        if (run.row != RL_NO_SLOT)
+            while (!(run.map.nodes[run.row][run.lane].edges & (1U << lane)))
+                lane++;
+        assert(rl_run_advance(&run, lane) == RL_OK);
+        assert_suspend_roundtrip(&run);
+        assert(rl_run_finish_node(&run) == RL_OK);
+    }
+    assert(run.party_count == 2 && run.party[1].level == 35);
+    assert(!run.daycare_active && !run.daycare_nodes && !run.daycare.species);
+    assert_suspend_roundtrip(&run);
+
+    widths = 0;
+    for (seed = 1; seed <= 100; seed++) {
+        rl_run_new(&run, seed, 0);
+        assert(rl_party_recruit(&run, &rl_placeholder_pool.mons[0]) == RL_OK);
+        run.act = 2;
+        rl_map_generate(&run.map, &run.rng, run.act, 0);
+        widths |= 1U << run.map.lanes[RL_ROWS - 1];
+        run.row = RL_ROWS - 1;
+        run.lane = 0;
+        run.phase = RL_REWARD;
+        assert_suspend_roundtrip(&run);
+        assert(rl_run_finish_node(&run) == RL_OK);
+        assert(run.act == 3 && run.row == RL_NO_SLOT && run.phase == RL_MAP);
+        assert(rl_map_rows(3) == 1 && run.map.lanes[0] == 1);
+        assert_suspend_roundtrip(&run);
+        assert(rl_run_advance(&run, 1) == RL_INVALID);
+        assert(rl_run_advance(&run, 0) == RL_OK);
+        assert(run.row == 0 && run.map.nodes[0][0].target_species == 150);
+        assert_suspend_roundtrip(&run);
+        assert(rl_run_on_battle_result(&run, 1, 1) == RL_OK);
+        assert_suspend_roundtrip(&run);
+        assert(rl_run_finish_node(&run) == RL_OK);
+        assert(run.phase == RL_WON);
+        assert_suspend_roundtrip(&run);
+        run.phase = RL_NODE;
+        assert(rl_run_on_battle_result(&run, 0, 1) == RL_OK);
+        assert(run.phase == RL_LOST);
+        assert_suspend_roundtrip(&run);
+    }
+    assert(widths == ((1U << 2) | (1U << 3) | (1U << 4)));
+}
+
+static void test_small_shop_catalog(void) {
+    RunState run;
+    RlShopEntry shop[3];
+    RlU8 move;
+    RlMovePool moves;
+    unsigned seed, capacity, i, seen, eligible;
+    move = 85;
+    moves.moves = &move;
+    moves.count = 1;
+    eligible = (1U << RL_POTION) | (1U << RL_SUPER_POTION) |
+        (1U << RL_HYPER_POTION) | (1U << RL_FULL_RESTORE) |
+        (1U << RL_REVIVE) | (1U << RL_ETHER) | (1U << RL_CANDY) |
+        (1U << RL_VITAMIN) | (1U << RL_RELIC_ITEM) | (1U << RL_TM);
+    for (capacity = 1; capacity <= 3; capacity++) {
+        seen = 0;
+        for (seed = 1; seed <= 200; seed++) {
+            rl_run_new(&run, seed, 0);
+            assert(rl_shop_generate(&run, &moves, shop, capacity) == capacity);
+            for (i = 0; i < capacity; i++) seen |= 1U << shop[i].item;
+        }
+        assert(seen == eligible);
+        seen = 0;
+        for (seed = 1; seed <= 200; seed++) {
+            rl_run_new(&run, seed, 0);
+            assert(rl_shop_generate(&run, 0, shop, capacity) == capacity);
+            for (i = 0; i < capacity; i++) seen |= 1U << shop[i].item;
+        }
+        assert(seen == (eligible & ~(1U << RL_TM)));
+    }
+}
+
+static void test_native_stat_equivalence(void) {
+    RlMon mon;
+    unsigned stat, effort, root, dv, expected;
+    static const RlU16 words[] = {0x1234, 0x4321, 0x0001, 0x0010,
+                                 0x0100, 0x1000, 0xffff, 0};
+    unsigned word;
+    mon = rl_placeholder_pool.mons[0];
+    mon.dvs = 0x1234;
+    assert(rl_mon_stat_value(&mon, RL_HP, 100) == 220);
+    assert(rl_mon_stat_value(&mon, RL_ATTACK, 100) == 111);
+    assert(rl_mon_stat_value(&mon, RL_DEFENSE, 100) == 109);
+    assert(rl_mon_stat_value(&mon, RL_SPEED, 100) == 99);
+    assert(rl_mon_stat_value(&mon, RL_SPECIAL, 100) == 137);
+    for (word = 0; word < sizeof(words) / sizeof(words[0]); word++) {
+        mon.dvs = words[word];
+        for (stat = 0; stat < 5; stat++) {
+            if (stat == RL_HP)
+                dv = ((mon.dvs & 0x1000) >> 9) |
+                     ((mon.dvs & 0x0100) >> 6) |
+                     ((mon.dvs & 0x0010) >> 3) | (mon.dvs & 1);
+            else dv = (mon.dvs >> ((stat - 1) * 4)) & 15;
+            for (effort = 0; effort <= 65535; effort++) {
+                mon.stat_exp[stat] = (RlU16)effort;
+                /* Native func_80022084 / CalculateStatValue, src/22630.c. */
+                for (root = 1; root < 255 && root * root < effort; root++) {}
+                expected = ((root / 4 + 2 * (mon.base_stats[stat] + dv)) *
+                            mon.level) / 100;
+                expected += stat == RL_HP ? mon.level + 10 : 5;
+                assert(rl_mon_stat_value(&mon, stat, mon.level) == expected);
+            }
+        }
+    }
 }
 
 static void test_save(void) {
@@ -402,6 +565,9 @@ int main(void) {
     test_tutor_and_healing();
     test_relics();
     test_run_lifecycle();
+    test_suspend_transitions();
+    test_small_shop_catalog();
+    test_native_stat_equivalence();
     test_save();
     puts("roguelike core tests passed");
     return 0;

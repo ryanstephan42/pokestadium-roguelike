@@ -49,7 +49,8 @@ int rl_run_advance(RunState *run, unsigned lane) {
     unsigned left;
     if (!run || run->phase != RL_MAP || !run->party_count) return RL_INVALID;
     next = run->row == RL_NO_SLOT ? 0 : (unsigned)run->row + 1;
-    if (next >= RL_ROWS || lane >= run->map.lanes[next]) return RL_INVALID;
+    if (next >= rl_map_rows(run->act) ||
+        lane >= run->map.lanes[next]) return RL_INVALID;
     if (run->row != RL_NO_SLOT &&
         !(run->map.nodes[run->row][run->lane].edges & (1U << lane)))
         return RL_INVALID;
@@ -79,7 +80,9 @@ int rl_run_advance(RunState *run, unsigned lane) {
 int rl_run_finish_node(RunState *run) {
     if (!run || (run->phase != RL_NODE && run->phase != RL_REWARD))
         return RL_INVALID;
-    if (run->row == RL_ROWS - 1) {
+    if (run->row >= rl_map_rows(run->act) ||
+        run->lane >= run->map.lanes[run->row]) return RL_INVALID;
+    if (run->row == rl_map_rows(run->act) - 1) {
         if (run->phase != RL_REWARD) return RL_INVALID;
         if (run->act == 3) { run->phase = RL_WON; return RL_OK; }
         run->act++;
@@ -95,7 +98,7 @@ int rl_run_on_battle_result(RunState *run, int won, RlU8 active_mask) {
     unsigned i, type, live;
     RlU32 xp;
     RlAscension asc;
-    if (!run || run->phase != RL_NODE || run->row >= RL_ROWS ||
+    if (!run || run->phase != RL_NODE || run->row >= rl_map_rows(run->act) ||
         run->lane >= run->map.lanes[run->row]) return RL_INVALID;
     type = run->map.nodes[run->row][run->lane].type;
     if (type != RL_BATTLE && type != RL_ELITE && type != RL_BOSS) return RL_INVALID;

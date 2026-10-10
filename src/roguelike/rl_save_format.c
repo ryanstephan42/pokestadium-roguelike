@@ -171,7 +171,7 @@ static int valid_mon(const RlMon *mon, int required) {
 }
 
 static int valid_run(const RunState *run) {
-    unsigned i, j;
+    unsigned i;
     if (!run || run->act > 3 || run->phase > RL_LOST ||
         run->ascension > 10 || run->party_count > RL_PARTY ||
         run->daycare_active > 2 || run->tm_count > RL_TM_CAPACITY ||
@@ -185,16 +185,10 @@ static int valid_run(const RunState *run) {
             if (!run->tm_moves[i] || run->tm_moves[i] > 165) return 0;
         } else if (run->tm_moves[i]) return 0;
     }
-    for (i = 0; i < RL_ROWS; i++)
-        for (j = 0; j < RL_LANES; j++) {
-            if (run->map.nodes[i][j].target_species > 151) return 0;
-            if (i == RL_ROWS - 1 &&
-                run->map.nodes[i][j].target_species !=
-                    (run->act == 3 ? 150 : 0)) return 0;
-        }
+    if ((run->act == 3) != (run->map.lanes[0] == 1)) return 0;
     if (run->row == RL_NO_SLOT) {
         if (run->lane != RL_NO_SLOT) return 0;
-    } else if (run->row >= RL_ROWS ||
+    } else if (run->row >= rl_map_rows(run->act) ||
                run->lane >= run->map.lanes[run->row]) return 0;
     for (i = 0; i < RL_PARTY; i++)
         if (!valid_mon(&run->party[i], i < run->party_count)) return 0;
