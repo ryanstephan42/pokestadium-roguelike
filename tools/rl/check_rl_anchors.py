@@ -26,7 +26,7 @@ def main():
             m = re.match(r"^\s+0x([0-9a-f]+)\s+(__rla_\d+) = ", l)
             if m:
                 sym[m.group(2)] = int(m.group(1), 16)
-    sections = parse_map(map_path, 0x80000400, 0x80800000)
+    sections = parse_map(map_path, 0x80000400, 0x90000000)
     bad = 0
     n = 0
     for l in open(anchors_path):
@@ -36,6 +36,9 @@ def main():
         rl_path = re.sub(r"^build/", bd + "/", path)
         if rl_path == f"{bd}/asm/us/entry.o":
             rl_path = f"{bd}/src/roguelike/rl_entry.o"
+        match = re.fullmatch(rf"{re.escape(bd)}/asm/us/data/fragments/(\d+)/fragment\1_header.o", rl_path)
+        if match and (f"{bd}/rl/fragment{match[1]}_header.o", sec) in sections:
+            rl_path = f"{bd}/rl/fragment{match[1]}_header.o"
         got = sections.get((rl_path, sec))
         if got is None or name not in sym:
             print(f"check_rl_anchors: {name} ({path} {sec}) missing from RL map")
