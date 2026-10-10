@@ -159,18 +159,29 @@ def gen(args):
     if heap_end is None:
         sys.exit("gen_rl_ld: heap_VRAM_END not found in vanilla map")
 
-    sections = parse_map(args.vanilla_map, MAIN_START, heap_end)
+    sections = parse_map(args.vanilla_map, MAIN_START, 0x90000000)
     main_lo, main_hi = find_main_bounds(lines)
     rl_objs = [o for o in args.main_objs if o]
 
     out = []
     anchors = []
     in_main = False
+    in_native = False
     for idx, l in enumerate(lines):
         if idx == main_lo:
             in_main = True
+        for number in args.regen_fragments:
+            if re.match(rf"^\s*fragment{number}_ROM_START = __romPos;", l):
+                in_native = True
+            if re.match(rf"^\s*fragment{number}_relocs_VRAM_END = \.;", l):
+                in_native = False
+                out.extend([
+                    f"    fragment{number}_HDR_RELOC_OFFSET = SIZEOF(.fragment{number});",
+                    f"    fragment{number}_HDR_SIZE_IN_ROM = SIZEOF(.fragment{number}) + SIZEOF(.fragment{number}_relocs);",
+                    f"    fragment{number}_HDR_SIZE_IN_RAM = SIZEOF(.fragment{number}) + SIZEOF(.fragment{number}_bss);",
+                ])
         m = OBJ_LINE_RE.match(l)
-        if in_main and m:
+        if (in_main or in_native) and m:
             indent, path, sec = m.groups()
             key = script_key(path, sec)
             if key in sections:
@@ -180,6 +191,11 @@ def gen(args):
                 anchors.append((addr, size, name, key))
             if path == "build/asm/us/entry.o":
                 l = f"{indent}build/src/roguelike/rl_entry.o({sec});"
+        for number in args.regen_fragments:
+            l = l.replace(f"build/asm/us/data/fragments/{number}/fragment{number}_header.o",
+                          f"build/rl/fragment{number}_header.o")
+            l = l.replace(f"build/asm/us/data/fragments/{number}/fragment{number}_reloc.o",
+                          f"build/rl/fragment{number}_relocs.o")
         if in_main:
             for marker, sec in (("text_TEXT_END", ".text"), ("text_DATA_END", ".data"),
                                 ("text_RODATA_END", ".rodata"), ("text_BSS_END", ".bss")):
@@ -222,7 +238,10 @@ def gen(args):
             if m:
                 indent, name, val, rest = m.groups()
                 v = int(val, 16)
-                if MAIN_START <= v < heap_end:
+                i = bisect.bisect_right(starts, v) - 1
+                if MAIN_START <= v < heap_end or (
+                    i >= 0 and anchors[i][0] <= v < anchors[i][0] + anchors[i][1]
+                ):
                     i = bisect.bisect_right(starts, v) - 1
                     if i < 0:
                         sys.exit(f"gen_rl_ld: no anchor for {name}={val}")
@@ -254,6 +273,7 @@ def main():
     p.add_argument("--main-objs", nargs="*", default=[])
     p.add_argument("--frag-objs", nargs="*", default=[])
     p.add_argument("--sym-files", nargs="*", default=[])
+    p.add_argument("--regen-fragments", nargs="*", type=int, default=[])
     gen(p.parse_args())
 
 
