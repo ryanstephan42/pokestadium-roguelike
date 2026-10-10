@@ -437,7 +437,16 @@ def run(emu, output):
     emu.wait_state(4, frames=600)
     reenter_roguelike(emu)
     verify_seed8_suspend_resume(emu)
-    emu.write_u32("gRlPlayTestMode", 3)
+    # Production resumes the canonical seed-8 map, not the trainer-only route.
+    # Start a fresh guarded battle fixture for the distinct native-loss test.
+    resumed = read_run(emu)
+    row = 0 if resumed.row == 255 else resumed.row + 1
+    for _ in range(resumed.map.lanes[row]):
+        press(emu, "DOWN")
+    press(emu, "N64_A")
+    emu.wait_state(4, frames=600)
+    reenter_roguelike(emu)
+    start_new_run(emu, 0x13579BDF, 3)
     verify_native_loss(emu)
     press(emu, "N64_B")
     emu.wait_state(4, frames=600)

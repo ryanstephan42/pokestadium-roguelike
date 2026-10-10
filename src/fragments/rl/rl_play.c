@@ -8,6 +8,7 @@
 #include "src/roguelike/rl_text.h"
 #include "rl_play.h"
 #include "rl_ui.h"
+#include "rl_scene_nodes.h"
 
 #include "rl_gen/rl_rosters.h"
 
@@ -24,7 +25,8 @@ enum {
     RL_PLAY_REWARD,
     RL_PLAY_SUMMARY,
     RL_PLAY_ERROR,
-    RL_PLAY_BATTLE
+    RL_PLAY_BATTLE,
+    RL_PLAY_NODE
 };
 
 static const Color_RGBA8 sPlayWhite = { 255, 255, 255, 255 };
@@ -35,6 +37,7 @@ static RlUiItem sPlayItems[9];
 static char sPlayLabels[9][36];
 static RlMon sPlayPool[RL_PLAY_POOL_SIZE];
 static RlPool sPlayRewardPool;
+static RlPool sPlayNodePool;
 static RlMon sPlayDraft[RL_PLAY_DRAFT_SIZE];
 static unsigned char sPlayDraftSelected[RL_PLAY_DRAFT_SIZE];
 static unsigned char sPlayDraftOldSpecies[RL_PLAY_DRAFT_SIZE];
@@ -49,6 +52,19 @@ static const char* sPlayMessage;
 
 static unsigned rl_play_active_selected(unsigned slot);
 static void rl_play_make_summary(void);
+
+static void rl_play_begin_node(unsigned mode) {
+    sPlayNodePool.mons = sPlayPool;
+    sPlayNodePool.count = (RlU16)sPlayPoolCount;
+    sPlayNodePool.fixed_order = 0;
+    rl_scene_nodes_begin(&gRlRun, &sPlayNodePool, mode);
+    gRlPlayScene = RL_PLAY_NODE;
+    sPlayMessage = NULL;
+}
+
+static unsigned rl_play_route_rows(void) {
+    return gRlPlayTestMode ? RL_PLAY_ROUTE_SIZE : rl_map_rows(gRlRun.act);
+}
 
 static void rl_play_copy_text(char* output, const char* text) {
     unsigned i;
@@ -94,14 +110,14 @@ static void rl_play_mon_label(char* output, const RlMon* mon, int selected) {
     rl_play_number(output + 4, mon->species, 3);
     output[7] = ' ';
     output[8] = 'L';
-    rl_play_number(output + 9, mon->level, 2);
-    output[11] = ' ';
-    output[12] = 'H';
-    output[13] = 'P';
-    rl_play_number(output + 14, mon->cur_hp, 3);
-    output[17] = '/';
-    rl_play_number(output + 18, mon->max_hp, 3);
-    output[21] = '\0';
+    rl_play_number(output + 9, mon->level, 3);
+    output[12] = ' ';
+    output[13] = 'H';
+    output[14] = 'P';
+    rl_play_number(output + 15, mon->cur_hp, 3);
+    output[18] = '/';
+    rl_play_number(output + 19, mon->max_hp, 3);
+    output[22] = '\0';
 }
 
 static unsigned rl_play_count_selected(void) {
@@ -248,7 +264,8 @@ static int rl_play_begin_new(void) {
         gRlPlayScene = RL_PLAY_ERROR;
         return 0;
     }
-    if (rl_map_prepare_battle_route(&gRlRun.map, RL_PLAY_ROUTE_SIZE) != RL_OK) {
+    if (gRlPlayTestMode &&
+        rl_map_prepare_battle_route(&gRlRun.map, RL_PLAY_ROUTE_SIZE) != RL_OK) {
         sPlayMessage = "Could not prepare the trainer route";
         gRlPlayScene = RL_PLAY_ERROR;
         return 0;
@@ -268,43 +285,43 @@ static int rl_play_begin_new(void) {
 }
 
 static void rl_play_make_map(void) {
+    static const char* names[] = {
+        "Trainer battle", "Elite trainer", "Pokemon Center",
+        "Poke Mart", "Event", "Recruit", "Boss"
+    };
     unsigned row;
     unsigned lanes;
     unsigned lane;
 
     row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
-    if (row >= RL_PLAY_ROUTE_SIZE || gRlRun.phase != RL_MAP) {
-        gRlRun.phase = RL_WON;
+    if (gRlRun.phase == RL_WON || gRlRun.phase == RL_LOST) {
         rl_play_make_summary();
+        return;
+    }
+    if (row >= rl_play_route_rows() || gRlRun.phase != RL_MAP) {
+        sPlayMessage = "Invalid map progression";
+        gRlPlayScene = RL_PLAY_ERROR;
         return;
     }
     lanes = gRlRun.map.lanes[row];
     for (lane = 0; lane < lanes; lane++) {
         int reachable;
+        unsigned type;
         reachable = gRlRun.row == RL_NO_SLOT ||
             (gRlRun.map.nodes[gRlRun.row][gRlRun.lane].edges & (1U << lane));
-        sPlayLabels[lane][0] = 'T';
-        sPlayLabels[lane][1] = 'r';
-        sPlayLabels[lane][2] = 'a';
-        sPlayLabels[lane][3] = 'i';
-        sPlayLabels[lane][4] = 'n';
-        sPlayLabels[lane][5] = 'e';
-        sPlayLabels[lane][6] = 'r';
-        sPlayLabels[lane][7] = ' ';
-        sPlayLabels[lane][8] = 'r';
-        sPlayLabels[lane][9] = 'o';
-        sPlayLabels[lane][10] = 'u';
-        sPlayLabels[lane][11] = 't';
-        sPlayLabels[lane][12] = 'e';
-        sPlayLabels[lane][13] = ' ';
-        sPlayLabels[lane][14] = (char)('1' + lane);
-        sPlayLabels[lane][15] = '\0';
+        type = gRlRun.map.nodes[row][lane].type;
+        rl_play_copy_text(sPlayLabels[lane],
+                          type <= RL_BOSS ? names[type] : "Invalid node");
         sPlayItems[lane].text = sPlayLabels[lane];
         sPlayItems[lane].disabled = !reachable;
     }
     sPlayItems[lanes].text = "Save run and return";
     sPlayItems[lanes].disabled = 0;
-    rl_play_init_list("Choose a trainer route", (int)lanes + 1, 5);
+    sPlayItems[lanes + 1].text = "Bag - use items / teach TMs";
+    sPlayItems[lanes + 1].disabled = 0;
+    sPlayItems[lanes + 2].text = "Manage party";
+    sPlayItems[lanes + 2].disabled = 0;
+    rl_play_init_list("Choose the next node", (int)lanes + 3, 6);
     rl_play_set_scene(RL_PLAY_MAP);
 }
 
@@ -433,8 +450,8 @@ static void rl_play_make_rewards(void) {
             rl_play_number(label + 11, sPlayRewards[i].mon.species, 3);
             label[14] = ' ';
             label[15] = 'L';
-            rl_play_number(label + 16, sPlayRewards[i].mon.level, 2);
-            label[18] = '\0';
+            rl_play_number(label + 16, sPlayRewards[i].mon.level, 3);
+            label[19] = '\0';
             sPlayItems[i].text = label;
         } else {
             sPlayItems[i].text = rl_play_reward_label(&sPlayRewards[i]);
@@ -462,8 +479,10 @@ static void rl_play_after_reward(void) {
         gRlPlayScene = RL_PLAY_ERROR;
         return;
     }
-    if (row + 1 >= RL_PLAY_ROUTE_SIZE) {
+    if (gRlPlayTestMode && row + 1 >= RL_PLAY_ROUTE_SIZE) {
         gRlRun.phase = RL_WON;
+        rl_play_make_summary();
+    } else if (rl_run_is_over(&gRlRun)) {
         rl_play_make_summary();
     } else {
         rl_play_make_map();
@@ -515,16 +534,21 @@ static int rl_play_run_battle(void) {
             }
         }
     }
-    trainer_count = rl_trainer_count(RL_TRAINER_SET_POKE_POKE);
-    if (!trainer_count) {
-        sPlayMessage = "Poke Cup trainer pool is unavailable";
-        gRlPlayScene = RL_PLAY_ERROR;
-        return 0;
+    if (gRlPlayTestMode) {
+        trainer_count = rl_trainer_count(RL_TRAINER_SET_POKE_POKE);
+        if (!trainer_count) {
+            sPlayMessage = "Poke Cup trainer pool is unavailable";
+            gRlPlayScene = RL_PLAY_ERROR;
+            return 0;
+        }
+        chosen_trainer = (int)rl_random_bounded(&gRlRun.rng, trainer_count);
+        enemy_count = rl_load_trainer(RL_TRAINER_SET_POKE_POKE,
+                                      (unsigned)chosen_trainer, enemy,
+                                      RL_BATTLE_MAX_MONS, &ai);
+    } else {
+        enemy_count = rl_load_encounter(&gRlRun, enemy,
+                                        RL_BATTLE_MAX_MONS, &ai);
     }
-    chosen_trainer = (int)rl_random_bounded(&gRlRun.rng, trainer_count);
-    enemy_count = rl_load_trainer(RL_TRAINER_SET_POKE_POKE,
-                                  (unsigned)chosen_trainer, enemy,
-                                  RL_BATTLE_MAX_MONS, &ai);
     if (enemy_count < 1) {
         sPlayMessage = "Could not load the selected trainer";
         gRlPlayScene = RL_PLAY_ERROR;
@@ -599,7 +623,8 @@ static void rl_play_resume(void) {
         gRlPlayScene = RL_PLAY_ERROR;
         return;
     }
-    if (!has_run || run.phase != RL_MAP || run.party_count == 0) {
+    if (!has_run || (run.phase != RL_MAP && run.phase != RL_NODE) ||
+        run.party_count == 0) {
         sPlayMessage = "Controller Pak has no resumable run";
         gRlPlayScene = RL_PLAY_ERROR;
         return;
@@ -616,7 +641,19 @@ static void rl_play_resume(void) {
     if (status == RL_SAVE_RECOVERED) {
         sPlayMessage = rl_save_status_text(status);
     }
-    rl_play_make_map();
+    if (run.phase == RL_NODE) {
+        unsigned type;
+        type = run.map.nodes[run.row][run.lane].type;
+        if (type != RL_CENTER && type != RL_MART &&
+            type != RL_EVENT && type != RL_RECRUIT) {
+            sPlayMessage = "This battle cannot be resumed between commands";
+            gRlPlayScene = RL_PLAY_ERROR;
+            return;
+        }
+        rl_play_begin_node(type);
+    } else {
+        rl_play_make_map();
+    }
     if (status == RL_SAVE_RECOVERED) {
         sPlayMessage = rl_save_status_text(status);
     }
@@ -701,8 +738,21 @@ static void rl_play_update_map(u16 pressed) {
     row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
     lane_count = gRlRun.map.lanes[row];
     if (result >= 0 && (unsigned)result < lane_count) {
+        unsigned type;
         sPlayChosenLane = (unsigned char)result;
-        rl_play_make_party();
+        type = gRlRun.map.nodes[row][result].type;
+        if (type == RL_BATTLE || type == RL_ELITE || type == RL_BOSS) {
+            rl_play_make_party();
+        } else if (type == RL_CENTER || type == RL_MART ||
+                   type == RL_EVENT || type == RL_RECRUIT) {
+            if (rl_run_advance(&gRlRun, sPlayChosenLane) != RL_OK) {
+                sPlayMessage = "That node is no longer reachable";
+                return;
+            }
+            rl_play_begin_node(type);
+        } else {
+            sPlayMessage = "Unsupported map node";
+        }
     } else if (result == (int)lane_count) {
         RlSaveStatus status;
         status = rl_play_store(1);
@@ -712,6 +762,10 @@ static void rl_play_update_map(u16 pressed) {
         } else {
             sPlayMessage = rl_save_status_text(status);
         }
+    } else if (result == (int)lane_count + 1) {
+        rl_play_begin_node(RL_SCENE_BAG);
+    } else if (result == (int)lane_count + 2) {
+        rl_play_begin_node(RL_SCENE_PARTY);
     } else if (result == RL_UI_CANCEL) {
         sPlayMessage = "Choose Save run and return to suspend safely";
     }
@@ -834,6 +888,17 @@ s32 rl_play_update(u16 pressed) {
     if (gRlPlayExit) {
         return RL_UI_CANCEL;
     }
+    if (gRlPlayScene == RL_PLAY_NODE && (pressed & CONT_START)) {
+        RlSaveStatus status;
+        status = rl_play_store(1);
+        if (status == RL_SAVE_OK) {
+            gRlMain.returnState = STATE_MENU_SELECT;
+            gRlPlayExit = 1;
+            return RL_UI_CANCEL;
+        }
+        sPlayMessage = rl_save_status_text(status);
+        return RL_UI_NONE;
+    }
     switch (gRlPlayScene) {
         case RL_PLAY_MENU:
             rl_play_update_root(pressed);
@@ -852,6 +917,17 @@ s32 rl_play_update(u16 pressed) {
             break;
         case RL_PLAY_SUMMARY:
             rl_play_update_summary(pressed);
+            break;
+        case RL_PLAY_NODE:
+            {
+                int result;
+                result = rl_scene_nodes_update(pressed);
+                if (result == RL_SCENE_COMPLETED) {
+                    rl_play_after_reward();
+                } else if (result == RL_SCENE_CANCEL) {
+                    rl_play_make_map();
+                }
+            }
             break;
         case RL_PLAY_ERROR:
             if (pressed & (RL_UI_A | RL_UI_B)) {
@@ -873,8 +949,17 @@ static void rl_play_draw_mon_detail(const RlMon* mon, s16 x, s16 y) {
     }
     rl_ui_mon_icon(mon->species, x + 54, y);
     rl_play_mon_label(sPlayLabels[8], mon, 0);
+    sPlayLabels[8][12] = '\0';
     rl_ui_text(x, y + 52, sPlayLabels[8], sPlayWhite);
-    rl_ui_hp_bar(x + 4, y + 78, 156, mon->cur_hp, mon->max_hp);
+    sPlayLabels[8][0] = 'H';
+    sPlayLabels[8][1] = 'P';
+    sPlayLabels[8][2] = ' ';
+    rl_play_number(sPlayLabels[8] + 3, mon->cur_hp, 3);
+    sPlayLabels[8][6] = '/';
+    rl_play_number(sPlayLabels[8] + 7, mon->max_hp, 3);
+    sPlayLabels[8][10] = '\0';
+    rl_ui_text(x, y + 78, sPlayLabels[8], sPlayWhite);
+    rl_ui_hp_bar(x + 4, y + 104, 156, mon->cur_hp, mon->max_hp);
 }
 
 static void rl_play_draw_status(void) {
@@ -907,9 +992,13 @@ void rl_play_draw(void) {
             rl_ui_text(142, 374, sPlayLabels[8], sPlayWhite);
             break;
         case RL_PLAY_MAP:
-            rl_ui_text(44, 40, "Three trainer encounters - choose a route", sPlayGold);
+            rl_ui_text(44, 40, "Act map - choose a connected node", sPlayGold);
             rl_ui_list_draw(&sPlayList, 44, 84, 360);
             row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
+            rl_ui_text(424, 78, "Act", sPlayWhite);
+            rl_play_number(sPlayLabels[8], gRlRun.act + 1, 1);
+            sPlayLabels[8][1] = '\0';
+            rl_ui_text(530, 78, sPlayLabels[8], sPlayWhite);
             rl_ui_text(424, 110, "Encounter", sPlayWhite);
             rl_play_number(sPlayLabels[8], row + 1, 1);
             sPlayLabels[8][1] = '\0';
@@ -917,9 +1006,14 @@ void rl_play_draw(void) {
             rl_ui_text(424, 150, "Run seed", sPlayWhite);
             rl_play_hex(sPlayLabels[8], gRlRun.seed);
             rl_ui_text(424, 176, sPlayLabels[8], sPlayWhite);
-            rl_ui_text(424, 224, "Party", sPlayWhite);
-            for (i = 0; i < gRlRun.party_count && i < 4; i++) {
-                rl_play_mon_label(sPlayLabels[8], &gRlRun.party[i], 0);
+            rl_ui_text(424, 224, "Party HP", sPlayWhite);
+            for (i = 0; i < gRlRun.party_count; i++) {
+                rl_play_number(sPlayLabels[8], gRlRun.party[i].species, 3);
+                sPlayLabels[8][3] = ' ';
+                rl_play_number(sPlayLabels[8] + 4, gRlRun.party[i].cur_hp, 3);
+                sPlayLabels[8][7] = '/';
+                rl_play_number(sPlayLabels[8] + 8, gRlRun.party[i].max_hp, 3);
+                sPlayLabels[8][11] = '\0';
                 rl_ui_text(424, 250 + i * 26, sPlayLabels[8], sPlayMuted);
             }
             break;
@@ -949,7 +1043,8 @@ void rl_play_draw(void) {
         case RL_PLAY_SUMMARY:
             rl_ui_text(44, 40, gRlRun.phase == RL_WON ? "RUN COMPLETE" : "RUN ENDED",
                        sPlayGold);
-            rl_ui_text(44, 78, "Three-encounter W7 slice; no boss or other node types.", sPlayWhite);
+            rl_ui_text(44, 78, gRlPlayTestMode ? "Three-encounter regression route" :
+                       "Three Acts and the Mewtwo finale", sPlayWhite);
             rl_ui_list_draw(&sPlayList, 44, 116, 540);
             rl_ui_text(44, 330, "Battles", sPlayWhite);
             rl_play_number(sPlayLabels[8], gRlRun.stats.battles, 3);
@@ -963,6 +1058,11 @@ void rl_play_draw(void) {
             rl_play_hex(sPlayLabels[8], gRlRun.seed);
             rl_ui_text(104, 362, sPlayLabels[8], sPlayWhite);
             break;
+        case RL_PLAY_NODE:
+            rl_scene_nodes_draw();
+            rl_ui_text(44, 416, "START: suspend to Controller Pak", sPlayMuted);
+            rl_play_draw_status();
+            return;
         case RL_PLAY_ERROR:
             rl_ui_text(44, 40, "Roguelike action unavailable", sPlayGold);
             rl_ui_text(44, 110, sPlayMessage == NULL ? "Press A or B to return" :

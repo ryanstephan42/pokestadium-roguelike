@@ -152,13 +152,11 @@ Mupen64Plus-Next's libretro core; the complete run reached frame 51937 and
 reported three native wins plus the separate native loss summary. The
 all-fainted UI-only fixture remains separate from that native-loss result.
 
-The current playable milestone intentionally exposes only the first three map
-rows, with reachable trainer-battle routes. Other node types are not presented
-as selectable choices: event, shop, center, elite, and boss scenes/content
-remain follow-on work. The generic map and save invariants are preserved, and
-unreachable lanes are disabled. Recruit rewards come from the defeated
-trainer's canonical roster; other rewards use the existing core generator.
-The summary marks the three-battle route as the current milestone.
+Normal play exposes the complete canonical map and dispatches every node kind.
+The first-three-row trainer route is now restricted to the guarded regression
+test mode. Nonbattle scene controls and real-input node scenarios are documented
+in [SCENES.md](SCENES.md). Recruit rewards come from the defeated trainer's
+canonical roster; other rewards use the existing core generator.
 
 For a visible test, build with `make rl` and launch the resulting
 `build_rl/pokestadium-rl.z64` in RetroArch. At the title, press N64 Start and
