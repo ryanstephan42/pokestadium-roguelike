@@ -1,7 +1,9 @@
-#include <assert.h>
 #include <string.h>
 #define ROGUELIKE
 #include "src/roguelike/rl_battle.c"
+
+#undef assert
+#define assert(condition) do { if (!(condition)) return __LINE__; } while (0)
 
 PokemonStats D_80070F84[152];
 unk_D_80072B00 D_80072B00[165];
