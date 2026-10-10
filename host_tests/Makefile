@@ -11,9 +11,18 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test ui-test clean
+.PHONY: test core-test ui-test save-test clean
 
-test: core-test ui-test
+test: core-test ui-test save-test
+
+save-test:
+	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \
+	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save; \
+	./test_save; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_save.c $(CORE) \
+	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_save_san
 
 core-test:
 	@set -e; trap 'rm -f test_core test_core_san' EXIT; \
@@ -33,4 +42,4 @@ ui-test:
 	fi
 
 clean:
-	rm -f test_core test_core_san $(UI_TEST_BIN)
+	rm -f test_core test_core_san test_save test_save_san $(UI_TEST_BIN)

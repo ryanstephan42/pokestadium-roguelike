@@ -2,6 +2,7 @@
 #include "rl_main.h"
 #include "src/controller.h"
 #include "src/29BA0.h"
+#include "rl_save_probe.h"
 
 extern u8 fragmentRL_TEXT_START[];
 extern u8 fragmentRL_ROM_START[];
@@ -22,6 +23,10 @@ void rl_main_state_roguelike(void) {
     gRlMain.visits++;
     if (gRlMain.returnState == 0) {
         gRlMain.returnState = STATE_MENU_SELECT;
+    }
+    if (rl_save_probe_poll()) {
+        gCurrentGameState = STATE_MENU_SELECT;
+        return;
     }
 
     next = FRAGMENT_LOAD_AND_CALL(fragmentRL, 0, 0);
