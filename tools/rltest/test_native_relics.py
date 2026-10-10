@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.rltest.frontend import Frontend, HarnessError
-from tools.rltest.test_custom_battle import Mon, Result
+from tools.rltest.test_custom_battle import BattleRules, Mon, Result
 
 
 TRACE_CAPACITY = 256
@@ -35,20 +35,6 @@ RELIC = {
     "ghost": 18,
     "cursed-power": 19,
 }
-
-
-class BattleRules(ctypes.BigEndianStructure):
-    _fields_ = [
-        ("stadium", ctypes.c_uint8),
-        ("gym", ctypes.c_uint8),
-        ("ai_level", ctypes.c_uint8),
-        ("player_count", ctypes.c_uint8),
-        ("player_cpu", ctypes.c_uint8),
-        ("show_intro", ctypes.c_uint8),
-        ("use_state", ctypes.c_uint8),
-        ("pad", ctypes.c_uint8),
-        ("relics", ctypes.c_uint32),
-    ]
 
 
 class TraceEvent(ctypes.BigEndianStructure):

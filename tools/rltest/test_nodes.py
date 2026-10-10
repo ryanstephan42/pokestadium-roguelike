@@ -13,7 +13,7 @@ from tools.rltest.test_play_run import (
     start_new_run, wait_scene,
     enter_roguelike_from_menu,
 )
-from tools.rltest.test_custom_battle import Mon
+from tools.rltest.test_custom_battle import Mon, PendingBattle
 
 SCENE_NODE = 8
 # Generated from rl_run_new; no map, party, result or phase writes are used.
@@ -313,10 +313,10 @@ def verify_battle_entry(emu, seed, route, expected):
             wait_scene(emu, SCENE_BATTLE)
             pending = emu.resolve("gRlPendingBattle")
             mon_size = ctypes.sizeof(Mon)
-            queued_slots = list(emu.read(pending + mon_size * 15 + 8, 3))
+            queued_slots = list(emu.read(pending + PendingBattle.player_slots.offset, 3))
             require(queued_slots == [slots[2], slots[0], slots[1]],
                     f"queued entrant order was not preserved: {queued_slots}")
-            queued_roster = emu.read(pending + mon_size * 9, count * mon_size)
+            queued_roster = emu.read(pending + PendingBattle.trainer.offset, count * mon_size)
             require(queued_roster == preview,
                     "native encounter differs from the pre-commit preview")
             live = emu.wait_battle(frames=3600)

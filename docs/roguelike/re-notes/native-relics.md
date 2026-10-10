@@ -2,6 +2,16 @@
 
 ## Acceptance status
 
+Independent validation at combined W8/W9 `c0b0320` passed both human cadence
+scenarios (frames 14114 and 12474) and all 16 native relic scenarios.
+The full gate passed boot and all twelve event/Pak scenarios, then exposed a
+stale eight-byte rules offset in `test_nodes.py` (not a runtime identity bug).
+All pending-battle Python readers now use shared ctypes field offsets.
+`host_tests/test_battle_layout.py` compares those offsets against the compiled
+C `RlBattleRules` and `RlPendingBattle` declarations, and checks serialized
+entrant order with zero and nonzero relic masks. Exact-head full re-gate is
+pending; earlier gate results below do not substitute for it.
+
 At `fbc416f` (after merging master with PRs #10–#12), vanilla `make` prints
 `build/pokestadium-us.z64: OK`, `make rl` passes its CRC check, and
 `scripts/rl-gate.sh` ends with `GATE PASSED`. The gate includes W7
@@ -19,11 +29,9 @@ For example, the Soul run blocked Toxic at round indices 0 and 1, the Toxic at
 round 2 missed natively, and native toxic damage then ramped 22/44/66/88/110 HP
 until faint.
 
-Remaining caveat: human-controlled battles may count non-action phases as
-completed rounds, such as a faint replacement with `unk_34 == 3`. That would
-add Leftovers/Cursed ticks and shorten the Soul window. Custom CPU battles
-showed one action pair per round. Switch, charge-move and replacement cadence
-still needs dedicated dynamic coverage.
+Human cadence coverage at `c0b0320` confirms menu waits, faint replacements,
+voluntary switches, Soul expiry and Leftovers/Cursed tick/KO sequencing.
+Charging moves and cancelled second actions remain uncovered.
 
 ## Integration contract
 
@@ -143,8 +151,8 @@ battles (`player_cpu = 0`) with controller input only:
 - Before every command, both scenarios idle 900 frames in the menu and require
   an unchanged trace and live HP.
 
-Status: implemented and host-tested. Emulator proof is pending the shared
-emulator queue. Charging moves and canceled second actions remain uncovered.
+Status: both scenarios passed independent emulator validation at `c0b0320`.
+Charging moves and canceled second actions remain uncovered.
 
 ## PP Pouch replacement
 
