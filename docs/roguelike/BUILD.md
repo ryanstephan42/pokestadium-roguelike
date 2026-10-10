@@ -10,8 +10,9 @@
 | `tools/rl/boot_test.py` | Headless smoke test using W1's `tools/rltest` frontend and a mupen64plus_next libretro core (`RL_CORE=` overrides the path). It goes title → Menu Select → RL scene → B → Menu Select, three times. |
 | `scripts/rl-gate.sh` | Runs the vanilla match, `make rl`, the RL boot test (when `tools/rltest` exists), host tests and smoke tests. |
 
-`build_rl/` is git-ignored. Objects don't depend on CFLAGS, so `make rlclean` after changing
-build flags.
+`build_rl/` is git-ignored. The roguelike fragment and main bridge objects depend on their optional
+UI and battle source files, respectively, so they rebuild automatically when those modules arrive.
+Objects don't track arbitrary compiler-flag changes, so run `make rlclean` after changing build flags.
 
 ### NON_MATCHING
 
