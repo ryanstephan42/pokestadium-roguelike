@@ -206,7 +206,10 @@ check asymmetric `0x1234`: HP10, Attack1, Defense2, Speed3, Special4.
 
 Runtime proof: the CPU-vs-CPU fixture completes two consecutive battles with
 three actual KOs each, native winner flags, and Title state2 return. Player
-HP72, paralysis0x40 and relic2 persist; Psychic PP goes 9 -> 6 -> 3.
+HP72, paralysis0x40 and relic2 carried through the initial proof; Psychic PP
+went 9 -> 6 -> 3. Native RNG can allow enemy damage or misses, so the scenario
+requires each next battle's HP/PP to equal the actual prior result, not a
+constant fixture value, and at least three real PP debits per three KOs.
 The bench duplicate retains HP73/PP10/status0x40/relic3, and selected original
 indices remain [1,2]. Opponent HP0/fainted flags are captured after each battle.
 Run `python3 -m tools.rltest.test_custom_battle`; its ignored JSON evidence

@@ -142,7 +142,7 @@ void func_80019128(MainPoolState* arg0, u32 arg1, Fragment* arg2) {
         osSyncPrintf("Unsupported original archive battle import\n");
         osStopThread(NULL);
     }
-    osWritebackDCache(arg2, arg2->sizeInRam);
+    osWritebackDCache(arg2, arg2->relocOffset);
 #endif
     Memmap_RelocateFragment(arg1, arg2);
     func_80002E3C(arg0, ((u32)arg2 + arg2->sizeInRam) - (u32)arg0->listHeadR);

@@ -520,7 +520,7 @@ void func_800043BC(s32 arg0, Fragment* addr) {
             osSyncPrintf("Unsupported original archive battle import\n");
             osStopThread(NULL);
         }
-        osWritebackDCache(addr, addr->sizeInRam);
+        osWritebackDCache(addr, addr->relocOffset);
     }
 #endif
     if (sp20 < addr->sizeInRam) {

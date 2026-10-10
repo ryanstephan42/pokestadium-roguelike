@@ -50,7 +50,10 @@ def run(core, rom, map_path, output):
 
 
 def battle(emu, request, count):
-    initial_pp = 9 if request == 1 else 6
+    initial_hp, initial_pp = 72, 9
+    if request == 2:
+        previous = Result.from_buffer_copy(emu.read("gRlLastBattleResult", ctypes.sizeof(Result)))
+        initial_hp, initial_pp = previous.player[0].cur_hp, previous.player[0].pp[0]
     emu.write_u32("gRlBattleTestRequest", request)
     emu.press("START", frames=10, after=10)
     emu.wait(lambda runner: runner.read_u32("gRlBattleActive") == 1,
@@ -64,7 +67,7 @@ def battle(emu, request, count):
         raise HarnessError("Player custom moves were not preserved")
     if emu.read(live[1]["side"] + 0x68C + 0x1F, 4) != bytes([33, 0, 0, 0]):
         raise HarnessError("Enemy custom moves were not preserved")
-    if (live[0]["hp"], live[0]["status"], live[0]["pp"][0]) != (72, 0x40, initial_pp):
+    if (live[0]["hp"], live[0]["status"], live[0]["pp"][0]) != (initial_hp, 0x40, initial_pp):
         raise HarnessError(f"Persistent state was healed/overwritten: {live[0]}")
     emu.wait(lambda runner: runner.read_u32("gRlBattleCount") == count,
              frames=18000, interval=10, description="custom battle completion")
@@ -79,10 +82,10 @@ def battle(emu, request, count):
     if emu.read_u32("gCurrentGameState") != 2:
         raise HarnessError("Custom battle did not return to chosen Title state")
     stored = Result.from_buffer_copy(emu.read("gRlLastBattleResult", ctypes.sizeof(Result)))
-    expected = [[72, initial_pp - 3, 0x40, 0, 2], [73, 10, 0x40, 0, 3]]
     actual = [persistent(stored.player[i]) for i in range(2)]
-    if actual != expected:
-        raise HarnessError(f"Post-battle state mismatch: {actual} != {expected}")
+    if (not 0 < actual[0][0] <= initial_hp or not 0 <= actual[0][1] <= initial_pp - 3
+            or actual[0][2:] != [0x40, 0, 2] or actual[1] != [73, 10, 0x40, 0, 3]):
+        raise HarnessError(f"Post-battle state mismatch: {actual}")
     if any(not stored.enemy[i].fainted or stored.enemy[i].cur_hp for i in range(3)):
         raise HarnessError("Native opponent fainting was not persisted")
     emu.step(120)
