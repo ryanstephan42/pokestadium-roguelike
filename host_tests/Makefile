@@ -3,6 +3,7 @@ CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -Werror -O2
 SANFLAGS = -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer
 CPPFLAGS += -DROGUELIKE
 CORE = ../src/roguelike/rl_core.c ../src/roguelike/rl_map.c \
+       ../src/roguelike/rl_content.c \
        ../src/roguelike/rl_enemy.c ../src/roguelike/rl_party.c \
        ../src/roguelike/rl_rewards.c ../src/roguelike/rl_relics.c \
        ../src/roguelike/rl_save_format.c
@@ -11,9 +12,9 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test ui-test save-test native-import-test clean
+.PHONY: test core-test content-test ui-test save-test native-import-test clean
 
-test: core-test ui-test save-test native-import-test nodes-test
+test: core-test content-test ui-test save-test native-import-test nodes-test
 
 .PHONY: nodes-test
 nodes-test:
@@ -22,6 +23,12 @@ nodes-test:
 	./test_nodes; \
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_nodes.c $(CORE) -o test_nodes_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_nodes_san
+content-test:
+	@set -e; trap 'rm -f test_content test_content_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_content.c $(CORE) -o test_content; \
+	./test_content; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_content.c $(CORE) -o test_content_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_content_san
 
 native-import-test:
 	mkdir -p ../build/host_tests

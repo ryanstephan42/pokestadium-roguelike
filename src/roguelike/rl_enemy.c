@@ -1,5 +1,6 @@
 /* PURE */
 #include "rl_core.h"
+#include "rl_content.h"
 
 static const RlMon placeholder[] = {
     {1,30,RL_MEDIUM_SLOW,0,21760,0x8888,{0,0,0,0,0},{45,49,49,45,65},
@@ -30,22 +31,23 @@ unsigned rl_enemy_level(unsigned act, unsigned row, unsigned type, unsigned asce
     return level > 100 ? 100 : level;
 }
 
-int rl_enemy_generate(RunState *run, const RlPool *pool, unsigned type,
-                      RlMon *team, unsigned count) {
+int rl_enemy_scale(const RunState *run, unsigned type, RlMon *team,
+                   unsigned count) {
     unsigned i, j, dv, level;
     RlAscension asc;
-    if (!run || !pool || !pool->mons || !pool->count || !team ||
+    if (!run || !team || run->act > 3 ||
         !count || count > RL_PARTY || run->row >= rl_map_rows(run->act) ||
         (type != RL_BATTLE && type != RL_ELITE && type != RL_BOSS)) return RL_INVALID;
+    for (i = 0; i < count; i++)
+        if (!team[i].species || team[i].species > 151 ||
+            team[i].growth > RL_MEDIUM_SLOW) return RL_INVALID;
     asc = rl_ascension(run->ascension);
     level = rl_enemy_level(run->act, run->row, type, run->ascension);
     dv = 7 + run->act * 2 + run->row / 2 + asc.enemy_dv_bonus;
     if (type == RL_ELITE || type == RL_BOSS || dv > 15) dv = 15;
+    /* Even nibbles reset the derived HP DV; keep ascension HP monotonic. */
+    dv |= 1U;
     for (i = 0; i < count; i++) {
-        unsigned index;
-        index = pool->fixed_order ? i % pool->count :
-            rl_random_bounded(&run->rng, pool->count);
-        team[i] = pool->mons[index];
         team[i].level = (RlU8)level;
         team[i].exp = rl_xp_for_level(level, team[i].growth);
         team[i].dvs = (RlU16)(dv * 0x1111U);
@@ -55,6 +57,25 @@ int rl_enemy_generate(RunState *run, const RlPool *pool, unsigned type,
         team[i].cur_hp = team[i].max_hp;
         team[i].fainted = 0;
         team[i].status = 0;
+        for (j = 0; j < 4; j++) team[i].pp[j] = team[i].max_pp[j];
     }
     return RL_OK;
+}
+
+int rl_enemy_generate(RunState *run, const RlPool *pool, unsigned type,
+                      RlMon *team, unsigned count) {
+    unsigned i, index;
+    if (!run || !pool || !pool->mons || !pool->count || !team ||
+        !count || count > RL_PARTY || run->act > 3 ||
+        run->row >= rl_map_rows(run->act) ||
+        (type != RL_BATTLE && type != RL_ELITE && type != RL_BOSS)) return RL_INVALID;
+    for (i = 0; i < pool->count; i++)
+        if (!pool->mons[i].species || pool->mons[i].species > 151 ||
+            pool->mons[i].growth > RL_MEDIUM_SLOW) return RL_INVALID;
+    for (i = 0; i < count; i++) {
+        index = pool->fixed_order ? i % pool->count :
+            rl_random_bounded(&run->rng, pool->count);
+        team[i] = pool->mons[index];
+    }
+    return rl_enemy_scale(run, type, team, count);
 }
