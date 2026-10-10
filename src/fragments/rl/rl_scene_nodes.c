@@ -11,6 +11,7 @@ enum { NODE_ROOT, NODE_TARGET, NODE_MOVE, NODE_PARTY_ACTION,
 
 static RunState* sRun;
 static const RlPool* sRentals;
+static const RlMeta* sMeta;
 static unsigned sMode, sPage, sItem, sSlot, sChoice, sEvent;
 static unsigned sShopCount, sWildCount;
 static int sReturn;
@@ -261,7 +262,8 @@ static int node_event(unsigned choice, unsigned slot) {
     copy.rng = node_seed(0x45564E54U);
     if (sEvent == 7 && choice == 0 && copy.bag[RL_CANDY] >= 999)
         return RL_FULL;
-    result = rl_event_resolve(&copy, sEvent, choice, slot, sRentals, &sMovePool);
+    result = rl_event_resolve_unlocked(&copy, sEvent, choice, slot, sRentals,
+                                       &sMovePool, rl_meta_permitted_relics(sMeta));
     if (result == RL_OK) {
         copy.rng = rng;
         *sRun = copy;
@@ -269,16 +271,20 @@ static int node_event(unsigned choice, unsigned slot) {
     return result;
 }
 
-void rl_scene_nodes_begin(RunState* run, const RlPool* rentals, unsigned mode) {
+void rl_scene_nodes_begin(RunState* run, const RlPool* rentals, unsigned mode,
+                          const RlMeta* meta) {
     RunState copy;
+    RlU8 event;
+    RlU32 event_rng;
     sRun = run;
     sRentals = rentals;
+    sMeta = meta;
     sMode = mode;
     sMessage = NULL;
     sReturn = RL_SCENE_ONGOING;
     sShopCount = sWildCount = 0;
     sItem = sSlot = sChoice = 0;
-    if (!run || run->party_count > RL_PARTY || run->tm_count > RL_TM_CAPACITY ||
+    if (!run || !meta || run->party_count > RL_PARTY || run->tm_count > RL_TM_CAPACITY ||
         (mode != RL_CENTER && mode != RL_MART && mode != RL_EVENT &&
          mode != RL_RECRUIT && mode != RL_SCENE_BAG && mode != RL_SCENE_PARTY)) {
         sMessage = "Invalid node scene request.";
@@ -291,10 +297,19 @@ void rl_scene_nodes_begin(RunState* run, const RlPool* rentals, unsigned mode) {
     copy.rng = node_seed(0x53484F50U);
     /* Owned relics affect purchase validity, not the identity of this node's offer. */
     copy.relics = 0;
-    sShopCount = rl_shop_generate(&copy, &sMovePool, sShop, 12);
+    sShopCount = rl_shop_generate_unlocked(&copy, &sMovePool,
+                                           rl_meta_permitted_relics(meta), sShop, 12);
     copy = *run;
     copy.rng = node_seed(0x45564E54U);
-    sEvent = node_seed(0x45564944U) % RL_EVENT_COUNT;
+    event_rng = node_seed(0x45564944U);
+    sEvent = 0;
+    if (mode == RL_EVENT && rl_meta_choose_event(meta, &event_rng, &event) != RL_OK) {
+        sMessage = "Profile has no unlocked events.";
+        node_add(0, "Return", 0);
+        node_list("Scene error", 1, NODE_ERROR);
+        return;
+    }
+    if (mode == RL_EVENT) sEvent = event;
     sWildCount = rl_event_wild_options(&copy, rentals, sWild, 3);
     node_root();
     if ((mode == RL_RECRUIT || (mode == RL_EVENT && sEvent == 6)) && !sWildCount)

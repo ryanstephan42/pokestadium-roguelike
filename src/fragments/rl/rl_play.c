@@ -5,6 +5,7 @@
 #include "src/roguelike/rl_main.h"
 #include "src/roguelike/rl_rosters.h"
 #include "src/roguelike/rl_save.h"
+#include "src/roguelike/rl_meta.h"
 #include "src/roguelike/rl_text.h"
 #include "rl_play.h"
 #include "rl_ui.h"
@@ -26,7 +27,9 @@ enum {
     RL_PLAY_SUMMARY,
     RL_PLAY_ERROR,
     RL_PLAY_BATTLE,
-    RL_PLAY_NODE
+    RL_PLAY_NODE,
+    RL_PLAY_PROFILE,
+    RL_PLAY_SETTINGS
 };
 
 static const Color_RGBA8 sPlayWhite = { 255, 255, 255, 255 };
@@ -49,15 +52,38 @@ static unsigned char sPlayRerollUsed;
 static int sPlayPoolCount;
 static int sPlayRewardCount;
 static const char* sPlayMessage;
+#define sPlayMeta gRlPlayProfile.meta
+#define sPlayNextMeta gRlPlayProfile.next_meta
+static RlMeta sPlayLoadedMeta;
+static RunState sPlayLoadedRun;
+#define sPlaySummaryPrepared gRlPlayProfile.summary_prepared
+#define sPlaySummarySaved gRlPlayProfile.summary_saved
+#define sPlayAscension gRlPlayProfile.ascension
+#define sPlayStarterPool gRlPlayProfile.starter_pool
+#define sPlayUnsaved gRlPlayProfile.unsaved
+static RlSaveStatus sPlayProfileStatus;
+static RlU8 sPlayMetaBytes[2][RL_META_MAX_SIZE];
 
 static unsigned rl_play_active_selected(unsigned slot);
 static void rl_play_make_summary(void);
+static RlSaveStatus rl_play_store(int include_run);
+static void rl_play_settings(void);
+static int rl_play_begin_new(void);
+
+static int rl_play_meta_equal(const RlMeta* a, const RlMeta* b) {
+    unsigned first;
+    unsigned second;
+    if (rl_save_encode(a, NULL, sPlayMetaBytes[0], RL_META_MAX_SIZE, &first) != RL_OK ||
+        rl_save_encode(b, NULL, sPlayMetaBytes[1], RL_META_MAX_SIZE, &second) != RL_OK)
+        return 0;
+    return first == second && bcmp(sPlayMetaBytes[0], sPlayMetaBytes[1], first) == 0;
+}
 
 static void rl_play_begin_node(unsigned mode) {
     sPlayNodePool.mons = sPlayPool;
     sPlayNodePool.count = (RlU16)sPlayPoolCount;
     sPlayNodePool.fixed_order = 0;
-    rl_scene_nodes_begin(&gRlRun, &sPlayNodePool, mode);
+    rl_scene_nodes_begin(&gRlRun, &sPlayNodePool, mode, &sPlayMeta);
     gRlPlayScene = RL_PLAY_NODE;
     sPlayMessage = NULL;
 }
@@ -153,13 +179,67 @@ static int rl_play_init_list(const char* title, int count, int visible) {
 }
 
 static void rl_play_build_root(void) {
-    sPlayItems[0].text = "New run - Poke Cup rentals";
+    sPlayItems[0].text = "New run";
     sPlayItems[0].disabled = 0;
     sPlayItems[1].text = "Resume from Controller Pak";
     sPlayItems[1].disabled = 0;
     sPlayItems[2].text = "Return to Menu Select";
     sPlayItems[2].disabled = 0;
-    rl_play_init_list("ROGUELIKE RUN", 3, 3);
+    sPlayItems[3].text = "Starter pool / Ascension";
+    sPlayItems[3].disabled = 0;
+    if (sPlaySummaryPrepared && !sPlaySummarySaved && rl_run_is_over(&gRlRun)) {
+        sPlayItems[4].text = "Retry unsaved run results";
+        sPlayItems[4].disabled = 0;
+        rl_play_init_list("ROGUELIKE RUN", 5, 5);
+    } else {
+        rl_play_init_list("ROGUELIKE RUN", 4, 4);
+    }
+}
+
+static void rl_play_settings(void) {
+    static const char* pools[] = {"Poke Cup starters", "Prime Cup starters", "Little Cup starters"};
+    unsigned i;
+    for (i = 0; i < RL_META_POOL_COUNT; i++) {
+        sPlayItems[i].text = pools[i];
+        sPlayItems[i].disabled = !rl_meta_starter_unlocked(&sPlayMeta, i);
+    }
+    rl_play_copy_text(sPlayLabels[3], "Ascension 00");
+    rl_play_number(sPlayLabels[3] + 10, sPlayAscension, 2);
+    sPlayItems[3].text = sPlayLabels[3];
+    sPlayItems[3].disabled = 0;
+    sPlayItems[4].text = "Back";
+    sPlayItems[4].disabled = 0;
+    rl_play_init_list("Pools: A select; Ascension: A cycle", 5, 5);
+    rl_play_set_scene(RL_PLAY_SETTINGS);
+}
+
+static void rl_play_request_new(void) {
+    RlU8 has_run;
+    if (sPlaySummaryPrepared && !sPlaySummarySaved) {
+        sPlayMessage = "Retry unsaved results before starting another run";
+        return;
+    }
+    sPlayProfileStatus = rl_save_load(0, &sPlayMeta, &sPlayLoadedRun, &has_run);
+    if (sPlayProfileStatus == RL_SAVE_OK) {
+        sPlayUnsaved = 0;
+        rl_play_begin_new();
+        return;
+    }
+    if (sPlayProfileStatus != RL_SAVE_NOT_FOUND &&
+        sPlayProfileStatus != RL_SAVE_NO_DEVICE) {
+        sPlayMessage = rl_save_status_text(sPlayProfileStatus);
+        gRlPlayScene = RL_PLAY_ERROR;
+        return;
+    }
+    sPlayItems[0].text = "Create new progression on Pak";
+    sPlayItems[0].disabled = sPlayProfileStatus != RL_SAVE_NOT_FOUND;
+    sPlayItems[1].text = "Play without saving progression";
+    sPlayItems[1].disabled = 0;
+    sPlayItems[2].text = "Cancel";
+    sPlayItems[2].disabled = 0;
+    rl_play_init_list("No profile: choose explicitly", 3, 3);
+    rl_play_set_scene(RL_PLAY_PROFILE);
+    sPlayMessage = rl_save_status_text(sPlayProfileStatus);
 }
 
 static void rl_play_make_draft(void) {
@@ -247,17 +327,28 @@ static void rl_play_refresh_draft(void) {
 }
 
 static int rl_play_begin_new(void) {
+    static const unsigned sets[] = {
+        RL_RENTAL_SET_POKE, RL_RENTAL_SET_PRIME, RL_RENTAL_SET_PETIT
+    };
     unsigned i;
     unsigned seed;
+    RlU8 ascension;
 
     seed = gRlPlayTestSeed;
     if (seed == 0) {
         seed = ((unsigned)MathUtil_Random16() << 16) | MathUtil_Random16();
     }
-    rl_run_new(&gRlRun, seed, 0);
+    if (rl_meta_select_ascension(&sPlayMeta, sPlayAscension, &ascension) != RL_OK ||
+        !rl_meta_starter_unlocked(&sPlayMeta, sPlayStarterPool)) {
+        sPlayMessage = "Selected run settings are locked";
+        return 0;
+    }
+    rl_run_new(&gRlRun, seed, ascension);
+    sPlaySummaryPrepared = 0;
+    sPlaySummarySaved = 0;
     sPlayRerollUsed = 0;
     sPlayChosenLane = 0;
-    sPlayPoolCount = rl_load_rental_pool(RL_RENTAL_SET_POKE, sPlayPool,
+    sPlayPoolCount = rl_load_rental_pool(sets[sPlayStarterPool], sPlayPool,
                                          RL_PLAY_POOL_SIZE);
     if (sPlayPoolCount < RL_PLAY_DRAFT_SIZE) {
         sPlayMessage = "Could not load the Poke Cup rental pool";
@@ -434,7 +525,8 @@ static void rl_play_make_rewards(void) {
     sPlayRewardPool.mons = gRlPendingBattle.trainer;
     sPlayRewardPool.count = gRlPendingBattle.trainer_count;
     sPlayRewardPool.fixed_order = 0;
-    sPlayRewardCount = (int)rl_rewards_generate(&gRlRun, &sPlayRewardPool, NULL,
+    sPlayRewardCount = (int)rl_rewards_generate_unlocked(&gRlRun, &sPlayRewardPool, NULL,
+                                                rl_meta_permitted_relics(&sPlayMeta),
                                                 sPlayRewards,
                                                 RL_PLAY_REWARD_SIZE);
     if (sPlayRewardCount != RL_PLAY_REWARD_SIZE) {
@@ -463,12 +555,24 @@ static void rl_play_make_rewards(void) {
 }
 
 static void rl_play_make_summary(void) {
-    sPlayItems[0].text = "Save results (replaces Pak run)";
+    RlSaveStatus status;
+    sPlayItems[0].text = sPlaySummarySaved ? "Results saved" : "Save results (replaces Pak run)";
     sPlayItems[0].disabled = 0;
-    sPlayItems[1].text = "Return without saving";
+    sPlayItems[1].text = sPlaySummarySaved ? "Return" : "Discard unsaved results";
     sPlayItems[1].disabled = 0;
     rl_play_init_list("Run summary", 2, 2);
     rl_play_set_scene(RL_PLAY_SUMMARY);
+    if (!sPlaySummarySaved && !sPlayUnsaved &&
+        gRlPlayTestMode != 2 &&
+        !(gRlPlayTestMode && gRlRun.phase == RL_WON)) {
+        status = rl_play_store(0);
+        if (status == RL_SAVE_OK) {
+            sPlayItems[0].text = "Results saved";
+            sPlayMessage = "Progression saved to Controller Pak";
+        } else {
+            sPlayMessage = rl_save_status_text(status);
+        }
+    }
 }
 
 static void rl_play_after_reward(void) {
@@ -578,37 +682,35 @@ static int rl_play_run_battle(void) {
 }
 
 static RlSaveStatus rl_play_store(int include_run) {
-    RlMeta meta;
-    RunState saved_run;
     RlU8 has_run;
     RlSaveStatus status;
-    int create;
-    unsigned i;
-
-    for (i = 0; i < sizeof(meta); i++) {
-        ((unsigned char*)&meta)[i] = 0;
+    if (sPlayUnsaved) return RL_SAVE_NO_DEVICE;
+    if (!include_run && sPlaySummarySaved) return RL_SAVE_OK;
+    if (!include_run && !sPlaySummaryPrepared) {
+        if (gRlPlayTestMode == 2 || (gRlPlayTestMode && gRlRun.phase == RL_WON))
+            return RL_SAVE_INVALID;
+        sPlayNextMeta = sPlayMeta;
+        if (rl_meta_record_run(&sPlayNextMeta, &gRlRun) != RL_OK)
+            return RL_SAVE_INVALID;
+        sPlaySummaryPrepared = 1;
     }
-    status = rl_save_load(0, &meta, &saved_run, &has_run);
-    if (status == RL_SAVE_NOT_FOUND) {
-        for (i = 0; i < sizeof(meta); i++) {
-            ((unsigned char*)&meta)[i] = 0;
-        }
-        create = 1;
-    } else if (status == RL_SAVE_OK) {
-        create = 0;
-    } else {
-        return status;
+    status = rl_save_load(0, &sPlayLoadedMeta, &sPlayLoadedRun, &has_run);
+    if (status != RL_SAVE_OK) return status;
+    if (!include_run && !has_run &&
+        rl_play_meta_equal(&sPlayLoadedMeta, &sPlayNextMeta)) {
+        sPlaySummarySaved = 1;
+        sPlayMeta = sPlayNextMeta;
+        return RL_SAVE_OK;
     }
-    if (!include_run) {
-        meta.runs++;
-        if (gRlRun.phase == RL_WON) {
-            meta.wins++;
-        }
-        if (gRlRun.stats.nodes > meta.best_floor) {
-            meta.best_floor = gRlRun.stats.nodes;
-        }
+    if (!rl_play_meta_equal(&sPlayLoadedMeta, &sPlayMeta))
+        return RL_SAVE_DEVICE_CHANGED;
+    status = rl_save_store(0, include_run ? &sPlayMeta : &sPlayNextMeta,
+                            include_run ? &gRlRun : NULL, 0);
+    if (status == RL_SAVE_OK && !include_run) {
+        sPlayMeta = sPlayNextMeta;
+        sPlaySummarySaved = 1;
     }
-    return rl_save_store(0, &meta, include_run ? &gRlRun : NULL, create);
+    return status;
 }
 
 static void rl_play_resume(void) {
@@ -616,6 +718,7 @@ static void rl_play_resume(void) {
     RunState run;
     RlU8 has_run;
     RlSaveStatus status;
+    RlU8 ascension;
 
     status = rl_save_load(0, &meta, &run, &has_run);
     if (status != RL_SAVE_OK && status != RL_SAVE_RECOVERED) {
@@ -629,6 +732,11 @@ static void rl_play_resume(void) {
         gRlPlayScene = RL_PLAY_ERROR;
         return;
     }
+    if (rl_meta_select_ascension(&meta, run.ascension, &ascension) != RL_OK) {
+        sPlayMessage = "Saved run ascension is not unlocked";
+        gRlPlayScene = RL_PLAY_ERROR;
+        return;
+    }
     sPlayPoolCount = rl_load_rental_pool(RL_RENTAL_SET_POKE, sPlayPool,
                                          RL_PLAY_POOL_SIZE);
     if (sPlayPoolCount < RL_PLAY_DRAFT_SIZE) {
@@ -637,6 +745,11 @@ static void rl_play_resume(void) {
         return;
     }
     gRlRun = run;
+    sPlayMeta = meta;
+    sPlayUnsaved = 0;
+    sPlayAscension = run.ascension;
+    sPlaySummaryPrepared = 0;
+    sPlaySummarySaved = 0;
     gRlPlayBattleCount = run.stats.battles;
     if (status == RL_SAVE_RECOVERED) {
         sPlayMessage = rl_save_status_text(status);
@@ -695,6 +808,13 @@ static void rl_play_confirm_draft(void) {
     gRlRun.stats.battles = 0;
     gRlRun.stats.wins = 0;
     gRlPlayBattleCount = 0;
+    sPlayPoolCount = rl_load_rental_pool(RL_RENTAL_SET_POKE, sPlayPool,
+                                         RL_PLAY_POOL_SIZE);
+    if (sPlayPoolCount < RL_PLAY_DRAFT_SIZE) {
+        sPlayMessage = "Could not load node rental content";
+        gRlPlayScene = RL_PLAY_ERROR;
+        return;
+    }
     rl_play_make_map();
 }
 
@@ -702,7 +822,7 @@ static void rl_play_update_root(u16 pressed) {
     int result;
     result = rl_ui_list(&sPlayList, pressed);
     if (result == 0) {
-        rl_play_begin_new();
+        rl_play_request_new();
     } else if (result == 1) {
         rl_play_resume();
     } else if (result == 2 || result == RL_UI_CANCEL) {
@@ -710,6 +830,17 @@ static void rl_play_update_root(u16 pressed) {
         gRlPlayScene = RL_PLAY_MENU;
         sPlayMessage = NULL;
         gRlPlayExit = 1;
+    } else if (result == 3) {
+        RlU8 has_run;
+        RlSaveStatus status;
+        status = rl_save_load(0, &sPlayMeta, &sPlayLoadedRun, &has_run);
+        if (status == RL_SAVE_OK) {
+            rl_play_settings();
+        } else {
+            sPlayMessage = rl_save_status_text(status);
+        }
+    } else if (result == 4 && sPlaySummaryPrepared && !sPlaySummarySaved) {
+        rl_play_make_summary();
     }
 }
 
@@ -834,6 +965,9 @@ static void rl_play_update_summary(u16 pressed) {
             sPlayMessage = rl_save_status_text(status);
         }
     } else if (result == 1 || result == RL_UI_CANCEL) {
+        if (result == 1 && !sPlaySummarySaved) {
+            sPlaySummaryPrepared = 0;
+        }
         rl_play_build_root();
         rl_play_set_scene(RL_PLAY_MENU);
     }
@@ -929,6 +1063,53 @@ s32 rl_play_update(u16 pressed) {
                 }
             }
             break;
+        case RL_PLAY_PROFILE:
+            {
+                int result;
+                RlSaveStatus status;
+                result = rl_ui_list(&sPlayList, pressed);
+                if (result == 0 || result == 1) {
+                    rl_meta_init(&sPlayMeta);
+                    sPlayAscension = 0;
+                    sPlayStarterPool = 0;
+                    sPlayUnsaved = result == 1;
+                    if (!sPlayUnsaved) {
+                        status = rl_save_store(0, &sPlayMeta, NULL, 1);
+                        if (status != RL_SAVE_OK) {
+                            sPlayMessage = rl_save_status_text(status);
+                            break;
+                        }
+                    }
+                    rl_play_begin_new();
+                } else if (result == 2 || result == RL_UI_CANCEL) {
+                    rl_play_build_root();
+                    rl_play_set_scene(RL_PLAY_MENU);
+                }
+            }
+            break;
+        case RL_PLAY_SETTINGS:
+            {
+                int result;
+                RlU8 selected;
+                result = rl_ui_list(&sPlayList, pressed);
+                if (result >= 0 && result < RL_META_POOL_COUNT) {
+                    sPlayStarterPool = (unsigned char)result;
+                    sPlayMessage = "Starter pool selected";
+                } else if (result == 3) {
+                    unsigned requested;
+                    requested = sPlayAscension < sPlayMeta.ascension ? sPlayAscension + 1 : 0;
+                    if (rl_meta_select_ascension(&sPlayMeta, requested, &selected) != RL_OK) {
+                        sPlayMessage = "Ascension is locked";
+                    } else {
+                        sPlayAscension = selected;
+                        rl_play_number(sPlayLabels[3] + 10, selected, 2);
+                    }
+                } else if (result == 4 || result == RL_UI_CANCEL) {
+                    rl_play_build_root();
+                    rl_play_set_scene(RL_PLAY_MENU);
+                }
+            }
+            break;
         case RL_PLAY_ERROR:
             if (pressed & (RL_UI_A | RL_UI_B)) {
                 rl_play_build_root();
@@ -978,6 +1159,11 @@ void rl_play_draw(void) {
             rl_ui_text(44, 40, "Pokemon Stadium Roguelike", sPlayGold);
             rl_ui_list_draw(&sPlayList, 44, 84, 540);
             rl_ui_text(44, 376, "New runs draft three real Poke Cup rentals.", sPlayMuted);
+            break;
+        case RL_PLAY_PROFILE:
+        case RL_PLAY_SETTINGS:
+            rl_ui_text(44, 40, "Persistent progression settings", sPlayGold);
+            rl_ui_list_draw(&sPlayList, 44, 84, 540);
             break;
         case RL_PLAY_DRAFT:
             rl_ui_text(44, 40, "Starter draft - select 3 of 6", sPlayGold);

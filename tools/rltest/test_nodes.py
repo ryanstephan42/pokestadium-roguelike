@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tools.rltest.frontend import Frontend
 from tools.rltest.run import default_core
+from tools.rltest.save_roundtrip import native_command
 from tools.rltest.test_play_run import (
     SCENE_MAP, SCENE_MENU, SCENE_PARTY, SCENE_BATTLE,
     press, read_run, reenter_roguelike, require, scene,
@@ -14,9 +15,9 @@ from tools.rltest.test_play_run import (
 SCENE_NODE = 8
 # Generated from rl_run_new; no map, party, result or phase writes are used.
 EVENT_ROUTES = {
-    0: (43, 0), 1: (12, 1), 2: (16, 0), 3: (54, 1),
-    4: (15, 0), 5: (214, 0), 6: (34, 2), 7: (21, 2),
-    8: (4, 0), 9: (2, 1), 10: (8, 1), 11: (17, 2),
+    0: (71, 1), 1: (10, 1), 2: (4, 0), 3: (16, 0),
+    4: (21, 2), 5: (50, 1), 6: (8, 1), 7: (121, 1),
+    8: (99, 3), 9: (2, 1), 10: (15, 0), 11: (15, 3),
 }
 
 
@@ -33,7 +34,11 @@ def event_id(seed, act, row, lane):
     x ^= x >> 15
     x = x * 0x846CA68B & 0xFFFFFFFF
     x ^= x >> 16
-    return (x or 1) % 12
+    x = x or 1
+    x ^= x << 13 & 0xFFFFFFFF
+    x ^= x >> 17
+    x ^= x << 5 & 0xFFFFFFFF
+    return x % 12
 
 
 def identity(run):
@@ -54,6 +59,11 @@ def save_map_and_reenter(emu):
     row = 0 if run.row == 255 else run.row + 1
     select(emu, run.map.lanes[row])
     emu.wait_state(4, frames=600)
+    reenter_roguelike(emu)
+    press(emu, "N64_B")
+    emu.wait_state(4, frames=600)
+    result = native_command(emu, 4, create=1)
+    require(result[1] == 0, "explicit unlocked-profile fixture creation failed")
     reenter_roguelike(emu)
 
 
@@ -285,7 +295,7 @@ def main():
     output = Path(".local/rltest/nodes")
     with Frontend(default_core(), Path("build_rl/pokestadium-rl.z64"),
                   Path("build_rl/pokestadium-rl.map"), output=output,
-                  timeout=1800) as emu:
+                  options={"mupen64plus-pak1": "memory"}, timeout=3600) as emu:
         boot(emu)
         if args.event is not None:
             verify_events(emu, {args.event: EVENT_ROUTES[args.event]})

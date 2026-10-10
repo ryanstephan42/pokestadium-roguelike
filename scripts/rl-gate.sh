@@ -32,6 +32,10 @@ if grep -q '^rl:' Makefile 2>/dev/null; then
             step "playable run UI and three native battles"
             "$PY" -m tools.rltest.test_play_run
         fi
+        if [ -f tools/rltest/test_meta_runtime.py ]; then
+            step "native loss progression and fresh-process meta persistence"
+            "$PY" -m tools.rltest.test_meta_runtime
+        fi
         if [ -f tools/rltest/test_custom_battle.py ]; then
             step "native adapter consecutive-battle regression"
             "$PY" -m tools.rltest.test_custom_battle

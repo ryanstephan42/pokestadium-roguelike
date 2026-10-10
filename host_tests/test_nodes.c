@@ -3,6 +3,7 @@
 #include <string.h>
 #include "rl_core.h"
 #include "rl_save_format.h"
+#include "rl_meta.h"
 
 static RlMon mons[4];
 static RlPool pool;
@@ -97,6 +98,36 @@ static void test_node_suspend(void) {
         assert(restored.rng == run.rng);
         assert(rl_map_valid(&restored.map));
     }
+
+}
+
+static void test_complete_run_unlocks(void) {
+        RunState run;
+        RlMeta meta;
+        unsigned lane, next, type;
+        init_run(&run);
+        rl_meta_init(&meta);
+        while (!rl_run_is_over(&run)) {
+            next = run.row == RL_NO_SLOT ? 0 : (unsigned)run.row + 1;
+            lane = 0;
+            if (run.row != RL_NO_SLOT) {
+                while (!(run.map.nodes[run.row][run.lane].edges & (1U << lane))) lane++;
+            }
+            assert(next < rl_map_rows(run.act));
+            assert(rl_run_advance(&run, lane) == RL_OK);
+            type = run.map.nodes[run.row][run.lane].type;
+            if (type == RL_BATTLE || type == RL_ELITE || type == RL_BOSS)
+                assert(rl_run_on_battle_result(&run, 1, 3) == RL_OK);
+            assert(rl_run_finish_node(&run) == RL_OK);
+        }
+        assert(run.phase == RL_WON && run.act == 3 && run.row == 0);
+        assert(rl_meta_record_run(&meta, &run) == RL_OK);
+        assert(meta.runs == 1 && meta.wins == 1 && meta.best_floor == 22);
+        assert(meta.ascension == 1 && meta.hall_count == run.party_count);
+        assert(rl_meta_starter_unlocked(&meta, RL_META_POOL_PRIME_CUP));
+        assert(rl_meta_relic_unlocked(&meta, RL_AMULET));
+        assert(rl_meta_event_unlocked(&meta, 8));
+        assert(!rl_meta_event_unlocked(&meta, 9));
 }
 
 int main(void) {
@@ -110,6 +141,7 @@ int main(void) {
     test_catalog();
     test_events();
     test_node_suspend();
+    test_complete_run_unlocks();
     puts("Node catalog, twelve events and suspend tests passed");
     return 0;
 }

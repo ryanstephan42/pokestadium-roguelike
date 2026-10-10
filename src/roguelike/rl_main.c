@@ -16,6 +16,7 @@ void rl_battle_test_entry(void);
 
 RlMainState gRlMain;
 RunState gRlRun;
+RlPlayProfile gRlPlayProfile;
 RlPendingBattle gRlPendingBattle;
 volatile u32 gRlPlayScene;
 volatile u32 gRlPlayExit;

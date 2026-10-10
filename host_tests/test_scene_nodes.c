@@ -11,6 +11,9 @@ static const RlUiList* shown;
 static const char* message;
 static RlMon mons[4];
 static RlPool pool;
+static RlMeta profile;
+#define rl_scene_nodes_begin(run, rentals, mode) \
+    (rl_scene_nodes_begin)(run, rentals, mode, &profile)
 
 unk_D_80072B00* func_8002ED40(s32 move) {
     return move > 0 && move <= 165 ? &move_data : NULL;
@@ -70,7 +73,8 @@ static unsigned event_id(unsigned seed) {
     x ^= x >> 15;
     x *= 0x846CA68BU;
     x ^= x >> 16;
-    return (x ? x : 1) % RL_EVENT_COUNT;
+    x = x ? x : 1;
+    return rl_random_bounded(&x, RL_EVENT_COUNT);
 }
 
 static unsigned event_seed(unsigned event) {
@@ -265,8 +269,46 @@ static void test_shop(void) {
     assert(choose(14) == RL_SCENE_COMPLETED);
 }
 
+static void test_locked_profile(void) {
+    RunState run;
+    unsigned seed, event, i;
+    int found;
+    rl_meta_init(&profile);
+    for (seed = 1; seed <= 500; seed++) {
+        init_run(&run, seed);
+        rl_scene_nodes_begin(&run, &pool, RL_EVENT);
+        draw();
+        found = 0;
+        for (event = 0; event < RL_META_INITIAL_EVENTS; event++) {
+            if (!strcmp(shown->title, rl_events[event].name)) found = 1;
+        }
+        assert(found);
+        rl_scene_nodes_begin(&run, &pool, RL_MART);
+        draw();
+        for (i = RL_META_INITIAL_RELICS; i < RL_RELIC_COUNT; i++) {
+            for (event = 0; event < 12; event++)
+                assert(strcmp(shown->items[event].text, rl_relic_defs[i].name));
+        }
+    }
+    profile.unlocked_events = 1U << 8;
+    init_run(&run, 99);
+    rl_scene_nodes_begin(&run, &pool, RL_EVENT);
+    draw();
+    assert(!strcmp(shown->title, rl_events[8].name));
+    assert(choose(0) == RL_SCENE_COMPLETED);
+    assert(run.relics && !(run.relics & ~255U));
+    profile.unlocked_events = 1U << 5;
+    init_run(&run, 50);
+    rl_scene_nodes_begin(&run, &pool, RL_EVENT);
+    assert(choose(0) == RL_SCENE_ONGOING);
+    assert(!run.relics);
+}
+
 int main(void) {
     unsigned i, stat;
+    rl_meta_init(&profile);
+    profile.unlocked_events = (1U << RL_EVENT_COUNT) - 1;
+    profile.unlocked_relics = (1U << RL_RELIC_COUNT) - 1;
     memset(mons, 0, sizeof(mons));
     for (i = 0; i < 4; i++) {
         mons[i].species = (RlU8)(i == 2 ? 140 : i == 3 ? 138 : i + 1);
@@ -287,6 +329,7 @@ int main(void) {
     test_center_recruit();
     test_bag_party();
     test_shop();
+    test_locked_profile();
     puts("Scene interactions: all twelve events, Center, recruit, shop, Bag, TM and Party passed");
     return 0;
 }

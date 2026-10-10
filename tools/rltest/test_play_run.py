@@ -61,6 +61,15 @@ def wait_scene(emu, expected, frames=1200):
              description=f"roguelike scene {expected}")
 
 
+def wait_draft(emu):
+    emu.wait(lambda runner: scene(runner) in (SCENE_DRAFT, 9), frames=1200,
+             description="draft or explicit new-profile choice")
+    if scene(emu) == 9:
+        emu.step(30)
+        press(emu, "N64_A")
+    wait_scene(emu, SCENE_DRAFT)
+
+
 def press(emu, button, after=4):
     emu.press(button, frames=4, after=after)
 
@@ -207,6 +216,7 @@ def choose_active_and_battle(emu, battle_index):
 
 def verify_loss_summary(emu):
     """Exercise summary UI with a synthetic all-fainted party fixture."""
+    emu.write_u32("gRlPlayTestMode", 2)
     press(emu, "N64_A")
     wait_scene(emu, SCENE_DRAFT)
     emu.step(30)
@@ -235,7 +245,7 @@ def start_new_run(emu, seed, test_mode):
     emu.write_u32("gRlPlayTestMode", test_mode)
     emu.write_u32("gRlPlayTestSeed", seed)
     press(emu, "N64_A")
-    wait_scene(emu, SCENE_DRAFT)
+    wait_draft(emu)
     emu.step(30)
     for button in ("N64_A", "DOWN", "N64_A", "DOWN", "N64_A"):
         emu.press(button, frames=4, after=16)
@@ -389,7 +399,7 @@ def run(emu, output):
     emu.screenshot(output / "run-menu.png")
 
     press(emu, "N64_A")
-    wait_scene(emu, SCENE_DRAFT)
+    wait_draft(emu)
     first_draft = emu.read("gRlPlayDraftSpecies", 6)
     press(emu, "N64_B")
     wait_scene(emu, SCENE_MENU)
@@ -481,7 +491,8 @@ def main():
     parser.add_argument("--native-loss-only", action="store_true")
     args = parser.parse_args()
     output = Path(args.output)
-    with Frontend(args.core, args.rom, args.map_path, output, timeout=900) as emu:
+    with Frontend(args.core, args.rom, args.map_path, output, timeout=1800,
+                  options={"mupen64plus-pak1": "memory"}) as emu:
         try:
             if args.native_loss_only:
                 run_native_loss_only(emu)

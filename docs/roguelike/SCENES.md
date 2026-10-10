@@ -39,6 +39,37 @@ without advancing it again; a Bag/Party suspension from the map resumes the
 map. Save errors and recovered-copy warnings are displayed. Native battles
 are not suspended mid-command; suspend from the map before choosing a battle.
 
+## Persistent progression
+
+New Run loads the existing Controller Pak profile. Only a missing profile
+offers explicit creation; no device offers an explicit unsaved run. Corrupt,
+unsupported and recovered saves are never silently reset. The root settings
+screen selects an unlocked starter pool and cycles through saved unlocked
+ascensions using W10's policy helpers. The resident profile and pending terminal
+save survive native battle fragment swaps.
+
+Event selection, shop relics and reward relics obey the profile's permitted
+masks. Node-local event selection uses `rl_meta_choose_event` with a
+coordinate-derived RNG, never the live run RNG. The ordinary profile starts
+with only the first eight events/relics. The emulator's exhaustive content
+suite uses a separately documented, explicit unlocked-profile storage fixture,
+not a bypass in production scene code.
+
+A terminal native win/loss prepares exactly one `rl_meta_record_run` candidate
+and stores it with no suspended run. Storage failures keep the candidate for
+retry, and reload recognizes an already-committed identical candidate after
+an uncertain write; it never increments it again. Successfully persisted
+results are retained on re-entry. The guarded W7 three-win milestone is not a
+canonical finale and does not award progression.
+
+`python3 -m tools.rltest.test_meta_runtime` drives a real native loss, requires
+one persisted run and retained locked profile masks, copies only libretro save
+RAM, then reloads in a fresh emulator process and checks re-entry does not
+record the loss again. `host_tests/test_nodes.c` follows all three Acts and
+the finale through the canonical core, then verifies win/Hall-of-Fame/ascension
+and content unlocks. A native full three-Act/finale victory remains a final
+project end-to-end validation item.
+
 ## Validation
 
 `make -C host_tests nodes-test` covers the complete shop catalog, all twelve
