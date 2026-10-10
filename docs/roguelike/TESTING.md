@@ -15,6 +15,7 @@ new worktree with `scripts/rl-worktree-setup.sh`, then run:
 tools/rltest/run_smoke.sh
 python3 -m unittest tools.rltest.tests.test_helpers
 python3 -m tools.rltest.run battle-fixture
+python3 -m tools.rltest.test_play_run
 ```
 
 The smoke runner builds nothing. It steps past the intro, asserts
@@ -107,8 +108,31 @@ against `build_rl/pokestadium-us.z64` and `build_rl/pokestadium-us.map`. It uses
 `gRlBattleTestRequest` at a dispatcher boundary and can combine the frontend's
 `battle_mons()` live-state inspection with the run's counters/results. Those
 symbols are intentionally not available in the vanilla map.
+The exact-team scenario uses a guarded CPU-vs-CPU fixture to exercise native
+result capture and carryover without driving the playable battle menu.
 
 The JSON runner supports `step`, `press`, `hold`, `release`, `state`, `assert`,
 `write32`, `snapshot`, `screenshot`, `save`, and `load` operations. Each
 generated ROM-derived artifact and metadata file remains in ignored
 `.local/rltest/`.
+
+## Playable run scenario
+
+`python3 -m tools.rltest.test_play_run` boots `build_rl/pokestadium-rl.z64` and
+drives the real L+A entry and run UI. It checks draft cancellation/re-entry,
+the free reroll and a deterministic seed, selects three rentals, chooses a
+trainer route, rejects an empty active team, and verifies B returns to the map
+without advancing it. A guarded test flag boosts the party for this bounded
+scenario; run battles remain human-controlled. The script checks
+native battle initialization, persisted lead
+HP/PP, post-battle party damage, reward selection, three chained wins, summary,
+exit and roguelike re-entry. It writes local screenshots under
+`.local/rltest/play-run/`. It also seeds an all-fainted party to check the loss
+summary and exit UI; that fixture validates the UI branch rather than a loss
+produced by a native battle.
+
+The current playable milestone intentionally exposes a bounded route of three
+trainer battles. It does not yet expose event, shop, center, elite, or boss map
+nodes; those remain follow-on scene/content work rather than silently skipped
+choices. Rewards use the existing core reward generator, and the summary marks
+the three-battle route as the current milestone.
