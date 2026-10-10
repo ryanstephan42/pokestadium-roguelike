@@ -16,6 +16,11 @@ make $J 2>&1 | tail -2
 if grep -q '^rl:' Makefile 2>/dev/null; then
     step "roguelike build (make rl)"
     make rl $J 2>&1 | tail -3
+    if [ -f tools/rltest/frontend.py ] && [ -f build_rl/pokestadium-rl.z64 ]; then
+        step "roguelike boot test (title -> menu -> RL scene -> menu, x3)"
+        PY=python3; [ -x .venv/bin/python3 ] && PY=.venv/bin/python3
+        "$PY" tools/rl/boot_test.py 2>&1 | grep -v '^\[' | tail -12
+    fi
 else
     echo "(skip) no 'rl' make target yet"
 fi

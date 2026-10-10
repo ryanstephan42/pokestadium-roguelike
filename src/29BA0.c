@@ -23,6 +23,9 @@
 #include "src/rsp.h"
 #include "src/stage_loader.h"
 #include "lib/ultralib/include/PR/os_internal_reg.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_main.h"
+#endif
 
 // .data
 u16 D_80073660[16][256] = {
@@ -781,6 +784,9 @@ void func_80029924(void) {
     s32 from_title_screen = gLastGameState == STATE_TITLE_SCREEN;
 
     gCurrentGameState = FRAGMENT_LOAD_AND_CALL(fragment57, 0, from_title_screen);
+#ifdef ROGUELIKE
+    gCurrentGameState = rl_main_menu_hook(gCurrentGameState);
+#endif
 }
 
 s16 func_80029984(s16 arg0) {
@@ -1411,6 +1417,14 @@ void Game_Thread(UNUSED LEODiskID* arg) {
             case STATE_FAST_N64_LOGO:
                 func_8002B07C();
                 break;
+#ifdef ROGUELIKE
+            case STATE_ROGUELIKE:
+                rl_main_state_roguelike();
+                break;
+            case STATE_ROGUELIKE_BATTLE_TEST:
+                rl_main_state_battle_test();
+                break;
+#endif
             // same as state 1: N64 Logo + Intro.
             default:
                 func_80029310();
