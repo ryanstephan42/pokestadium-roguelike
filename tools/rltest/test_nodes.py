@@ -60,11 +60,6 @@ def save_map_and_reenter(emu):
     select(emu, run.map.lanes[row])
     emu.wait_state(4, frames=600)
     reenter_roguelike(emu)
-    press(emu, "N64_B")
-    emu.wait_state(4, frames=600)
-    result = native_command(emu, 4, create=1)
-    require(result[1] == 0, "explicit unlocked-profile fixture creation failed")
-    reenter_roguelike(emu)
 
 
 def suspend_node(emu, label):
@@ -230,6 +225,8 @@ def verify_mart(emu):
     press(emu, "N64_A")
     press(emu, "N64_A")
     require(read_run(emu).bag[0] == 0, "Bag did not consume selected Potion")
+    # Node-accessed Bag returns to the shop root after successful use.
+    # B only displays the explicit Leave instruction without moving the cursor.
     press(emu, "N64_B")
     select(emu, 14)
     wait_scene(emu, SCENE_MAP)
@@ -255,11 +252,7 @@ def verify_battle_entry(emu, seed, route, expected):
             wait_scene(emu, SCENE_PARTY)
             # Back must not commit the selected node.
             before = identity(read_run(emu))
-            leave = 14 if node.type == 3 else 4
-            if node.type == 5 or (node.type == 4 and
-                                 event_id(seed, run.act, row, lane) == 6):
-                leave = 5
-            select(emu, leave)
+            press(emu, "N64_B")
             wait_scene(emu, SCENE_MAP)
             require(identity(read_run(emu)) == before,
                     "cancelled active selection advanced encounter")
@@ -275,7 +268,11 @@ def verify_battle_entry(emu, seed, route, expected):
         wait_scene(emu, SCENE_NODE)
         # This route contains only nonbattle nodes before the target.
         require(node.type in (2, 3, 4, 5), "route unexpectedly requires battle")
-        press(emu, "N64_B")
+        leave = 14 if node.type == 3 else 4
+        if node.type == 5 or (node.type == 4 and
+                             event_id(seed, run.act, row, lane) == 6):
+            leave = 5
+        select(emu, leave)
         wait_scene(emu, SCENE_MAP)
 
 
@@ -284,6 +281,11 @@ def boot(emu):
     emu.step(120)
     emu.press("START", frames=6, after=120)
     emu.wait_state(4)
+    reenter_roguelike(emu)
+    press(emu, "N64_B")
+    emu.wait_state(4, frames=600)
+    result = native_command(emu, 4, create=1)
+    require(result[1] == 0, "explicit unlocked-profile fixture creation failed")
     reenter_roguelike(emu)
 
 
