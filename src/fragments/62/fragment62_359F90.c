@@ -1454,7 +1454,7 @@ s32 func_84371DCC(void) {
     return 2;
 }
 
-#ifdef NON_MATCHING
+#if defined(NON_MATCHING) || defined(ROGUELIKE)
 void func_84372670(void) {
     char sp2C[8];
 

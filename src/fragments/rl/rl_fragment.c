@@ -1,8 +1,7 @@
 /*
  * Roguelike overlay (fragmentRL, VRAM 0x8F800000). Entry point for
- * STATE_ROGUELIKE. Draws the W4 UI demo when available (RL_HAVE_UI_DEMO),
- * otherwise a native-font placeholder screen. Returns the next game state
- * (0 = let rl_main pick the return state).
+ * STATE_ROGUELIKE. Runs the W7 playable slice when available, otherwise the
+ * W4 UI demo or a native-font placeholder screen.
  */
 #include "global.h"
 #include "src/1CF30.h"
@@ -12,7 +11,9 @@
 #include "src/memory.h"
 #include "src/stage_loader.h"
 #include "src/roguelike/rl_main.h"
-#ifdef RL_HAVE_UI_DEMO
+#ifdef RL_HAVE_PLAY
+#include "rl_play.h"
+#elif defined(RL_HAVE_UI_DEMO)
 #include "rl_ui.h"
 #endif
 
@@ -39,7 +40,7 @@ static void rl_fragment_set_ortho(void) {
     gSPMatrix(gDisplayListHead++, (u32)&D_8006F010 & 0x1FFFFFFF, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 }
 
-#ifndef RL_HAVE_UI_DEMO
+#if !defined(RL_HAVE_UI_DEMO) && !defined(RL_HAVE_PLAY)
 static void rl_fragment_draw_fallback(void) {
     func_8001F3F4();
     func_8001EBE0(8, 0);
@@ -54,7 +55,9 @@ static void rl_fragment_draw_fallback(void) {
 static void rl_fragment_draw_frame(void) {
     func_800079C4();
     rl_fragment_set_ortho();
-#ifdef RL_HAVE_UI_DEMO
+#ifdef RL_HAVE_PLAY
+    rl_play_draw();
+#elif defined(RL_HAVE_UI_DEMO)
     rl_ui_demo_draw();
 #else
     rl_fragment_draw_fallback();
@@ -73,7 +76,11 @@ s32 rl_fragment_entry(UNUSED s32 arg0, UNUSED s32 arg1) {
     func_80005E40(0x10000, 0);
     ctx = func_80007444(1, 0, 2, 0, 2, 1);
 
-#ifdef RL_HAVE_UI_DEMO
+#ifdef RL_HAVE_PLAY
+    if (rl_play_init() == -3) {
+        running = 0;
+    }
+#elif defined(RL_HAVE_UI_DEMO)
     if (rl_ui_demo_init() == -3) {
         running = 0;
     }
@@ -88,7 +95,15 @@ s32 rl_fragment_entry(UNUSED s32 arg0, UNUSED s32 arg1) {
     while (running) {
         rl_fragment_read_input();
 
-#ifdef RL_HAVE_UI_DEMO
+#ifdef RL_HAVE_PLAY
+        {
+            s32 r = rl_play_update(gPlayer1Controller->buttonPressed);
+
+            if (r == -2) {
+                running = 0;
+            }
+        }
+#elif defined(RL_HAVE_UI_DEMO)
         {
             s32 r = rl_ui_demo_update(gPlayer1Controller->buttonPressed);
 

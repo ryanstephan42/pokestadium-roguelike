@@ -10,8 +10,9 @@ RL_SYM_OUT      := $(foreach f,$(RL_SYM_SCRIPTS),$(RL_DIR)/$(notdir $f))
 
 RL_ENTRY_O      := $(BUILD_DIR)/$(RL_MAIN_DIR)/rl_entry.o
 RL_HEADER_O     := $(BUILD_DIR)/$(RL_FRAG_DIR)/rl_header.o
-RL_MAIN_O       := $(filter-out $(RL_ENTRY_O),$(filter $(BUILD_DIR)/$(RL_MAIN_DIR)/%,$(O_FILES)))
-RL_FRAG_O       := $(filter-out $(RL_HEADER_O),$(filter $(BUILD_DIR)/$(RL_FRAG_DIR)/%,$(O_FILES)))
+RL_ROSTERS_O    := $(BUILD_DIR)/$(RL_MAIN_DIR)/rl_rosters.o
+RL_MAIN_O       := $(filter-out $(RL_ENTRY_O) $(RL_ROSTERS_O),$(filter $(BUILD_DIR)/$(RL_MAIN_DIR)/%,$(O_FILES)))
+RL_FRAG_O       := $(filter-out $(RL_HEADER_O),$(filter $(BUILD_DIR)/$(RL_FRAG_DIR)/%,$(O_FILES))) $(RL_ROSTERS_O)
 RL_RELOCS_O     := $(RL_DIR)/fragmentRL_relocs.o
 RL_RELOCS0_O    := $(RL_DIR)/fragmentRL_relocs_pass1.o
 RL_ELF_PASS1    := $(RL_DIR)/pass1.elf
