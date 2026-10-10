@@ -152,16 +152,16 @@ unsigned rl_shop_generate(RunState *run, const RlMovePool *moves,
     static const unsigned prices[10] = {
         200, 500, 1200, 2500, 1500, 600, 1800, 900, 5000, 3000
     };
-    unsigned i, count, start;
+    unsigned i, count, start, catalog_count;
     if (!run || !out || (moves && moves->count && !rl_move_pool_valid(moves)))
         return 0;
-    count = capacity < (rl_move_pool_valid(moves) ? 10U : 9U) ?
-        capacity : (rl_move_pool_valid(moves) ? 10U : 9U);
+    catalog_count = rl_move_pool_valid(moves) ? 10U : 9U;
+    count = capacity < catalog_count ? capacity : catalog_count;
     if (!count) return 0;
-    start = rl_random_bounded(&run->rng, 10);
+    start = rl_random_bounded(&run->rng, catalog_count);
     for (i = 0; i < count; i++) {
         unsigned index;
-        index = (start + i) % count;
+        index = (start + i) % catalog_count;
         out[i].item = items[index];
         if (out[i].item == RL_RELIC_ITEM) {
             int relic;
@@ -221,6 +221,7 @@ int rl_tm_teach(RunState *run, unsigned tm_slot, unsigned party_slot,
     for (i = tm_slot; i + 1 < run->tm_count; i++)
         run->tm_moves[i] = run->tm_moves[i + 1];
     run->tm_count--;
+    run->tm_moves[run->tm_count] = 0;
     return RL_OK;
 }
 

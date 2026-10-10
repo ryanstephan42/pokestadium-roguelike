@@ -35,7 +35,7 @@ int rl_enemy_generate(RunState *run, const RlPool *pool, unsigned type,
     unsigned i, j, dv, level;
     RlAscension asc;
     if (!run || !pool || !pool->mons || !pool->count || !team ||
-        !count || count > RL_PARTY || run->row >= RL_ROWS ||
+        !count || count > RL_PARTY || run->row >= rl_map_rows(run->act) ||
         (type != RL_BATTLE && type != RL_ELITE && type != RL_BOSS)) return RL_INVALID;
     asc = rl_ascension(run->ascension);
     level = rl_enemy_level(run->act, run->row, type, run->ascension);

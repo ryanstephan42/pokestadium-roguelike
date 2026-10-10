@@ -49,7 +49,8 @@ subset does not shift persistent run slots.
 4. A won battle enters `RL_REWARD`; call `rl_rewards_generate` and
    `rl_reward_apply` for the player's selected offer. `rl_run_finish_node`
    advances the map or creates the next act. Acts 0–2 are followed by a finale
-   map at act 3; winning its boss node marks `RL_WON`.
+   at act 3: a single row, single lane, single Mewtwo boss encounter. Completing
+   its winning reward phase marks `RL_WON`; it is not a fourth branching act.
 5. Loss of the entire party or a lost boss battle marks `RL_LOST`.
 
 `rl_run_advance` requires at least one party member. `active_mask` passed to the
@@ -62,11 +63,15 @@ ascension money reduction before the Amulet Coin bonus.
 
 - `rl_random` / `rl_random_bounded` advance only `RunState.rng`; they never call
   `guRandom` or touch game RNG state.
-- `rl_map_generate` creates a seven-row, two-to-four-lane DAG. Every node is
+- `rl_map_generate` creates a seven-row, two-to-four-lane DAG for acts 0–2. Every node is
   reachable from row zero, row six contains only bosses, elite nodes are
   excluded from rows zero and one, and at least one center is placed before
   the boss row. Edges are bitmasks by destination lane. Use `rl_map_valid` in
-  diagnostics and host tests.
+  diagnostics and host tests. Act 3 contains only `nodes[0][0]`, a boss with
+  `target_species == 150`; all unused rows and lanes are zero. `RL_ROWS` is
+  storage capacity, not the active row count: scenes must use
+  `rl_map_rows(run.act)` (7 for acts 0–2, 1 for act 3). No struct layout change
+  is required to represent the finale.
 - `rl_enemy_generate` accepts an `RlPool` supplied by the caller. Pools from
   extracted trainer/rental tables can be passed without changing core logic.
   `fixed_order` preserves source order for signature teams; otherwise selections
@@ -80,6 +85,12 @@ ascension money reduction before the Amulet Coin bonus.
   Gen 1 recalculation helper rather than linear HP scaling; level-ups preserve
   the Pokémon's absolute missing HP. Supplied records are copied and zero
   DVs/stat experience are not silently defaulted.
+- `rl_mon_stat_value` follows native `GetPokemonDV` and `CalculateStatValue`
+  in `src/22630.c:192–278`. The HP DV is Special's low bit in bit 3, Speed's in
+  bit 2, Defense's in bit 1, Attack's in bit 0 (the legacy comments reverse
+  these positions). Effort uses the smallest root at least the square root,
+  capped at 255, divided by 4. Host regressions compare all 65,536 stat-exp
+  values for each stat using eight asymmetric/one-bit/max/zero DV fixtures.
 - `rl_xp_for_level` implements Gen 1 Fast, Medium Fast, Medium Slow and Slow
   growth curves. `rl_mon_add_xp` updates level/HP using Gen 1 stat math and
   preserves the mon's prior damage amount. Learnset/move replacement is left
@@ -99,6 +110,8 @@ is stored in the run. Reward, shop, and Move Tutor TM IDs are carried forward
 without pretending that arbitrary moves are legal. `rl_tm_teach` requires the
 integrator to supply a species/move callback that confirms legality and returns
 that move's correct maximum PP before teaching it.
+Consumed TM slots are zeroed. Small shop output capacities select a window
+from the entire eligible catalog rather than reducing which items can appear.
 
 Fossil resolution requires a canonical pool entry for the chosen fossil species
 (Kabuto 140 or Omanyte 138) and recalculates its stats at the event's level; it
@@ -122,7 +135,7 @@ base game unless its caller opts in.
 
 ## Save wire format
 
-`rl_save_format.h` exposes version-2 little-endian serialization and CRC-32
+`rl_save_format.h` exposes version-3 little-endian serialization and CRC-32
 (IEEE polynomial `0xedb88320`). The 8-byte prefix contains `RLSV` magic,
 version, suspend flag, and ascension. Fixed-width meta fields and six fixed
 Hall-of-Fame records serialize to **361 bytes** including checksum, under the
@@ -135,6 +148,11 @@ species/PP/HP state, inconsistent derived HP, wrong-version, truncated,
 oversized, or CRC-invalid records. Future layout changes must increment the
 version and preserve explicit byte encoding rather than dumping compiler
 structs.
+Version 3 retains the byte layout and sizes but rejects the former seven-row
+act-3 representation; the finale is encoded in the first map cell with all
+unused cells zero. Round-trip regressions cover consumed TMs, completed daycare
+returns, every preceding boss-row width, and the finale's map/node/reward/won
+and lost states.
 
 ## Host validation
 

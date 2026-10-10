@@ -9,8 +9,7 @@ static void rl_zero_bytes(void *target, unsigned size) {
 }
 
 unsigned rl_map_rows(unsigned act) {
-    (void)act;
-    return RL_ROWS;
+    return act == 3 ? 1U : (act < 3 ? RL_ROWS : 0U);
 }
 
 void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension) {
@@ -19,6 +18,12 @@ void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension) {
     if (!map || !rng) return;
     if (act > 3) act = 3;
     rl_zero_bytes(map, sizeof(*map));
+    if (act == 3) {
+        map->lanes[0] = 1;
+        map->nodes[0][0].type = RL_BOSS;
+        map->nodes[0][0].target_species = 150;
+        return;
+    }
     asc = rl_ascension(ascension);
     center_row = 2 + rl_random_bounded(rng, 4);
     for (row = 0; row < RL_ROWS; row++) {
@@ -34,9 +39,6 @@ void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension) {
     map->nodes[center_row][center_lane].type = RL_CENTER;
     for (lane = 0; lane < map->lanes[RL_ROWS - 1]; lane++)
         map->nodes[RL_ROWS - 1][lane].type = RL_BOSS;
-    if (act == 3)
-        for (lane = 0; lane < map->lanes[RL_ROWS - 1]; lane++)
-            map->nodes[RL_ROWS - 1][lane].target_species = 150;
     for (row = 0; row < RL_ROWS - 1; row++) {
         next = map->lanes[row + 1];
         for (lane = 0; lane < map->lanes[row]; lane++) {
@@ -55,8 +57,19 @@ void rl_map_generate(RlMap *map, RlU32 *rng, unsigned act, unsigned ascension) {
 }
 
 int rl_map_valid(const RlMap *map) {
-    unsigned row, lane, reachable, next, center;
+    unsigned row, lane, reachable, next, center, rows;
     if (!map) return 0;
+    rows = map->lanes[0] == 1 ? 1U : RL_ROWS;
+    for (row = 0; row < RL_ROWS; row++) {
+        if (row >= rows && map->lanes[row]) return 0;
+        for (lane = row < rows ? map->lanes[row] : 0; lane < RL_LANES; lane++)
+            if (map->nodes[row][lane].type || map->nodes[row][lane].edges ||
+                map->nodes[row][lane].target_species) return 0;
+    }
+    if (rows == 1)
+        return map->nodes[0][0].type == RL_BOSS &&
+            !map->nodes[0][0].edges &&
+            map->nodes[0][0].target_species == 150;
     reachable = 15;
     center = 0;
     for (row = 0; row < RL_ROWS; row++) {
@@ -68,8 +81,7 @@ int rl_map_valid(const RlMap *map) {
             const RlNode *node;
             node = &map->nodes[row][lane];
             if (node->type > RL_BOSS) return 0;
-            if (node->target_species > 151) return 0;
-            if (row < RL_ROWS - 1 && node->target_species) return 0;
+            if (node->target_species) return 0;
             if ((row == RL_ROWS - 1) != (node->type == RL_BOSS)) return 0;
             if (row < 2 && node->type == RL_ELITE) return 0;
             if (node->type == RL_CENTER && row < RL_ROWS - 1) center = 1;

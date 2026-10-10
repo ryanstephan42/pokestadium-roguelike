@@ -5,7 +5,7 @@
 
 #define RL_META_MAX_SIZE 512
 #define RL_SAVE_MAX_SIZE 1024
-#define RL_SAVE_VERSION 2
+#define RL_SAVE_VERSION 3
 
 typedef struct RlMeta {
     RlU32 unlocked_pools, unlocked_relics, unlocked_events;
