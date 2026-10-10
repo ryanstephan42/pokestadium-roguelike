@@ -261,6 +261,17 @@ void rl_battle_test_state(void) {
     rules.player_count = 3;
     rules.player_cpu = 1;
     rules.ai_level = 64;
+    for (i = 0; i < 3; i++) {
+        rl_prepare_mon(&party[i], 1);
+        party[i].cur_hp = 71 + i;
+        party[i].pp[0] = 8 + i;
+        party[i].status = 0x40;
+        party[i].held_relic = i + 1;
+    }
+    party[0].fainted = 1;
+    party[0].cur_hp = 0;
+    rules.use_state = 1;
+    rules.player_count = 2;
     rl_start_battle(party, 3, enemy, 3, &rules, STATE_TITLE_SCREEN, NULL);
 }
 #endif

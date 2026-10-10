@@ -25,11 +25,16 @@ def run(core, rom, map_path, output):
             raise HarnessError("Player custom moves were not preserved")
         if emu.read(live[1]["side"] + 0x68C + 0x1F, 4) != bytes([33, 0, 0, 0]):
             raise HarnessError("Enemy custom moves were not preserved")
+        if (live[0]["hp"], live[0]["status"], live[0]["pp"][0]) != (72, 0x40, 9):
+            raise HarnessError(f"Persistent state was healed/overwritten: {live[0]}")
         emu.wait(lambda runner: runner.read_u32("gRlBattleCount") == before + 1,
                  frames=18000, interval=10, description="custom battle completion")
         result = list(emu.read("gRlLastBattleResult", 3))
-        if result != [1, 3, 3]:
-            raise HarnessError(f"Expected win/3 player/3 enemy, got {result}")
+        if result != [1, 2, 3]:
+            raise HarnessError(f"Expected win/2 player/3 enemy, got {result}")
+        # Three identical species, but the fainted original slot zero is excluded.
+        if emu.read(emu.resolve("gRlLastBattleResult") + 3, 2) != bytes([1, 2]):
+            raise HarnessError("Duplicate-species player identity was not preserved")
         if emu.read_u32("gRlBattleActive") != 0:
             raise HarnessError("Custom battle active flag not cleared")
         if emu.read_u32("gCurrentGameState") != 2:

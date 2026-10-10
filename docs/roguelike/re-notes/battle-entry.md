@@ -202,7 +202,11 @@ Invalid requests return -1 with `osSyncPrintf` and leave game state/context
 unchanged. `gRlBattleActive`, `gRlBattleCount`, `gRlLastBattleResult` are
 resident instrumentation for W1; result codes are 0 loss, 1 win, 2 draw.
 State0x31 is a guarded CPU-vs-CPU fixture, distinct from W0's state0x30:
-three lv100 Mewtwo/Psychic vs three lv5 bug mons/Tackle, returning to Title.
+three lv100 Mewtwo/Psychic (original slot0 fainted and excluded, slot1/2
+persisted HP72/73, PP9/10, paralysis) vs three lv5 bug mons/Tackle, returning
+to Title. Duplicate species exercise original-index identity, not matching by
+species. The scenario asserts input state was not healed, win/result counts,
+original indices and chosen-state return.
 Set `gRlBattleTestRequest=1` and exit the current native overlay (e.g. START
 from Title) to dispatch it safely; writing `gCurrentGameState` while an overlay
 is running may be overwritten by that overlay's return.
