@@ -34,6 +34,8 @@ typedef enum RlBattleStage {
  * The caller supplies a loaded side/mon and valid party/move/stage indices.
  */
 #define rl_battle_mon(side) (&(side)->unk_654.unk_38)
+#define rl_battle_side(index) (D_84390010[index])
+#define rl_battle_result() (D_84390240.unk_00->unk_40)
 #define rl_battle_active_index(side) ((side)->unk_654.unk_08)
 #define rl_battle_incoming_index(side) ((side)->unk_654.unk_18)
 #define rl_battle_trainer_index(side) ((side)->unk_654.unk_2B)
@@ -62,6 +64,9 @@ typedef enum RlBattleStage {
 
 /* Original party PP is authoritative for transformed mons. Party HP animates. */
 #define rl_battle_party_hp(mon) ((mon)->unk_02)
+#define rl_battle_party_species(mon) ((mon)->unk_00.unk_00)
+#define rl_battle_party_level(mon) ((mon)->unk_24)
+#define rl_battle_party_max_hp(mon) ((mon)->unk_26)
 #define rl_battle_party_status(mon) ((mon)->unk_05)
 #define rl_battle_party_move(mon, slot) ((mon)->unk_09[slot])
 #define rl_battle_party_packed_pp(mon, slot) ((mon)->unk_20[slot])
