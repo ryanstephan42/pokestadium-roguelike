@@ -18,8 +18,8 @@ Other transformations:
   * entry.o is replaced by src/roguelike/rl_entry.o (clears the real .bss size
     instead of the hardcoded vanilla size).
   * Roguelike objects are appended to main .text/.data/.rodata/.bss.
-  * A new fragment `fragmentRL` (VRAM 0x8F800000) is inserted after
-    fragment77_relocs.
+  * A new fragment `fragmentRL` (VRAM 0x8F800000) is appended to the ROM,
+    after all fixed-address game data.
   * `ALIGN(__romPos, 0x7C0000)` becomes an assert + fixed position so the
     hard-coded ROM offsets used by the game (0x7C0000, 0x820000, ...) stay valid.
 """
@@ -214,10 +214,9 @@ def gen(args):
             out.append(f"    __romPos = 0x{GB_TOWER_ROM:X};")
             continue
 
-        out.append(l)
-
-        if re.match(r"^\s*fragment77_relocs_VRAM_END = \.;", l):
+        if re.match(r"^\s*/DISCARD/\s*:", l):
             out.extend(fragment_block(args.frag_header, [o for o in args.frag_objs if o], args.frag_relocs))
+        out.append(l)
 
     text = "\n".join(out)
     text = re.sub(r"(?<![A-Za-z0-9_/])build/", args.build_dir + "/", text)

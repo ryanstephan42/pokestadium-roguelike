@@ -49,6 +49,8 @@ Fragment 57 starts with the Game Pak Check screen, so one A press is needed firs
 Main is VRAM 0x80000400 and ROM 0x1000. IPL3 (CIC-6103) copies 1 MB, and main is about 0x7EA00, so it has
 plenty of room. New resident code from `src/roguelike/*` is appended to the end of main
 `.text`/`.data`/`.rodata`/`.bss`.
+The generated roster object is instead linked into fragmentRL, as in W7, to
+keep its large tables out of the resident heap used by native battles.
 
 - **Anchoring.** Splat's `undefined_syms*.ld` gives absolute addresses for many main
   symbols (data referenced from asm, jump tables, …). In the RL script, `gen_rl_ld.py` puts an
@@ -84,6 +86,10 @@ Format (`src/memmap.h`):
 3. The final link includes the table, and the build checks that a re-generation matches.
 
 Fragment bss is re-zeroed on every load. Persistent state belongs in resident `src/roguelike/`.
+FragmentRL is appended after the original final ROM segment, not inserted after
+fragment77. This preserves the fixed GB Tower region and makes room for native
+hooks without consuming the pre-GB asset budget. The RL-only ROM target pads
+enlarged images to 64 MiB; it rejects images larger than 64 MiB.
 
 **Editing an existing native fragment** changes its layout. Set `RL_REGEN_FRAGMENTS` to the
 space-separated fragment numbers that need regenerated headers and relocations (default: `62`):
@@ -178,7 +184,8 @@ Hardcoded ROM/RAM assumptions checked while shifting:
 
 ## Adding code from other workstreams
 
-- **Resident code:** drop `.c`/`.s` files into `src/roguelike/`. They're linked into main automatically.
+- **Resident code:** drop `.c`/`.s` files into `src/roguelike/`. They're linked into main automatically
+  (except `rl_rosters.o`, linked into fragmentRL).
   - Pure host-testable files must not include libultra headers.
   - W5 owns `rl_core.{c,h}`. W0's glue is `rl_main.{c,h}`.
 - **Overlay code:** drop files into `src/fragments/rl/`. If `rl_ui.c` exists, `rl_fragment.c` uses the W4

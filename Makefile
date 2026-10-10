@@ -264,8 +264,9 @@ LIB_DIRS      := $(foreach f, $(LIBULTRA_DIR), $f)
 C_FILES       := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 S_FILES       := $(foreach dir,$(ASM_DIRS) $(SRC_DIRS),$(wildcard $(dir)/*.s))
 
-# Roguelike sources: src/roguelike/ -> resident main segment, src/fragments/rl/ -> fragmentRL overlay.
-# They are only compiled and linked by the roguelike build.
+# Roguelike sources are only compiled and linked by the roguelike build.
+# `rl_rosters.o` is linked into fragmentRL with the scene to keep its large
+# generated trainer tables out of the native battle's resident heap.
 RL_MAIN_DIR   := src/roguelike
 RL_FRAG_DIR   := src/fragments/rl
 RL_SRC_FILTER := $(RL_MAIN_DIR)/% $(RL_FRAG_DIR)/%
@@ -416,6 +417,7 @@ rlclean:
 ifeq ($(ROGUELIKE),1)
 rlrom: $(ROM)
 	@$(PRINT) "$(GREEN)Roguelike ROM: $(BLUE)$(ROM)$(NO_COL)\n"
+	$(V)$(PYTHON) tools/rl/pad_rom.py $(ROM)
 	$(V)$(PYTHON) tools/rl/n64crc.py $(ROM) --check
 else
 rlrom:
