@@ -76,6 +76,7 @@ def main():
         f.write(f".word {len(relocs)}\n")
         for r in relocs:
             f.write(f".word 0x{r:08X}\n")
+        f.write(".balign 16\n")
     print(f"gen_rl_relocs: {len(relocs)} relocations")
 
 
