@@ -1,5 +1,6 @@
 #include <assert.h>
 #include "rl_ui_model.h"
+#include "rl_text.h"
 
 static const RlUiItem items[] = {
     { "one", 0 }, { "two", 1 }, { "three", 0 }, { "four", 0 },
@@ -10,6 +11,8 @@ static const RlUiItem items[] = {
 int main(void) {
     RlUiList list;
 
+    assert((unsigned char)rl_text[RL_TEXT_TITLE][3] == 0xE9);
+    assert((unsigned char)rl_text_demo_items[1][3] == 0xE9);
     assert(rl_ui_list_init(&list, "title", items, 10, 5) == RL_UI_NONE);
     assert(rl_ui_list_valid(&list));
     assert(rl_ui_list_step(&list, RL_UI_DOWN) == RL_UI_NONE);
