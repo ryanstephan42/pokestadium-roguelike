@@ -102,20 +102,21 @@ relic bits 0–7, event bits 0–7, and the curated first-stage species whose Ge
 base-stat totals are at most 320. This cutoff is a conservative implementation
 proposal, not a user-selected threshold. Their species IDs are
 1, 4, 7, 10, 13, 16, 19, 21, 23, 25, 27, 29, 32, 37, 39, 41, 43, 46, 48, 50,
-52, 56, 60, 63, 66, 69, 74, 79, 84, 90, 104, 116, 118, and 129. Each terminal
-run stores its still-unregistered final-team species as a pending profile
-choice in the same atomic save as run statistics and currency. The choice is
-available after a cold reload. Each terminal run that adds at least one
-previously unregistered species contributes one registration receipt, and the
-profile accumulates the union of newly eligible species plus the receipt count.
-Registering one species from that union or explicitly skipping consumes exactly
-one receipt; already-registered species are idempotent and cannot consume
-another receipt. The final receipt clears the remaining union. If the union has
-no new eligible species, the run still records currency and run statistics
-without adding a receipt. Receipt count is bounded by the 151 distinct species
-IDs; capacity is checked before profile mutation. Species registration unlocks
-species only; the draft integrator must build the selected Pokémon from its
-canonical legal rental loadout.
+52, 56, 60, 63, 66, 69, 74, 79, 84, 90, 104, 116, 118, and 129. Terminal saves
+persist pending eligible species atomically with run statistics and currency,
+so choices survive a cold reload. Player-facing rule: a terminal run earns
+one registration choice only if its final team includes at least one eligible
+species that is neither already registered nor already in the pending pool. A
+repeat run containing only already-registered or already-pending eligible
+species earns no additional choice, but still records run statistics and
+currency. When a run adds a new eligible species, the profile accumulates the
+union of those species plus one receipt for that run. Registering one species
+from the union or explicitly skipping consumes exactly one receipt;
+already-registered species are idempotent and cannot consume another receipt.
+The final receipt clears the remaining union. Receipt count is bounded by the
+151 distinct species IDs; capacity is checked before profile mutation. Species
+registration unlocks species only; the draft integrator must build the selected
+Pokémon from its canonical legal rental loadout.
 
 Successful wins unlock Prime Cup starters on the first win and Little Cup
 starters on the fifth; each win also unlocks the next relic and event bit,
