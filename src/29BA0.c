@@ -1351,7 +1351,6 @@ void Game_Thread(UNUSED LEODiskID* arg) {
         state = Game_DoCopyProtection(gCurrentGameState);
 #ifdef ROGUELIKE
         if ((state == gCurrentGameState) && gRlBattleTestRequest) {
-            gRlBattleTestRequest = 0;
             state = STATE_RL_BATTLE_TEST;
             gCurrentGameState = state;
         }

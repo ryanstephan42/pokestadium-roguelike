@@ -10,6 +10,7 @@ RlLaunchResult gRlLastBattleResult;
 volatile unsigned int gRlBattleCount;
 int gRlBattleActive;
 volatile int gRlBattleTestRequest;
+const unsigned int gRlBattleTestMonSize = sizeof(RlMon);
 
 static int rl_valid_team(const RlMon* team, int count) {
     int i;
@@ -249,7 +250,9 @@ void rl_battle_test_entry(void) {
     RlMon enemy[3];
     RlBattleRules rules;
     int i;
+    int repeat = gRlBattleTestRequest == 2;
 
+    gRlBattleTestRequest = 0;
     bzero(party, sizeof(party));
     bzero(enemy, sizeof(enemy));
     bzero(&rules, sizeof(rules));
@@ -265,7 +268,7 @@ void rl_battle_test_entry(void) {
     rules.stadium = 3;
     rules.player_count = 3;
     rules.player_cpu = 1;
-    rules.ai_level = 64;
+    rules.ai_level = 11;
     for (i = 0; i < 3; i++) {
         rl_prepare_mon(&party[i], 1);
         party[i].cur_hp = 71 + i;
@@ -275,6 +278,11 @@ void rl_battle_test_entry(void) {
     }
     party[0].fainted = 1;
     party[0].cur_hp = 0;
+    if (repeat) {
+        for (i = 0; i < gRlLastBattleResult.player_count; i++) {
+            party[gRlLastBattleResult.player_index[i]] = gRlLastBattleResult.player[i];
+        }
+    }
     rules.use_state = 1;
     rules.player_count = 2;
     rl_start_battle(party, 3, enemy, 3, &rules, STATE_TITLE_SCREEN, NULL);

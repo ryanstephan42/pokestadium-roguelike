@@ -24,7 +24,8 @@ typedef struct RlBattleRules {
      * Rule index -> D_800AE540.unk_0001. With battle mode 0xA (event battle)
      * it also selects the arena via fragment62 D_84384350: 0..3 Poke Cup style,
      * 4 Petit, 5 Pika, 6 Prime, 7 Gym Leader Castle (+gym), 8 Mewtwo.
-     * 8 also makes the CPU use its whole team instead of picking 3.
+     * Custom teams bypass native repicking; this field selects presentation,
+     * not eligibility clauses or level caps. The caller enforces those rules.
      */
     unsigned char stadium;
     unsigned char gym;          /* only for stadium 7: 0..7 gyms, 8 E4, 9 rival */

@@ -456,6 +456,9 @@ void func_8430128C(void) {
 #ifdef ROGUELIKE
     extern int gRlBattleActive;
     if (gRlBattleActive) {
+        temp_s1 = D_800AE540.unk_1194[0].unk_08[0];
+        temp_s0 = D_800AE540.unk_1194[1].unk_08[0];
+        func_843831A0(temp_s1, NULL, temp_s0, temp_s0->unk_018 & 0xFF, sp48, 0, temp_s0->unk_002);
         return;
     }
 #endif
