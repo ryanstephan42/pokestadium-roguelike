@@ -157,7 +157,30 @@ inverse-BST weights. Terminal recording stores the unregistered species on the
 final team as a pending profile choice; `rl_meta_register_species` or
 `rl_meta_skip_species_registration` consumes it, so the choice survives the
 terminal save clearing the suspend record. `rl_meta_purchase_option` spends
-saved currency once per option bit and is idempotent for already-owned options.
+saved currency once per available option bit and is idempotent for already-owned
+options. `rl_meta_option_available` and `rl_meta_option_name` exclude option IDs
+whose content is not implemented; event-pack, contract, and cosmetic IDs are
+reserved and cannot be purchased.
+
+`rl_meta_content.h` supplies the first functional option catalogs. Four move
+options select alternate four-move sets only from their matching canonical
+rentals: Poke Cup, Prime Cup, Petit Cup, and Prime Cup Round 2.
+`rl_load_meta_rental_catalog` in `rl_rosters.h` copies only species and moves
+from the corresponding generated native rental set; pass those records to
+`rl_meta_list_move_variants`. It requires the same species, removes the current
+set and duplicates, and copies only move IDs. Stats, DVs, stat experience,
+items, and PP Ups are never inherited. Four purchased starter themes (Forest,
+Coast, Cavern, Sky) intersect curated National Dex lists with the caller's
+canonical starter rentals and profile-unlocked species. `rl_meta_apply_kit`
+applies either the existing 300-coin start or the purchased Potion Cache kit
+(one Potion and 100 coins); both have a provisional value of 300 using the
+Act-0 Potion shop price. It only accepts a fresh empty draft and cannot add
+value to the existing start.
+
+These option prices and the kit valuation are proposals, not user-approved
+balance values. Runtime scenes must source loadout/species candidates from the
+generated canonical rental tables, present only non-empty lists, and apply a
+selected kit only when creating a new run.
 `rl_rewards_generate_unlocked` and `rl_shop_generate_unlocked` take the
 permitted relic mask; their legacy counterparts intentionally expose all
 content for compatibility and fixtures. `rl_event_resolve_unlocked` also

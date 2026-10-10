@@ -27,6 +27,11 @@ static const unsigned char rl_encounter_sets[2][RL_ROSTER_COUNT] = {
       RL_TRAINER_SET_ELITE_FOUR_R2, RL_TRAINER_SET_RIVAL_R2, RL_TRAINER_SET_MEWTWO_R2 }
 };
 
+static const unsigned char rl_meta_rental_sets[RL_META_RENTAL_SOURCE_COUNT] = {
+    RL_RENTAL_SET_POKE, RL_RENTAL_SET_PRIME,
+    RL_RENTAL_SET_PETIT, RL_RENTAL_SET_PRIME_R2
+};
+
 int rl_load_encounter(const RunState* run, RlMon* output, int capacity,
                       unsigned char* ai) {
     RlEncounter encounter;
@@ -82,6 +87,32 @@ int rl_load_rental_pool(unsigned int set, RlMon* output, int capacity) {
         if (rl_roster_mon(&pool->mons[i], &output[i]) != 0) {
             return -1;
         }
+    }
+    return pool->count;
+}
+
+int rl_load_meta_rental_catalog(unsigned int source,
+                                RlMetaRentalLoadout* output, int capacity) {
+    unsigned int i, set;
+    const RlGenRentalSet* pool;
+
+    if (source >= RL_META_RENTAL_SOURCE_COUNT || output == NULL) {
+        osSyncPrintf("rl_load_meta_rental_catalog: invalid source/output\n");
+        return -1;
+    }
+    set = rl_meta_rental_sets[source];
+    pool = &gRlRentalSets[set];
+    if (capacity < pool->count) {
+        osSyncPrintf("rl_load_meta_rental_catalog: insufficient capacity\n");
+        return -1;
+    }
+    for (i = 0; i < pool->count; i++) {
+        output[i].species = pool->mons[i].species;
+        output[i].source = (unsigned char)source;
+        output[i].moves[0] = pool->mons[i].moves[0];
+        output[i].moves[1] = pool->mons[i].moves[1];
+        output[i].moves[2] = pool->mons[i].moves[2];
+        output[i].moves[3] = pool->mons[i].moves[3];
     }
     return pool->count;
 }

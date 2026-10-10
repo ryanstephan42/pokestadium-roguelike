@@ -142,14 +142,18 @@ The current economy constants are conservative implementation proposals,
 not user-approved balance values: 10 coins per completed won encounter, 5 per
 other completed encounter, and a 25-coin bonus for a full run clear. Payout is
 granted only when the run reaches a terminal won/lost state, so abandoning a
-run cannot farm currency. Proposed option prices are 30 coins for alternate
-rental move-set unlocks, 50 for starter themes and equal-budget starting-kit
-sidegrades, 75 for event packs, 25 for challenge-contract unlocks, and 15 for
-cosmetics. These unlock availability/options only; they do not add permanent
-combat stats, free consumables, or reward odds. Species selection weights are
-proposed as `max(1, 1000 / BST)` over distinct species in the supplied legal
-loadout catalog, making higher-BST species rarer. Revisit all values after
-native UI integration and balance playtesting.
+run cannot farm currency. The implemented option price proposals are 30 coins
+for each of four canonical rental move-set sources, and 50 for each of four
+starter themes or the Potion Cache sidegrade. The sidegrade converts 200 of the
+existing 300 starting coins (the proposed Act-0 Potion price) into one Potion;
+it does not add starting value. Event-pack, challenge-contract, and cosmetic
+IDs remain reserved and cannot be purchased until they have implemented
+content. The saved option bitfield preserves room for those future IDs, but
+they are not presented as available options. These options do not add
+permanent combat stats, unbudgeted consumables, or reward odds. Species
+selection weights are proposed as `max(1, 1000 / BST)` over distinct species
+in the supplied legal loadout catalog, making higher-BST species rarer. Revisit
+all values after native UI integration and balance playtesting.
 
 The note holds two 1280-byte slots. Each begins with a 32-byte little-endian
 commit header: `RLPK` magic (offset 0), framing version 1 (4), sequence (8),

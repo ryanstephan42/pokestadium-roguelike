@@ -47,6 +47,7 @@ int rl_meta_starter_unlocked(const RlMeta *meta, unsigned pool);
 int rl_meta_relic_unlocked(const RlMeta *meta, unsigned relic);
 int rl_meta_event_unlocked(const RlMeta *meta, unsigned event);
 int rl_meta_species_unlocked(const RlMeta *meta, unsigned species);
+int rl_meta_option_available(unsigned option);
 int rl_meta_option_unlocked(const RlMeta *meta, unsigned option);
 unsigned rl_meta_option_cost(unsigned option);
 int rl_meta_purchase_option(RlMeta *meta, unsigned option);

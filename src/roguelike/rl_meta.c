@@ -10,10 +10,10 @@ static const RlU8 base_starter_species[] = {
 static const RlU16 option_costs[RL_META_OPTION_COUNT] = {
     30, 30, 30, 30,
     50, 50, 50, 50,
-    50, 50, 50,
-    75, 75, 75,
-    25, 25, 25, 25,
-    15, 15, 15, 15
+    50, 0, 0,
+    0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0
 };
 
 static void clear_mon(RlMon *mon) {
@@ -181,19 +181,24 @@ int rl_meta_species_unlocked(const RlMeta *meta, unsigned species) {
         species_bit(meta->registered_species, species);
 }
 
+int rl_meta_option_available(unsigned option) {
+    return option <= RL_META_KIT_1 &&
+        option < RL_META_OPTION_COUNT;
+}
+
 int rl_meta_option_unlocked(const RlMeta *meta, unsigned option) {
-    if (!meta || option >= RL_META_OPTION_COUNT) return 0;
+    if (!meta || !rl_meta_option_available(option)) return 0;
     return unlocked(meta->options, option, RL_META_OPTION_COUNT);
 }
 
 unsigned rl_meta_option_cost(unsigned option) {
-    if (option >= RL_META_OPTION_COUNT) return 0;
+    if (!rl_meta_option_available(option)) return 0;
     return option_costs[option];
 }
 
 int rl_meta_purchase_option(RlMeta *meta, unsigned option) {
     unsigned cost;
-    if (!meta || option >= RL_META_OPTION_COUNT ||
+    if (!meta || !rl_meta_option_available(option) ||
         !valid_meta_extension(meta)) return RL_INVALID;
     if (rl_meta_option_unlocked(meta, option)) return RL_OK;
     cost = rl_meta_option_cost(option);

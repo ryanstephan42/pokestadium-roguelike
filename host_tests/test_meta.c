@@ -39,7 +39,15 @@ static void test_initial_profile(void) {
     assert(!rl_meta_species_unlocked(&meta, 8));
     assert(!rl_meta_species_unlocked(&meta, 151));
     assert(!rl_meta_option_unlocked(&meta, RL_META_MOVESET_1));
+    assert(rl_meta_option_available(RL_META_MOVESET_1));
+    assert(rl_meta_option_available(RL_META_THEME_4));
+    assert(rl_meta_option_available(RL_META_KIT_1));
+    assert(!rl_meta_option_available(RL_META_KIT_2));
+    assert(!rl_meta_option_available(RL_META_EVENT_PACK_1));
+    assert(!rl_meta_option_available(RL_META_CONTRACT_1));
+    assert(!rl_meta_option_available(RL_META_COSMETIC_1));
     assert(rl_meta_option_cost(RL_META_MOVESET_1) == 30);
+    assert(rl_meta_option_cost(RL_META_KIT_2) == 0);
     assert(!rl_meta_relic_unlocked(&meta, RL_RELIC_COUNT));
     assert(!rl_meta_event_unlocked(&meta, RL_EVENT_COUNT));
     selected = 77;
@@ -124,6 +132,8 @@ static void test_options_species_and_currency(void) {
     assert(meta.currency == 30);
     assert(rl_meta_purchase_option(&meta, RL_META_THEME_1) == RL_FUNDS);
     assert(rl_meta_purchase_option(&meta, RL_META_OPTION_COUNT) == RL_INVALID);
+    assert(rl_meta_purchase_option(&meta, RL_META_KIT_2) == RL_INVALID);
+    assert(rl_meta_purchase_option(&meta, RL_META_EVENT_PACK_1) == RL_INVALID);
     assert(rl_meta_option_unlocked(&meta, RL_META_MOVESET_1));
 
     prepare_terminal_run(&run, 0, RL_LOST);
