@@ -8,5 +8,9 @@
 int rl_load_rental_pool(unsigned int set, RlMon* output, int capacity);
 int rl_load_trainer(unsigned int set, unsigned int trainer, RlMon* output,
                     int capacity, unsigned char* ai);
+/* Complete source team (six for trainers, one for Stadium's VS Mewtwo).
+ * Scales in place, keeps signature order/AI, and never advances run RNG. */
+int rl_load_encounter(const RunState* run, RlMon* output, int capacity,
+                      unsigned char* ai);
 
 #endif

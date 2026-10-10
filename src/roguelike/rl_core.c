@@ -1,5 +1,6 @@
 /* PURE */
 #include "rl_core.h"
+#include "rl_content.h"
 
 static void rl_zero_bytes(void *target, unsigned size) {
     volatile unsigned char *bytes;
@@ -96,7 +97,7 @@ int rl_run_finish_node(RunState *run) {
 
 int rl_run_on_battle_result(RunState *run, int won, RlU8 active_mask) {
     unsigned i, type, live;
-    RlU32 xp;
+    RlU32 xp, money;
     RlAscension asc;
     if (!run || run->phase != RL_NODE || run->row >= rl_map_rows(run->act) ||
         run->lane >= run->map.lanes[run->row]) return RL_INVALID;
@@ -126,7 +127,13 @@ int rl_run_on_battle_result(RunState *run, int won, RlU8 active_mask) {
     }
     if (!won) { run->phase = RL_MAP; return RL_OK; }
     run->stats.wins++;
-    xp = (RlU32)(run->act + 1) * 1200U + (RlU32)run->row * 200U;
+    money = rl_battle_money(run->act, run->row, type, run->ascension,
+                            run->relics);
+    run->money = run->money > 0xffffffffU - money ?
+        0xffffffffU : run->money + money;
+    xp = (RlU32)(run->act + 1) * 3000U + (RlU32)run->row * 500U;
+    if (type == RL_ELITE) xp *= 2;
+    if (type == RL_BOSS) xp *= 3;
     if (run->relics & (1U << RL_LUCKY_EGG)) xp = xp * 3 / 2;
     for (i = 0; i < run->party_count; i++) {
         if (!run->party[i].fainted) {

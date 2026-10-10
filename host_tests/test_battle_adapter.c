@@ -50,7 +50,43 @@ int main(void) {
     RlMon returned;
     unk_func_80026268_arg0 native;
     RlMon team[6];
+    RunState run;
+    int act, lane, round, count, i;
     unsigned char ai;
+
+    memset(&run, 0, sizeof(run));
+    run.seed = 12345;
+    for (i = 0; i < 165; i++) D_80072B00[i].unk_05 = 15;
+    for (i = 1; i <= 151; i++) {
+        D_80070F84[i].baseHP = 80;
+        D_80070F84[i].baseSpecial = 80;
+        D_80070F84[i].baseSpeed = 80;
+        D_80070F84[i].baseDefense = 80;
+        D_80070F84[i].baseAttack = 80;
+    }
+    for (round = 1; round <= 2; round++) {
+        run.ascension = round == 2 ? 8 : 0;
+        for (act = 0; act < 4; act++) {
+            run.act = act;
+            run.row = act == 3 ? 0 : 6;
+            run.map.lanes[run.row] = act == 3 ? 1 : 4;
+            for (lane = 0; lane < run.map.lanes[run.row]; lane++) {
+                run.lane = lane;
+                run.map.nodes[run.row][lane].type = RL_BOSS;
+                count = rl_load_encounter(&run, team, 6, &ai);
+                assert(count == (act == 3 ? 1 : 6));
+                for (i = 0; i < count; i++) {
+                    assert(team[i].level ==
+                        rl_enemy_level(act, run.row, RL_BOSS, run.ascension));
+                    assert(team[i].dvs == 0xffff);
+                    assert(team[i].cur_hp == team[i].max_hp);
+                    assert(team[i].held_relic == RL_NO_SLOT);
+                }
+                if (act == 3) assert(team[0].species == 150);
+                assert(rl_load_encounter(&run, team, 0, &ai) == -1);
+            }
+        }
+    }
 
     memset(&source, 0, sizeof(source));
     source.species = 25;
