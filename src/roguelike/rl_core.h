@@ -111,10 +111,13 @@ unsigned rl_rewards_generate(RunState *run, const RlPool *pool,
 int rl_reward_apply(RunState *run, const RlReward *reward);
 unsigned rl_shop_generate(RunState *run, RlShopEntry *out, unsigned capacity);
 int rl_shop_buy(RunState *run, const RlShopEntry *entry);
+unsigned rl_event_wild_options(const RunState *run, const RlPool *pool,
+                               RlMon *out, unsigned capacity);
 int rl_event_resolve(RunState *run, unsigned event, unsigned choice,
                      unsigned slot, const RlPool *pool);
 unsigned rl_relic_modify_stat(RlU32 relics, unsigned stat, unsigned base);
 unsigned rl_relic_modify_damage(RlU32 relics, unsigned type, unsigned base);
+unsigned rl_relic_modify_money(RlU32 relics, unsigned base);
 void rl_relic_end_of_turn(RlU32 relics, RlMon *mon);
 void rl_relic_post_battle(RunState *run);
 unsigned rl_relic_reward_count(RlU32 relics);

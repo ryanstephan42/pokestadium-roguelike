@@ -62,6 +62,11 @@ unsigned rl_relic_modify_damage(RlU32 relics, unsigned type, unsigned base) {
     return (base * percent + 50) / 100;
 }
 
+unsigned rl_relic_modify_money(RlU32 relics, unsigned base) {
+    if (relics & (1U << RL_AMULET)) return base + base / 2;
+    return base;
+}
+
 void rl_relic_end_of_turn(RlU32 relics, RlMon *mon) {
     unsigned hp, loss;
     if (!mon || !mon->cur_hp || mon->fainted) return;
@@ -86,7 +91,6 @@ void rl_relic_post_battle(RunState *run) {
     if (run->relics & (1U << RL_RAINBOW))
         for (i = 0; i < run->party_count; i++)
             if (!run->party[i].fainted) rl_mon_heal(&run->party[i], 10);
-    if (run->relics & (1U << RL_AMULET)) run->money += 150;
 }
 
 unsigned rl_relic_reward_count(RlU32 relics) {
