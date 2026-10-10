@@ -298,6 +298,9 @@ static void test_relics(void) {
     assert(rl_relic_status_blocked(all, 0));
     assert(!rl_relic_status_blocked(all, 2));
     assert(rl_relic_pp_max(all, 10) == 12);
+    assert(rl_relic_pp_max(all, 40) == 47);
+    assert(rl_relic_pp_max(all, 5) == 6);
+    assert(rl_relic_pp_max(0, 40) == 40);
     mon = rl_placeholder_pool.mons[0];
     mon.cur_hp = 0;
     memset(&hooks, 0, sizeof(hooks));
@@ -529,6 +532,10 @@ static void test_save(void) {
     run.money = 777;
     run.bag[RL_CANDY] = 2;
     run.relics = 1U << RL_LEFTOVERS;
+    run.relics |= 1U << RL_PP_POUCH;
+    run.consumed_relics = 1U << RL_PP_POUCH;
+    run.party[0].max_pp[0] = 12;
+    run.party[0].pp[0] = 7;
     run.stats.battles = 5;
     run.tm_count = 1;
     run.tm_moves[0] = 85;
@@ -545,6 +552,9 @@ static void test_save(void) {
     assert(restored.party_count == 1 && restored.party[0].species == run.party[0].species);
     assert(restored.money == 777 && restored.bag[RL_CANDY] == 2);
     assert(restored.tm_count == 1 && restored.tm_moves[0] == 85);
+    assert(restored.relics == run.relics);
+    assert(restored.consumed_relics == (1U << RL_PP_POUCH));
+    assert(restored.party[0].max_pp[0] == 12 && restored.party[0].pp[0] == 7);
     assert(restored.party[0].current_stats[RL_HP] == restored.party[0].max_hp);
     run.party[0].pp[0] = (RlU8)(run.party[0].max_pp[0] + 1);
     assert(rl_save_encode(&meta, &run, buffer, sizeof(buffer), &length) ==

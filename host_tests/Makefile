@@ -11,9 +11,21 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test ui-test save-test native-import-test clean
+.PHONY: test core-test ui-test save-test native-import-test native-relic-test clean
 
-test: core-test ui-test save-test native-import-test
+test: core-test ui-test save-test native-import-test native-relic-test
+
+native-relic-test:
+	mkdir -p ../build/host_tests
+	$(CC) -std=gnu89 -m32 -funsigned-char -fno-builtin \
+	    -DROGUELIKE -DCC_CHECK -DNON_MATCHING -DAVOID_UB -D_LANGUAGE_C -DLANGUAGE_C \
+	    -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 \
+	    -I../include -I../src -I.. -I../build -I../assets/us \
+	    -I../lib/ultralib/include -I../lib/ultralib/include/PR \
+	    -I../lib/ultralib/include/ido \
+	    test_native_relics.c ../src/roguelike/rl_native_relics.c $(CORE) \
+	    -o ../build/host_tests/native-relics
+	../build/host_tests/native-relics
 
 native-import-test:
 	mkdir -p ../build/host_tests

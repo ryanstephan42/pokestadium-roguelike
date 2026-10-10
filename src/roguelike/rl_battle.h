@@ -35,6 +35,7 @@ typedef struct RlBattleRules {
     unsigned char show_intro;   /* 1 = run fragment63 VS intro first */
     unsigned char use_state;    /* 1 = use RlMon cur_hp/pp/status, 0 = full heal */
     unsigned char pad;
+    RlU32 relics;               /* run-wide player relic mask; zero for ordinary tests */
 } RlBattleRules;
 
 enum {
@@ -57,10 +58,16 @@ extern RlLaunchResult gRlLastBattleResult;
 extern volatile unsigned int gRlBattleCount;
 extern int gRlBattleActive;
 extern volatile int gRlBattleTestRequest;
+extern RlMon gRlRelicTestParty[6], gRlRelicTestEnemy[6];
+extern RlBattleRules gRlRelicTestRules;
+extern unsigned int gRlRelicTestPartyCount, gRlRelicTestEnemyCount, gRlRelicTestMask;
 
 /* Rebuild native stats/PP limits/base stats for generated/scaled mons.
  * full_heal=0 preserves HP/PP/status; full_heal=1 restores them. */
 int rl_prepare_mon(RlMon* mon, int full_heal);
+/* Acquisition-time PP Pouch replacement: one native PP Up per current move,
+ * once per run, without restoring PP. Uses the pouch consumed-relic bit. */
+int rl_battle_apply_pp_pouch(RunState* run);
 
 /*
  * Launches a battle, blocks until it ends, sets gCurrentGameState to

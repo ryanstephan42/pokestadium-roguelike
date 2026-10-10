@@ -17,7 +17,7 @@ const RlRelicDef rl_relic_defs[RL_RELIC_COUNT] = {
     {"Focus Band Charm", "Once per battle survive at 1 HP"},
     {"Scope Lens Charm", "Increased critical chance"},
     {"Silph Scope", "Reveal enemy party before battle"},
-    {"PP Up Pouch", "Move maximum PP +20%"},
+    {"PP Up Pouch", "One PP Up per current move on pickup"},
     {"Old Amber", "One-time additional recruit"},
     {"Master Ball", "One-time boss recruit"},
     {"Ghost Relic", "Ghost-type damage +15%"},
@@ -115,7 +115,8 @@ unsigned rl_relic_crit_bonus(RlU32 relics) {
 }
 
 unsigned rl_relic_pp_max(RlU32 relics, unsigned base) {
-    if (relics & (1U << RL_PP_POUCH)) return (base * 120 + 50) / 100;
+    if (relics & (1U << RL_PP_POUCH))
+        return base + ((base >= 40) ? 7 : base / 5);
     return base;
 }
 
