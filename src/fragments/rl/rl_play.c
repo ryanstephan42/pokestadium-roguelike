@@ -248,11 +248,10 @@ static int rl_play_begin_new(void) {
         gRlPlayScene = RL_PLAY_ERROR;
         return 0;
     }
-    for (i = 0; i < RL_PLAY_ROUTE_SIZE; i++) {
-        unsigned lane;
-        for (lane = 0; lane < gRlRun.map.lanes[i]; lane++) {
-            gRlRun.map.nodes[i][lane].type = RL_BATTLE;
-        }
+    if (rl_map_prepare_battle_route(&gRlRun.map, RL_PLAY_ROUTE_SIZE) != RL_OK) {
+        sPlayMessage = "Could not prepare the trainer route";
+        gRlPlayScene = RL_PLAY_ERROR;
+        return 0;
     }
     for (i = 0; i < RL_PLAY_DRAFT_SIZE; i++) {
         sPlayDraft[i].species = 0;
@@ -271,6 +270,7 @@ static int rl_play_begin_new(void) {
 static void rl_play_make_map(void) {
     unsigned row;
     unsigned lanes;
+    unsigned lane;
 
     row = gRlRun.row == RL_NO_SLOT ? 0 : (unsigned)gRlRun.row + 1;
     if (row >= RL_PLAY_ROUTE_SIZE || gRlRun.phase != RL_MAP) {
@@ -279,25 +279,28 @@ static void rl_play_make_map(void) {
         return;
     }
     lanes = gRlRun.map.lanes[row];
-    for (row = 0; row < lanes; row++) {
-        sPlayLabels[row][0] = 'T';
-        sPlayLabels[row][1] = 'r';
-        sPlayLabels[row][2] = 'a';
-        sPlayLabels[row][3] = 'i';
-        sPlayLabels[row][4] = 'n';
-        sPlayLabels[row][5] = 'e';
-        sPlayLabels[row][6] = 'r';
-        sPlayLabels[row][7] = ' ';
-        sPlayLabels[row][8] = 'r';
-        sPlayLabels[row][9] = 'o';
-        sPlayLabels[row][10] = 'u';
-        sPlayLabels[row][11] = 't';
-        sPlayLabels[row][12] = 'e';
-        sPlayLabels[row][13] = ' ';
-        sPlayLabels[row][14] = (char)('1' + row);
-        sPlayLabels[row][15] = '\0';
-        sPlayItems[row].text = sPlayLabels[row];
-        sPlayItems[row].disabled = 0;
+    for (lane = 0; lane < lanes; lane++) {
+        int reachable;
+        reachable = gRlRun.row == RL_NO_SLOT ||
+            (gRlRun.map.nodes[gRlRun.row][gRlRun.lane].edges & (1U << lane));
+        sPlayLabels[lane][0] = 'T';
+        sPlayLabels[lane][1] = 'r';
+        sPlayLabels[lane][2] = 'a';
+        sPlayLabels[lane][3] = 'i';
+        sPlayLabels[lane][4] = 'n';
+        sPlayLabels[lane][5] = 'e';
+        sPlayLabels[lane][6] = 'r';
+        sPlayLabels[lane][7] = ' ';
+        sPlayLabels[lane][8] = 'r';
+        sPlayLabels[lane][9] = 'o';
+        sPlayLabels[lane][10] = 'u';
+        sPlayLabels[lane][11] = 't';
+        sPlayLabels[lane][12] = 'e';
+        sPlayLabels[lane][13] = ' ';
+        sPlayLabels[lane][14] = (char)('1' + lane);
+        sPlayLabels[lane][15] = '\0';
+        sPlayItems[lane].text = sPlayLabels[lane];
+        sPlayItems[lane].disabled = !reachable;
     }
     sPlayItems[lanes].text = "Save run and return";
     sPlayItems[lanes].disabled = 0;
@@ -385,7 +388,7 @@ static int rl_play_active_toggle(unsigned slot) {
 
 static const char* rl_play_reward_label(const RlReward* reward) {
     switch (reward->kind) {
-        case RL_REWARD_RECRUIT: return "Recruit a trainer's Pokemon";
+        case RL_REWARD_RECRUIT: return "Recruit from defeated trainer";
         case RL_REWARD_CANDY: return "Rare Candy";
         case RL_REWARD_VITAMIN: return "Vitamin";
         case RL_REWARD_RELIC: return "Run relic";
@@ -405,8 +408,14 @@ static int rl_play_reward_disabled(unsigned index) {
 
 static void rl_play_make_rewards(void) {
     unsigned i;
-    sPlayRewardPool.mons = sPlayPool;
-    sPlayRewardPool.count = (RlU16)sPlayPoolCount;
+    if (!gRlPendingBattle.trainer_count ||
+        gRlPendingBattle.trainer_count > RL_BATTLE_MAX_MONS) {
+        sPlayMessage = "Defeated trainer roster is unavailable";
+        gRlPlayScene = RL_PLAY_ERROR;
+        return;
+    }
+    sPlayRewardPool.mons = gRlPendingBattle.trainer;
+    sPlayRewardPool.count = gRlPendingBattle.trainer_count;
     sPlayRewardPool.fixed_order = 0;
     sPlayRewardCount = (int)rl_rewards_generate(&gRlRun, &sPlayRewardPool, NULL,
                                                 sPlayRewards,
@@ -417,7 +426,19 @@ static void rl_play_make_rewards(void) {
         return;
     }
     for (i = 0; i < RL_PLAY_REWARD_SIZE; i++) {
-        sPlayItems[i].text = rl_play_reward_label(&sPlayRewards[i]);
+        if (sPlayRewards[i].kind == RL_REWARD_RECRUIT) {
+            char* label;
+            label = sPlayLabels[i];
+            rl_play_copy_text(label, "Trainer No.");
+            rl_play_number(label + 11, sPlayRewards[i].mon.species, 3);
+            label[14] = ' ';
+            label[15] = 'L';
+            rl_play_number(label + 16, sPlayRewards[i].mon.level, 2);
+            label[18] = '\0';
+            sPlayItems[i].text = label;
+        } else {
+            sPlayItems[i].text = rl_play_reward_label(&sPlayRewards[i]);
+        }
         sPlayItems[i].disabled = rl_play_reward_disabled(i);
     }
     rl_play_init_list("Choose one reward", sPlayRewardCount, 3);
@@ -480,6 +501,18 @@ static int rl_play_run_battle(void) {
                 gRlPlayScene = RL_PLAY_ERROR;
                 return 0;
             }
+            if (gRlPlayTestMode == 3) {
+                player[i].moves[0] = 45;
+                player[i].pp[0] = 40;
+                player[i].max_pp[0] = 40;
+                player[i].cur_hp = 1;
+            } else if (gRlPlayTestMode == 4 &&
+                       gRlRun.stats.battles == 0 && i == 0) {
+                player[i].moves[0] = 45;
+                player[i].pp[0] = 40;
+                player[i].max_pp[0] = 40;
+                player[i].cur_hp = player[i].max_hp;
+            }
         }
     }
     trainer_count = rl_trainer_count(RL_TRAINER_SET_POKE_POKE);
@@ -497,22 +530,25 @@ static int rl_play_run_battle(void) {
         gRlPlayScene = RL_PLAY_ERROR;
         return 0;
     }
-    if (enemy_count > 3) {
-        enemy_count = 3;
-    }
-    bzero(&rules, sizeof(rules));
-    rules.stadium = 3;
-    rules.ai_level = ai;
-    rules.player_count = sPlayActiveCount;
-    rules.player_cpu = gRlPlayTestMode == 1;
-    rules.show_intro = 1;
-    rules.use_state = 1;
-    gRlPlayScene = RL_PLAY_BATTLE;
-    if (!rl_main_queue_battle(player, sPlayActiveCount, enemy, enemy_count,
-                              &rules, sPlayActiveSlots)) {
-        sPlayMessage = "Could not queue the native battle";
-        gRlPlayScene = RL_PLAY_ERROR;
-        return 0;
+    {
+        int trainer_count;
+        trainer_count = enemy_count;
+        if (enemy_count > 3) enemy_count = 3;
+        bzero(&rules, sizeof(rules));
+        rules.stadium = 3;
+        rules.ai_level = ai;
+        rules.player_count = sPlayActiveCount;
+        rules.player_cpu = gRlPlayTestMode == 1;
+        rules.show_intro = 1;
+        rules.use_state = 1;
+        gRlPlayScene = RL_PLAY_BATTLE;
+        if (!rl_main_queue_battle(player, sPlayActiveCount, enemy, enemy_count,
+                                  &rules, sPlayActiveSlots, enemy,
+                                  (unsigned)trainer_count)) {
+            sPlayMessage = "Could not queue the native battle";
+            gRlPlayScene = RL_PLAY_ERROR;
+            return 0;
+        }
     }
     return 1;
 }
@@ -705,8 +741,8 @@ static void rl_play_update_party(u16 pressed) {
         }
     } else if (result == (int)gRlRun.party_count) {
         if (rl_run_advance(&gRlRun, sPlayChosenLane) != RL_OK) {
-            sPlayMessage = "That route is no longer available";
             rl_play_make_map();
+            sPlayMessage = "That route is no longer available";
             return;
         }
         if (rl_play_run_battle()) {

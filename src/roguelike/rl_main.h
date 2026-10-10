@@ -24,10 +24,12 @@ typedef struct RlMainState {
 typedef struct RlPendingBattle {
     RlMon player[3];
     RlMon enemy[RL_BATTLE_MAX_MONS];
+    RlMon trainer[RL_BATTLE_MAX_MONS];
     RlBattleRules rules;
     unsigned char player_slots[3];
     unsigned char player_count;
     unsigned char enemy_count;
+    unsigned char trainer_count;
     unsigned char pending;
     unsigned char post_battle;
     unsigned char error;
@@ -49,7 +51,8 @@ extern volatile u8 gRlPlayDraftSpecies[6];
 int rl_main_queue_battle(const RlMon* player, unsigned player_count,
                          const RlMon* enemy, unsigned enemy_count,
                          const RlBattleRules* rules,
-                         const unsigned char* player_slots);
+                         const unsigned char* player_slots,
+                         const RlMon* trainer, unsigned trainer_count);
 
 /* Called from Game_Thread for STATE_ROGUELIKE. Loads and runs fragmentRL. */
 void rl_main_state_roguelike(void);

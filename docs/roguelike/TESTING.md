@@ -122,17 +122,47 @@ generated ROM-derived artifact and metadata file remains in ignored
 drives the real L+A entry and run UI. It checks draft cancellation/re-entry,
 the free reroll and a deterministic seed, selects three rentals, chooses a
 trainer route, rejects an empty active team, and verifies B returns to the map
-without advancing it. A guarded test flag boosts the party for this bounded
-scenario; run battles remain human-controlled. The script checks
-native battle initialization, persisted lead
-HP/PP, post-battle party damage, reward selection, three chained wins, summary,
-exit and roguelike re-entry. It writes local screenshots under
-`.local/rltest/play-run/`. It also seeds an all-fainted party to check the loss
-summary and exit UI; that fixture validates the UI branch rather than a loss
-produced by a native battle.
+without advancing it. Guarded test fixtures boost the party for the win path
+and start its lead at full HP in the first battle; all run-battle decisions
+remain human-controlled. The scenario requires actual native HP damage, then
+checks that the damaged lead's exact HP, moves, and PP are passed into the next
+battle. It also covers reward selection, three chained wins, summary, exit and
+roguelike re-entry. A separate UI-only regression fixture injects an all-fainted
+run state to check the loss-summary and exit UI; this is not a native battle
+loss.
 
-The current playable milestone intentionally exposes a bounded route of three
-trainer battles. It does not yet expose event, shop, center, elite, or boss map
-nodes; those remain follow-on scene/content work rather than silently skipped
-choices. Rewards use the existing core reward generator, and the summary marks
-the three-battle route as the current milestone.
+The same scenario includes a distinct human-controlled native-loss test. Its
+guarded pre-battle fixture starts the three selected active Pokemon at 1 HP and
+gives them Growl, then lets native opponents faint them. The test reads the
+adapter's actual battle result and requires those three KOs to produce
+`RL_LOST`; it does not write HP or battle results after the fight. A seed-8 UI
+suspend/resume check exercises the Controller Pak path. Host coverage performs
+save roundtrips across 1,000 generated seeds after map preparation and each
+battle/reward transition. Generated screenshots and savestates remain local
+under `.local/rltest/play-run/`.
+
+Run just the native-loss path while debugging battle input with:
+
+```sh
+python3 -m tools.rltest.test_play_run --native-loss-only
+```
+
+The complete scenario and `scripts/rl-gate.sh` were verified with
+Mupen64Plus-Next's libretro core; the complete run reached frame 51937 and
+reported three native wins plus the separate native loss summary. The
+all-fainted UI-only fixture remains separate from that native-loss result.
+
+The current playable milestone intentionally exposes only the first three map
+rows, with reachable trainer-battle routes. Other node types are not presented
+as selectable choices: event, shop, center, elite, and boss scenes/content
+remain follow-on work. The generic map and save invariants are preserved, and
+unreachable lanes are disabled. Recruit rewards come from the defeated
+trainer's canonical roster; other rewards use the existing core generator.
+The summary marks the three-battle route as the current milestone.
+
+For a visible test, build with `make rl` and launch the resulting
+`build_rl/pokestadium-rl.z64` in RetroArch. At the title, press N64 Start and
+pass Game Pak Check with N64 A. In Menu Select, hold L and press N64 A to open
+Roguelike. N64 A confirms, N64 B backs out, the D-pad moves through lists, and
+the C-buttons (right stick on the configured preview controller) navigate
+battle moves.

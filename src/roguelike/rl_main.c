@@ -27,13 +27,16 @@ volatile u8 gRlPlayDraftSpecies[6];
 int rl_main_queue_battle(const RlMon* player, unsigned player_count,
                          const RlMon* enemy, unsigned enemy_count,
                          const RlBattleRules* rules,
-                         const unsigned char* player_slots) {
+                         const unsigned char* player_slots,
+                         const RlMon* trainer, unsigned trainer_count) {
     unsigned i;
 
     if (gRlPendingBattle.pending || gRlPendingBattle.post_battle ||
         player == NULL || enemy == NULL || rules == NULL ||
-        player_slots == NULL || player_count == 0 || player_count > 3 ||
-        enemy_count == 0 || enemy_count > RL_BATTLE_MAX_MONS) {
+        player_slots == NULL || trainer == NULL ||
+        player_count == 0 || player_count > 3 ||
+        enemy_count == 0 || enemy_count > RL_BATTLE_MAX_MONS ||
+        trainer_count == 0 || trainer_count > RL_BATTLE_MAX_MONS) {
         return 0;
     }
     for (i = 0; i < player_count; i++) {
@@ -43,9 +46,13 @@ int rl_main_queue_battle(const RlMon* player, unsigned player_count,
     for (i = 0; i < enemy_count; i++) {
         gRlPendingBattle.enemy[i] = enemy[i];
     }
+    for (i = 0; i < trainer_count; i++) {
+        gRlPendingBattle.trainer[i] = trainer[i];
+    }
     gRlPendingBattle.rules = *rules;
     gRlPendingBattle.player_count = (unsigned char)player_count;
     gRlPendingBattle.enemy_count = (unsigned char)enemy_count;
+    gRlPendingBattle.trainer_count = (unsigned char)trainer_count;
     gRlPendingBattle.pending = 1;
     gRlPendingBattle.error = 0;
     return 1;
