@@ -55,6 +55,8 @@ VENV ?= .venv
 PYTHON ?= $(VENV)/$(VENV_BIN_DIR)/python3
 # Emulator w/ flags
 N64_EMULATOR ?=
+# Roguelike mod build (use `make rl`; never set this for the matching build)
+ROGUELIKE ?= 0
 # Set prefix to mips binutils binaries (mips-linux-gnu-ld => 'mips-linux-gnu-') - Change at your own risk!
 # In nearly all cases, not having 'mips-linux-gnu-*' binaries on the PATH is indicative of missing dependencies
 MIPS_BINUTILS_PREFIX ?= mips-linux-gnu-
@@ -100,8 +102,16 @@ ULTRALIB_TARGET      := libultra_rom
 
 ### Output ###
 
-BUILD_DIR := build
-ROM       := $(BUILD_DIR)/$(TARGET)-$(VERSION).z64
+VANILLA_BUILD_DIR := build
+VANILLA_MAP       := $(VANILLA_BUILD_DIR)/$(TARGET)-$(VERSION).map
+
+ifeq ($(ROGUELIKE),1)
+  BUILD_DIR := build_rl
+  ROM       := $(BUILD_DIR)/$(TARGET)-rl.z64
+else
+  BUILD_DIR := build
+  ROM       := $(BUILD_DIR)/$(TARGET)-$(VERSION).z64
+endif
 ELF       := $(ROM:.z64=.elf)
 MAP       := $(ROM:.z64=.map)
 LDSCRIPT  := $(ROM:.z64=.ld)
@@ -121,6 +131,17 @@ endif
 ifeq ($(NON_MATCHING),1)
   BUILD_DEFINES   += -DNON_MATCHING -DAVOID_UB
   COMPARE  := 0
+endif
+
+ifeq ($(ROGUELIKE),1)
+  COMPARE  := 0
+  BUILD_DEFINES   += -DROGUELIKE
+  ifneq ($(wildcard src/fragments/rl/rl_ui.c),)
+    BUILD_DEFINES += -DRL_HAVE_UI_DEMO
+  endif
+  ifneq ($(wildcard src/roguelike/rl_battle.c),)
+    BUILD_DEFINES += -DRL_HAVE_BATTLE
+  endif
 endif
 
 MAKE = make
@@ -240,6 +261,16 @@ LIB_DIRS      := $(foreach f, $(LIBULTRA_DIR), $f)
 
 C_FILES       := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 S_FILES       := $(foreach dir,$(ASM_DIRS) $(SRC_DIRS),$(wildcard $(dir)/*.s))
+
+# Roguelike sources: src/roguelike/ -> resident main segment, src/fragments/rl/ -> fragmentRL overlay.
+# They are only compiled and linked by the roguelike build.
+RL_MAIN_DIR   := src/roguelike
+RL_FRAG_DIR   := src/fragments/rl
+RL_SRC_FILTER := $(RL_MAIN_DIR)/% $(RL_FRAG_DIR)/%
+ifneq ($(ROGUELIKE),1)
+  C_FILES     := $(filter-out $(RL_SRC_FILTER),$(C_FILES))
+  S_FILES     := $(filter-out $(RL_SRC_FILTER),$(S_FILES))
+endif
 BIN_FILES     := $(foreach dir,$(ASSET_DIRS),$(wildcard $(dir)/*.bin))
 O_FILES       := $(foreach f,$(C_FILES:.c=.o),$(BUILD_DIR)/$f) \
                  $(foreach f,$(S_FILES:.s=.o),$(BUILD_DIR)/$f) \
@@ -259,27 +290,27 @@ $(shell mkdir -p $(BUILD_DIR)/linker_scripts/$(VERSION) $(BUILD_DIR)/linker_scri
 
 
 # directory flags
-build/src/boot/O2/%.o: OPTFLAGS := -O2
-build/src/boot/libc/%.o: OPTFLAGS := -O2
-build/src/boot/libc64/%.o: OPTFLAGS := -O2
-build/src/boot/libm/%.o: OPTFLAGS := -O2
-build/src/boot/libu64/%.o: OPTFLAGS := -O2
+$(BUILD_DIR)/src/boot/O2/%.o: OPTFLAGS := -O2
+$(BUILD_DIR)/src/boot/libc/%.o: OPTFLAGS := -O2
+$(BUILD_DIR)/src/boot/libc64/%.o: OPTFLAGS := -O2
+$(BUILD_DIR)/src/boot/libm/%.o: OPTFLAGS := -O2
+$(BUILD_DIR)/src/boot/libu64/%.o: OPTFLAGS := -O2
 
 # per-file flags
 
-build/src/boot/fault.o: CFLAGS += -trapuv
-build/src/boot/fault_drawer.o: CFLAGS += -trapuv
-build/src/C030.o: OPTFLAGS += -Wo,-loopunroll,0
-build/src/hal_libc.o: CFLAGS += -signed
+$(BUILD_DIR)/src/boot/fault.o: CFLAGS += -trapuv
+$(BUILD_DIR)/src/boot/fault_drawer.o: CFLAGS += -trapuv
+$(BUILD_DIR)/src/C030.o: OPTFLAGS += -Wo,-loopunroll,0
+$(BUILD_DIR)/src/hal_libc.o: CFLAGS += -signed
 
-build/src/libleo/%.o: CC := $(CC_OLD)
+$(BUILD_DIR)/src/libleo/%.o: CC := $(CC_OLD)
 
-build/src/jpegutils.o: CC := $(CC_OLD)
-build/src/jpeg_decoder.o: CC := $(CC_OLD)
+$(BUILD_DIR)/src/jpegutils.o: CC := $(CC_OLD)
+$(BUILD_DIR)/src/jpeg_decoder.o: CC := $(CC_OLD)
 
-build/src/D470.o: CC := $(CC_OLD)
-build/src/D470.o: OPTFLAGS := -O0
-build/src/D470.o: MIPS_VERSION := -mips1
+$(BUILD_DIR)/src/D470.o: CC := $(CC_OLD)
+$(BUILD_DIR)/src/D470.o: OPTFLAGS := -O0
+$(BUILD_DIR)/src/D470.o: MIPS_VERSION := -mips1
 
 ifeq ($(COLOR),1)
 NO_COL  := \033[0m
@@ -296,7 +327,7 @@ define print
 endef
 
 DECOMP_POKESTADIUM := $(filter-out src/libleo/%,$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)))
-DECOMP_POKESTADIUM_FILTERED := $(patsubst %.c,%.o,$(addprefix build/,$(shell find $(DECOMP_POKESTADIUM) -type f -exec grep -l "GLOBAL_ASM" {} \;)))
+DECOMP_POKESTADIUM_FILTERED := $(patsubst %.c,%.o,$(addprefix $(BUILD_DIR)/,$(shell find $(DECOMP_POKESTADIUM) -type f -exec grep -l "GLOBAL_ASM" {} \;)))
 
 # only run asm processor on files that need it.
 $(DECOMP_POKESTADIUM_FILTERED): CC := $(ASM_PROC) $(ASM_PROC_FLAGS) $(CC) -- $(AS) $(ASFLAGS) --
@@ -308,7 +339,7 @@ $(BUILD_DIR)/src/%.o: PREPROCESS := ./tools/preprocess.sh -i $(ICONV) --
 # This is unsanitary to do, -but-, because this file is encrypted we cant have splat decrypt it
 # on split. This requires us to include this manually, but it needs to be in the dependency
 # list. So we add it.
-O_FILES += build/src/libleo/bootstrap.s.o
+O_FILES += $(BUILD_DIR)/src/libleo/bootstrap.s.o
 
 #### Main Targets ###
 
@@ -369,12 +400,34 @@ init: distclean
 	$(MAKE) extract
 	$(MAKE) diff-init
 
+# Roguelike build: vanilla first (its map anchors the shifted link), then the RL ROM.
+# The decomp's NON_MATCHING C bodies are incomplete (undefined D_8007CB80.., D_800A6CF4), so the
+# RL build keeps the matching asm bodies by default. Set RL_NON_MATCHING=1 to experiment.
+RL_NON_MATCHING ?= 0
+rl:
+	$(V)$(MAKE) rom
+	$(V)$(MAKE) ROGUELIKE=1 NON_MATCHING=$(RL_NON_MATCHING) COMPARE=0 rlrom
+
+rlclean:
+	$(V)$(RM) -r build_rl
+
+ifeq ($(ROGUELIKE),1)
+rlrom: $(ROM)
+	@$(PRINT) "$(GREEN)Roguelike ROM: $(BLUE)$(ROM)$(NO_COL)\n"
+	$(V)$(PYTHON) tools/rl/n64crc.py $(ROM) --check
+else
+rlrom:
+	$(error rlrom must be built through `make rl`)
+endif
+
 run: $(ROM)
 ifeq ($(N64_EMULATOR),)
 	$(error Emulator path not set. Set N64_EMULATOR in the Makefile, .make_options, or define it as an environment variable)
 endif
 	$(N64_EMULATOR) $<
 
+
+.PHONY: rl rlrom rlclean
 .PHONY: all rom clean libclean distclean venv setup extract lib diff-init init run
 .DEFAULT_GOAL := rom
 # Prevent removing intermediate files
@@ -387,10 +440,14 @@ $(ROM): $(ELF)
 	$(call print,Building ROM:,$<,$@)
 	$(V)$(OBJCOPY) -O binary --gap-fill=0xFF $< $@
 	$(V)$(ENCRYPT_LIBLEO) $@ $(MAP)
+ifeq ($(ROGUELIKE),1)
+	$(V)$(PYTHON) tools/rl/n64crc.py $@
+endif
 
 # TODO: update rom header checksum
 
 # TODO: avoid using auto/undefined
+ifneq ($(ROGUELIKE),1)
 $(ELF): $(O_FILES) $(LIBULTRA_LIB) $(LDSCRIPT) $(BUILD_DIR)/linker_scripts/$(VERSION)/hardware_regs.ld $(BUILD_DIR)/linker_scripts/$(VERSION)/undefined_syms.ld $(BUILD_DIR)/linker_scripts/$(VERSION)/unused_syms.ld $(BUILD_DIR)/linker_scripts/common_undef_syms.ld $(BUILD_DIR)/linker_scripts/$(VERSION)/auto/undefined_syms_auto.ld $(BUILD_DIR)/linker_scripts/$(VERSION)/auto/undefined_funcs_auto.ld
 	@$(PRINT) "$(GREEN)Linking ELF file:  $(BLUE)$@ $(NO_COL)\n"
 	$(V)$(LD) $(LDFLAGS) -T $(LDSCRIPT) \
@@ -402,6 +459,9 @@ $(ELF): $(O_FILES) $(LIBULTRA_LIB) $(LDSCRIPT) $(BUILD_DIR)/linker_scripts/$(VER
 $(LDSCRIPT): linker_scripts/$(VERSION)/$(TARGET).ld
 	$(call print,Copying linker script to build dir:,$<,$@)
 	$(V)cp $< $@
+else
+include tools/rl/rl.mk
+endif
 
 $(BUILD_DIR)/%.ld: %.ld
 	$(call print,Preprocessing linker script:,$<,$@)

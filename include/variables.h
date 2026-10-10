@@ -41,6 +41,10 @@ typedef enum {
     STATE_STUBBED_DEBUG       = 0x80, // stubbed/removed debug menu. This could have been the Early Pokedex Menu seen in the JP version.
     STATE_FAST_BATTLE         = 0x81, // most likely the P97/P98 mode(s) and uses GB Pak 1 and 2 for the teams for an immediate battle; skips even the VS screen and Battle Rule screen. However, the music/stadium used is probably set by some other menu, because it seems to use the outdoor Free Battle area + Poke Cup 1-3, which isnt correct.
     STATE_KIDS_CLUB_TITLE     = 0x82, // Kids Club, but it returns to the title screen. Possibly for a Kiosk/demo version.
+#ifdef ROGUELIKE
+    STATE_ROGUELIKE             = 0x30, // Roguelike Run mode hub (fragmentRL), see docs/roguelike/BUILD.md
+    STATE_ROGUELIKE_BATTLE_TEST = 0x31, // Roguelike battle bridge test hook (W3)
+#endif
 } GameState;
 
 /*
