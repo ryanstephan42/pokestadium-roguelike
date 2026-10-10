@@ -32,3 +32,4 @@ tools/n64
 .DS_Store
 
 build_rl/
+.local/rltest/

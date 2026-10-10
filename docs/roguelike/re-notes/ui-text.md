@@ -89,6 +89,11 @@ viewport/projection, appends screen drawing to `gDisplayListHead`, and
 submits with `func_80007778`. It releases the scene with
 `func_800076C0`, `func_80005EAC`, and pool pop.
 
+Scene activation must be followed by `func_80006C6C(0xA)` to fade in.
+Omitting that call leaves the framebuffer fully white even while the
+list input and icon loading work. On exit, `func_80006CB4(0xA)` starts
+fade-out; submit frames until `func_80007604() == 1` before teardown.
+
 The RL overlay API is `rl_ui_demo_init`, `rl_ui_demo_update(pressed)`,
 and `rl_ui_demo_draw`. Init runs inside the scene's pool after display
 workspace/context setup; update follows controller polling; draw is called
@@ -99,3 +104,33 @@ exercise cache reuse across multiple species.
 The caller must establish the 640x480 orthographic viewport/projection each
 frame before drawing; the UI kit appends 2D display-list commands but does
 not own the scene's projection state.
+
+## Integrated emulator validation
+
+Run `make rl`, then `python3 -m tools.rltest.ui_demo`. The scenario uses
+W1's `Frontend` API and the installed Mupen64Plus-Next core at
+`/usr/lib/libretro/mupen64plus_next_libretro.so`, with Angrylion software
+rendering. Screenshots and results go under ignored `.local/rltest/ui/`.
+`--rom`, `--map`, `--core`, `--output`, and `--timeout` override those inputs.
+
+Observed on the integrated W0/W4 ROM: native-font text (including E9),
+window borders, highlighted rows, the disabled Move Tutor row, all three
+starter icons, and a green 65/100 HP bar render correctly. The scenario
+checks all ten cursor positions and scroll offsets, left/right paging,
+repeated icon reuse, B exit to Menu Select, and a fresh cursor on re-entry.
+A selects Mewtwo and displays its label; the locked row rejects A.
+
+After all three species have been drawn, the cached icon pointers stay
+unchanged through 48 cursor moves and another 120 frames per visit.
+Main-pool available bytes are also unchanged, and agree across two visits,
+confirming that teardown reclaims the scene allocations. The initial run
+measured 1,489,744 available bytes; that value can change as resident code
+or the overlay grows, so the scenario compares runtime values, not a
+hardcoded address or allocation budget.
+
+Button names in `Frontend` are RetroPad names, not N64 names. On the
+tested Mupen core, RetroPad B produces native A (8000), RetroPad Y
+produces native B (4000), and L produces 0020. Hold L through the Menu
+Select fade while confirming, until state 30 is reached. State 4 initially
+contains Game Pak Check, which also needs native A before Menu Select is
+interactive.
