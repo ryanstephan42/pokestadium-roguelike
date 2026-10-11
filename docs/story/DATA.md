@@ -1541,6 +1541,80 @@ old Ember/KO/defaultRL binary hashes and vanilla matching remain unchanged.
 Host refusal lifecycle and three pre-Frontend harness refusals augment the
 normal/sanitized actual launcher/adapter tests;45 helpers pass.
 
+#### Accepted six-party entry and separate natural-combat source candidate
+
+The one-shot `40f2d9b` initialized-entry evidence was independently accepted:
+all six original/native/resident identities, launcher mapping, canonical
+named fields, required assets, isolated save, and pool/map ownership passed.
+There were 100 allocation attempts and zero failures; cold176752 returned
+balanced. Written stack margin was1340 with no new bottom-sentinel writes.
+The sealed local manifest is
+`e0f9c74f7d44f744c574fd1e64411ee71e527b3e2e454bbea42a6a909da8db72`.
+This accepts entry only, not switching, KO/XP/learning, terminal carry,
+Transform, defeat, reload, or the full gate. The failed8544304 evidence
+and prepared save remain immutable.
+
+The user separately approved source/host implementation of `six_natural`:
+the same legal party, seed42 and Brock58, with a shared18000 frontend-step
+combat ceiling from initialized entry through terminal. Only an unchanged,
+verified60-frame learning hold for each unique pause generation is excluded,
+once; each pending resume/transition is charged. This is not an execution
+reservation. CPU-selected slots are reported as observed, never as complete
+all-slot switching coverage.
+
+Six-profile storage now has typed lifetimes. The existing732-byte combat
+buffer becomes a644-byte precommit copy only after successful fragment62
+return and final combat/result validation. The existing736-byte bridge
+buffer holds696 bytes of native party/enemy originals, counts, mapping,
+outcome and validity after the guarded post-return/pre-pop capture. This
+retains all six player originals plus both defeated foes without another
+hot snapshot buffer. Launcher conversion finishes before pool pop; no
+freed team pointer is read afterward. Validity is published last, after
+raw/result/precommit validation. Invalid return, draw, malformed mapping
+and native mismatch refuse commit. Pending commit failure retains both
+proof buffers; the test profile explicitly refuses retry/load overwrite.
+Every reused-buffer reader/writer, including paused/report paths, is
+role-gated; precommit bytes never become combat-ready/CRC and terminal
+bytes never become bridge-enabled/error.
+
+The416-byte singleton progress allocation is reused for an actual
+pre-award six-party event: generation, enemy, active canonical slot,
+participant mask, count, and all mons with original-native HP/PP/status
+and fainting before XP. The harness flushes and fsyncs value-owned raw
+state/storage/mapping/participants and native-machine history before the
+next step. It independently derives each award, rounding, fainted
+denominator/bench exclusion, final-level learning and publication.
+Missing multiple KO generations/mask jumps are refused, not reconstructed.
+The frozen audited species/PP manifest must match the live combat copy.
+Terminal raw originals are compared against every precommit mon and the
+committed party; the existing host completed-state codec validator checks
+the extracted isolated SC01 note against the complete committed state.
+
+The source candidate adds1104 text/rodata-aligned bytes and16 BSS-aligned
+bytes (1120 total); heap start moves8011dce0->8011e140. Cold image176752,
+mailbox212, state644, Mon68 and original storage capacities are unchanged.
+At the previously failing compressed/output peak, unchanged-lifetime
+arithmetic predicts37856 available versus37312 charged, only544 bytes
+of margin. This is a limited projection, not measured native recovery,
+complete-initializer capacity, or permission to weaken assets/guards.
+The pre-award tick frame grows112->184; raw capture uses32 and existing
+stackless `_bcopy`; poll remains144. The reviewed cold decode branch
+remains3624 including scoped outer callers. None of these numbers proves
+whole-battle, interrupt, or live-SP safety.
+
+Normal/sanitized actual-launcher tests cover late/incorrect-role writers,
+poisoned teams after pop, malformed mapping, failed initialization/draw/
+loss, independent native dynamic corruption, retained commit proof, and
+two separate learning generations on different mons. The latter uses
+explicit near-level host-only unit inputs, not the legal native fixture
+or a prediction that this CPU battle exercises those learning paths.
+The harness adds exact-cap/unique-hold/resume, missed-KO/replay, all-party
+award/bench, learning-publication and terminal-raw refusal regressions.
+Vanilla remains matching; original Ember/KO ELF and zero-padded64MiB ROM
+bytes, and default-RL ROM, remain identical to their frozen baselines.
+Source review and a separately reserved exact-target native grant remain
+required before running this distinct natural test.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

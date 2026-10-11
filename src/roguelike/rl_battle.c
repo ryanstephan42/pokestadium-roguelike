@@ -11,6 +11,8 @@
 extern int gScProbeActive;
 #ifdef STORY_SIX_PROBE
 extern int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count);
+extern int sc_runtime_probe_terminal(const unk_D_800AE540_0004 *,
+                                     const unk_D_800AE540_0004 *, unsigned);
 #endif
 #endif
 
@@ -325,6 +327,20 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     FRAGMENT_LOAD_AND_CALL(fragment62, 0, (u32)&D_800AE540);
 #endif
     gRlBattleLaunchStage = 5;
+#ifdef STORY_SIX_PROBE
+    if (gScProbeActive && sc_runtime_probe_terminal(player, opponent,
+            D_800AE540.unk_1194[0].unk_1C && !D_800AE540.unk_1194[1].unk_1C ?
+            RL_BATTLE_WIN : RL_BATTLE_LOSS) != SC_OK) {
+        main_pool_pop_state(0x524C4254);
+        gRlBattleActive = 0;
+        gCurrentGameState = return_state;
+        osSyncPrintf("story six probe: terminal raw capture refused\n");
+        return -1;
+    }
+#endif
+#ifdef STORY_SIX_PROBE
+    if (!gScProbeActive)
+#endif
     main_pool_pop_state(0x524C4254);
     result->outcome = RL_LAUNCH_DRAW;
     if (D_800AE540.unk_1194[0].unk_1C != D_800AE540.unk_1194[1].unk_1C) {
@@ -337,6 +353,7 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
 #ifdef STORY_SIX_PROBE
         if (gScProbeActive &&
             sc_native_return_identity(&result->player[i], &party[result->player_index[i]]) != SC_OK) {
+            main_pool_pop_state(0x524C4254);
             gRlBattleActive = 0;
             gCurrentGameState = return_state;
             osSyncPrintf("story six probe: terminal launch identity mismatch\n");
@@ -347,6 +364,9 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     for (i = 0; i < opponent->unk_002; i++) {
         rl_from_native(&opponent->unk_01C[i], &result->enemy[i]);
     }
+#ifdef STORY_SIX_PROBE
+    if (gScProbeActive) main_pool_pop_state(0x524C4254);
+#endif
     if (out != NULL) {
         *out = *result;
     }

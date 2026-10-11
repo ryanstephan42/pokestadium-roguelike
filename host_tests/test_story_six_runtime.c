@@ -28,7 +28,7 @@ s32 gCurrentGameState;
 #undef assert
 #define assert(condition) do { if (!(condition)) { \
     printf("Six-party runtime assertion failed at line %u scenario %u phase %u error %u status %u\n", \
-           __LINE__, (unsigned)corrupt_terminal, resident.phase, gScProgressProbe.error, gScProbe.status); return -1; \
+           __LINE__, (unsigned)corrupt_terminal, resident.phase, gScSixControl.error, gScProbe.status); return -1; \
 } } while (0)
 
 void osSyncPrintf(const char *format, ...) {
@@ -52,6 +52,14 @@ int sc_pak_probe_store(unsigned controller, const ScCatalog *catalog,
 
 int sc_cold_call(ScColdRequest *request) {
     int status = sc_cold_entry(0, request);
+    if (status == SC_OK && request->command == SC_COLD_PREPARE && corrupt_terminal == 16) {
+        request->state->party[0].level = 14;
+        request->state->party[0].exp = sc_xp(15, request->state->party[0].growth) - 1;
+        sc_recalculate(&request->state->party[0], 0);
+        request->state->party[1].level = 14;
+        request->state->party[1].exp = sc_xp(15, request->state->party[1].growth) - 1;
+        sc_recalculate(&request->state->party[1], 0);
+    }
     if (status == SC_OK && request->command == SC_COLD_PREPARE && permute_party) {
         unsigned i;
         for (i = 0; i < 3; i++) {
@@ -108,7 +116,10 @@ void func_8002B888(unk_D_800AE540_0004 *team, unk_func_80026268_arg0 *mon) {
 }
 void rl_native_relics_reset(unsigned int mask) { (void)mask; }
 u32 main_pool_push_state(u32 tag) { return tag; }
-u32 main_pool_pop_state(u32 tag) { return tag; }
+u32 main_pool_pop_state(u32 tag) {
+    if (gScSixControl.role == SC_SIX_RAW) memset(teams, 0xDD, sizeof(teams));
+    return tag;
+}
 s32 func_800367A0(u32 a, s32 b, s32 c) { (void)a; (void)b; (void)c; return 0; }
 
 static int native_battle(void) {
@@ -117,7 +128,7 @@ static int native_battle(void) {
     assert(teams[0].unk_002 == 6 && teams[1].unk_002 == 2 && gRlBattleActive);
     for (i = 0; i < 6; i++) assert(mapping[i] == i && gRlLastBattleResult.player_index[i] == i);
     for (i = 0; i < 2; i++) {
-        active = i ? 3 : 5;
+        active = corrupt_terminal == 16 ? i : (i ? 3 : 5);
         slot = mapping[active];
         live_mon(0, active, &resident.party[slot]);
         live_mon(1, i, &opponents[i]);
@@ -126,13 +137,27 @@ static int native_battle(void) {
         assert(bridge.participants[i] == (1U << slot));
         assert(!memcmp(&before, &resident, sizeof(resident)));
         rl_battle_hp(rl_battle_mon(&sides[1])) = 0;
-        assert(sc_runtime_probe_tick(&sides[0], &sides[1]) == 0);
-        assert(gScProgressProbe.ko_captures == i + 1 && !gScProgressProbe.error);
+        teams[1].unk_01C[i].unk_02 = 0;
+        assert(sc_runtime_probe_tick(&sides[0], &sides[1]) ==
+               (corrupt_terminal == 16 ? 1 : 0));
+        assert(gScSixControl.events == i + 1 && !gScSixControl.error);
         assert(resident.party[slot].exp > before.party[slot].exp);
-        assert(gScProgressProbe.before_ko.species == resident.party[slot].species);
+        assert(gScSixProgressStorage.event.before[slot].species == resident.party[slot].species);
+        if (corrupt_terminal == 16) {
+            ScState hold = resident;
+            unsigned ticks;
+            assert(gScSixControl.pause_id == i + 1 && gScSixControl.resumes == i);
+            for (ticks = 0; ticks < 60; ticks++)
+                assert(sc_runtime_probe_tick(&sides[0], &sides[1]) == 1);
+            assert(!memcmp(&hold, &resident, sizeof(hold)));
+            gScProbe.resume = 1;
+            assert(sc_runtime_probe_tick(&sides[0], &sides[1]) == 0);
+            assert(gScSixControl.resumes == i + 1 && resident.phase == SC_BATTLE &&
+                   resident.party[slot].moves[3] == (i ? 55 : 43));
+        }
         before = resident;
         assert(sc_runtime_probe_tick(&sides[0], &sides[1]) == 0);
-        assert(gScProgressProbe.ko_captures == i + 1 && !memcmp(&before, &resident, sizeof(before)));
+        assert(gScSixControl.events == i + 1 && !memcmp(&before, &resident, sizeof(before)));
     }
     switch (corrupt_terminal) {
         case 1: teams[0].unk_01C[4].unk_09[0] = 1; break;
@@ -145,8 +170,13 @@ static int native_battle(void) {
         case 8: teams[0].unk_01C[4].unk_24++; break;
         case 9: teams[0].unk_01C[4].unk_00.unk_00 = 4; break;
         case 10: teams[0].unk_01C[4].unk_30[0] = 'X'; break;
+        case 11: mapping[4] = mapping[3]; break;
+        case 12: teams[1].unk_01C[0].unk_02 = 1; break;
+        case 13: return -1;
     }
     D_800AE540.unk_1194[0].unk_1C = 1;
+    if (corrupt_terminal == 14) D_800AE540.unk_1194[1].unk_1C = 1;
+    if (corrupt_terminal == 15) D_800AE540.unk_1194[0].unk_1C = 0;
     return 0;
 }
 
@@ -191,6 +221,7 @@ int main(void) {
             if (mon->moves[j]) D_80072B00[mon->moves[j] - 1].unk_05 = mon->max_pp[j];
     }
     D_80072B00[110].unk_05 = 40; D_80072B00[102].unk_05 = 40; D_80072B00[116].unk_05 = 10;
+    D_80072B00[42].unk_05 = 30; D_80072B00[54].unk_05 = 25;
     launched = fixture.party[0];
     gScProbeActive = 1;
     assert(launched.base_stats[0] == 39 && launched.base_stats[1] == 52 &&
@@ -215,7 +246,7 @@ int main(void) {
     assert(sc_native_return_identity(&invalid, &launched) == SC_INVALID);
     assert(sc_native_return_identity(&returned, &launched) == SC_OK &&
            !memcmp(&returned, &launched, sizeof(returned)));
-    for (scenario = 0; scenario < 13; scenario++) {
+    for (scenario = 0; scenario < 19; scenario++) {
         writes = 0; pending_outcome = 255;
         corrupt_terminal = scenario > 2 ? scenario - 2 : 0;
         fail_store = scenario == 1;
@@ -223,21 +254,46 @@ int main(void) {
         memset((void *)&gScProbe, 0, sizeof(gScProbe));
         gScProbe.command = 3; gScProbe.seed = 42;
         assert(sc_runtime_probe_poll() == 1);
-        if (!scenario || scenario == 2) {
+        if (!scenario || scenario == 2 || scenario == 18) {
             assert(!gScProbe.status && resident.phase == SC_REWARD && writes == 2);
-            assert(gScProgressProbe.terminal && gScProgressProbe.ko_captures == 2 &&
-                   !gScProgressProbe.error && !gScProgressProbe.injected);
+            assert(gScSixControl.role == SC_SIX_TERMINAL && gScSixControl.events == 2 &&
+                   !gScSixControl.error && gScSixBridgeStorage.terminal.valid);
             assert(sc_save_decode(&snapshot, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK);
             assert(!snapshot.interrupted && !memcmp(&snapshot.state, &resident, sizeof(resident)));
-            before = resident;
-            gScProbe.command = 1;
-            assert(sc_runtime_probe_poll() && !gScProbe.status &&
-                   !memcmp(&resident, &before, sizeof(resident)) && writes == 2);
         } else {
             assert(gScProbe.status && writes == 1);
             assert(sc_save_decode(&snapshot, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK);
             assert(snapshot.interrupted && snapshot.state.phase == SC_ROUTE);
+            if (scenario == 1) {
+                ScSixTerminal terminal = gScSixBridgeStorage.terminal;
+                ScState precommit = gScSixCombatStorage.precommit;
+                assert(gScSixControl.role == SC_SIX_TERMINAL && terminal.valid);
+                fail_store = 0;
+                gScProbe.command = 4;
+                assert(sc_runtime_probe_poll() && gScProbe.status && writes == 1);
+                gScProbe.command = 1;
+                assert(sc_runtime_probe_poll() && gScProbe.status && writes == 1);
+                assert(!memcmp(&precommit, &gScSixCombatStorage.precommit, sizeof(precommit)) &&
+                       !memcmp(&terminal, (const void *)&gScSixBridgeStorage.terminal, sizeof(terminal)));
+            } else assert(gScSixControl.role == SC_SIX_INVALID);
         }
+    }
+    {
+        ScSixBridgeStorage raw;
+        ScSixCombatStorage proof;
+        memset((void *)&gScSixBridgeStorage, 0x55, sizeof(gScSixBridgeStorage));
+        memset(&gScSixCombatStorage, 0x66, sizeof(gScSixCombatStorage));
+        raw = gScSixBridgeStorage; proof = gScSixCombatStorage;
+        gScSixControl.role = SC_SIX_RAW; failed = 0; gScProbeActive = 1;
+        report();
+        assert(!gScProbe.combat_crc && sc_runtime_probe_paused());
+        assert(publish_live((RlBattleSide *)1) == SC_INVALID);
+        bridge_views((RlBattleSide *)1, &gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live);
+        assert(!bridge_view_equal(&gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live));
+        assert(sc_runtime_probe_tick(&sides[0], &sides[1]) == 1);
+        assert(sc_runtime_probe_terminal(&teams[0], &teams[1], RL_BATTLE_WIN) == SC_INVALID);
+        assert(!memcmp(&raw, (const void *)&gScSixBridgeStorage, sizeof(raw)) &&
+               !memcmp(&proof, &gScSixCombatStorage, sizeof(proof)));
     }
     puts("Story six-party actual launcher/conversion/identity/dynamic guards/cold ownership: OK (host native-engine stub, not native wins)");
     return 0;

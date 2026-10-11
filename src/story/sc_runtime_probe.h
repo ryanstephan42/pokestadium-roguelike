@@ -36,6 +36,35 @@ typedef struct ScProgressProbe {
     RlMon before_ko, after_ko, after_resume, terminal_resident, terminal_native;
 } ScProgressProbe;
 extern ScProgressProbe gScProgressProbe;
+#ifdef STORY_SIX_PROBE
+typedef struct ScSixEvent {
+    RlU32 generation;
+    RlU8 active, enemy, participants, count;
+    RlMon before[6];
+} ScSixEvent;
+typedef union ScSixProgressStorage {
+    ScProgressProbe legacy;
+    ScSixEvent event;
+} ScSixProgressStorage;
+typedef struct ScSixTerminal {
+    RlU32 count, enemy_count, outcome, valid;
+    RlU8 indices[6], pad[2];
+    RlBattlePartyMon party[6], enemy[2];
+} ScSixTerminal;
+typedef union ScSixBridgeStorage {
+    ScBridgeProbe views;
+    ScSixTerminal terminal;
+} ScSixBridgeStorage;
+typedef struct ScSixControl {
+    RlU32 role, error, resumes, pause_id, events;
+} ScSixControl;
+enum { SC_SIX_COMBAT, SC_SIX_RAW, SC_SIX_TERMINAL, SC_SIX_INVALID };
+extern ScSixProgressStorage gScSixProgressStorage;
+extern volatile ScSixBridgeStorage gScSixBridgeStorage;
+extern ScSixControl gScSixControl;
+int sc_runtime_probe_terminal(const unk_D_800AE540_0004 *player,
+                              const unk_D_800AE540_0004 *enemy, unsigned outcome);
+#endif
 extern int gScProbeActive;
 #ifdef STORY_SIX_PROBE
 int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count);

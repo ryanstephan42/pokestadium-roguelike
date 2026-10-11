@@ -37,6 +37,156 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_six_budget_unique_holds_resume_and_exact_cap(self):
+        from tools.rltest.story_six_natural import SixBudget
+        budget = SixBudget(100)
+        budget.exclude(1, 500, 560)
+        budget.resume(1)
+        budget.exclude(2, 900, 960)
+        budget.resume(2)
+        self.assertEqual(budget.evidence(18220)["combat_used"], 18000)
+        self.assertEqual(budget.evidence(18220)["combat_remaining"], 0)
+        for operation in (lambda: budget.evidence(18221),
+                          lambda: budget.exclude(1, 1000, 1060),
+                          lambda: budget.exclude(3, 1000, 1059),
+                          lambda: budget.exclude(3, 930, 990),
+                          lambda: budget.resume(1), lambda: budget.resume(3)):
+            with self.assertRaises(HarnessError):
+                operation()
+
+    def test_six_xp_rounding_fainted_denominator_and_bench(self):
+        from tools.rltest import story_probe
+        from tools.rltest.story_six_natural import awarded
+        _, party, _ = story_probe.six_expected(Path("build/story/six-host-proof.jsonl"))
+        before = copy.deepcopy(party)
+        before[1]["hp"] = 0
+        before[1]["fainted"] = 1
+        data = dict(base=[40, 80, 100, 20, 30], yield_=86)
+        species = [dict(learn=[]) for _ in range(6)]
+        after, learning, award = awarded(before, data, 12, 3, species)
+        self.assertEqual(award, 109)
+        self.assertEqual(after[0]["exp"], before[0]["exp"] + 109)
+        self.assertEqual(after[0]["stat_exp"], [a + b // 2 for a, b in
+                                             zip(before[0]["stat_exp"], data["base"])])
+        self.assertEqual(after[1:], before[1:])
+        self.assertEqual(learning, {})
+
+    def test_six_ledger_individual_preaward_and_refuses_jump_replay(self):
+        from tools.rltest import story_probe
+        from tools.rltest.story_six_natural import SixLedger, awarded
+        _, party, _ = story_probe.six_expected(Path("build/story/six-host-proof.jsonl"))
+        data = dict(party=[dict(learn=[]) for _ in range(6)],
+                    enemy=[dict(base=[40, 80, 100, 20, 30], yield_=86)] * 2,
+                    levels=[12, 14], pp=[0] * 166)
+        state = bytearray(644)
+        control = dict(events=0, resumes=0, pause_id=0)
+        initial = dict(state=bytes(state), party=party, control=control, machine=None)
+        after, _, _ = awarded(party, data["enemy"][0], 12, 1, data["party"])
+        state[23] = 1
+        row = dict(frame=1, state=bytes(state), party=after, machine=None,
+                   control={**control, "events": 1}, participants=[1, 0],
+                   event=dict(generation=1, enemy=0, active=0, count=6,
+                              participants=1, before=party))
+        ledger = SixLedger(initial, data)
+        ledger.accept(row)
+        ledger.accept(row)
+        self.assertEqual(len(ledger.events), 1)
+        for kind in ("jump", "replay", "postaward", "bench"):
+            bad = copy.deepcopy(row)
+            if kind == "jump":
+                bad["control"]["events"] = 2
+                raw = bytearray(bad["state"]); raw[23] = 3; bad["state"] = bytes(raw)
+            elif kind == "replay":
+                bad["control"]["events"] = 0
+            elif kind == "postaward":
+                bad["event"]["before"] = copy.deepcopy(after)
+            else:
+                bad["party"][1]["exp"] += 1
+            with self.assertRaises(HarnessError):
+                SixLedger(initial, data).accept(bad)
+
+    def test_six_multiple_mon_learning_publication(self):
+        from tools.rltest import story_probe
+        from tools.rltest.story_six_natural import SixLedger
+        _, party, _ = story_probe.six_expected(Path("build/story/six-host-proof.jsonl"))
+        raw = bytearray(644); raw[26] = 3; raw[27:29] = bytes([52, 55])
+        previous = dict(state=bytes(raw), party=party, control=dict(events=1, resumes=0, pause_id=1),
+                        machine=None)
+        current = copy.deepcopy(previous)
+        current["control"]["resumes"] = 1
+        pp = [0] * 166; pp[52] = 25; pp[55] = 25
+        for slot, move in enumerate((52, 55)):
+            current["party"][slot]["moves"][3] = move
+            current["party"][slot]["max_pp"][3] = 25
+        ledger = SixLedger(previous, dict(pp=pp))
+        ledger.accept(current)
+        current["party"][2]["moves"][3] = 52
+        with self.assertRaises(HarnessError):
+            SixLedger(previous, dict(pp=pp)).accept(current)
+
+    def test_six_readers_do_not_decode_terminal_overlay_as_bridge(self):
+        from tools.rltest import story_probe
+        emu = Mock()
+        emu.symbols.addresses = {"gScSixControl": 1}
+        emu.read.return_value = struct.pack(">5I", 2, 0, 1, 1, 2)
+        self.assertEqual(story_probe.read_bridge(emu), dict(available=False, role=2))
+        emu.read.assert_called_once_with("gScSixControl", 20)
+        emu.symbols.address.return_value = 100
+        emu.read.side_effect = lambda address, size: (struct.pack(">5I", 2, 0, 1, 1, 2)
+                                                     if size == 20 else struct.pack(">I", 1))
+        progress = story_probe.read_progress(emu)
+        self.assertEqual(progress["terminal"], 1)
+        self.assertEqual(progress["ko_captures"], 2)
+        self.assertEqual(emu.read.call_args_list[-1].args, (112, 4))
+
+    def test_six_terminal_raw_native_all_slots_and_malformed_refusal(self):
+        from tools.rltest import story_probe
+        from tools.rltest.story_six_natural import terminal_proof
+        _, party, target = story_probe.six_expected(Path("build/story/six-host-proof.jsonl"))
+        raw = bytearray(696)
+        struct.pack_into(">4I", raw, 0, 6, 2, 1, 1)
+        raw[16:22] = bytes(reversed(range(6)))
+        for i, mon in enumerate(list(reversed(party)) + target):
+            start = 24 + i * 84
+            raw[start] = mon["species"]; raw[start + 36] = mon["level"]
+            struct.pack_into(">I", raw, start + 16, mon["exp"])
+            struct.pack_into(">H", raw, start + 30, mon["dvs"])
+            struct.pack_into(">H", raw, start + 2, mon["hp"] if i < 6 else 0)
+            raw[start + 5] = mon["status"]
+            raw[start + 9:start + 13] = bytes(mon["moves"])
+            raw[start + 32:start + 36] = bytes(mon["pp"])
+            for j in range(5):
+                struct.pack_into(">H", raw, start + 20 + j * 2, mon["stat_exp"][j])
+                struct.pack_into(">H", raw, start + 38 + j * 2, mon["current_stats"][j])
+        emu = Mock()
+        emu.read_u32.side_effect = lambda name: 696 if name == "gScSixTerminalSize" else 732
+        emu.read.side_effect = lambda name, size: bytes(raw) if size == 696 else bytes(644)
+        decoder = Mock(side_effect=party)
+        self.assertEqual(terminal_proof(emu, decoder)["party"], party)
+        for offset, value in ((15, 0), (17, 5), (24 + 2, 1), (24 + 6 * 84 + 3, 1)):
+            bad = bytearray(raw); bad[offset] = value
+            emu.read.side_effect = lambda name, size: bytes(bad) if size == 696 else bytes(644)
+            with self.assertRaises(HarnessError):
+                terminal_proof(emu, Mock(side_effect=party))
+
+    def test_six_natural_prefrontend_profile_and_output_refusals(self):
+        from tools.rltest import story_probe
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            mapping = directory / "probe.map"
+            mapping.write_text("gScProbeSixProfile\n")
+            args = Mock(phase="six_natural", map=mapping, out=directory)
+            with patch.object(story_probe, "Frontend") as frontend, self.assertRaises(HarnessError):
+                story_probe.phase(args)
+            frontend.assert_not_called()
+            mapping.write_text("gScProbeSixProfile\ngScSixControl\ngScSixBridgeStorage\n"
+                               "gScSixCombatStorage\ngScSixProgressStorage\n")
+            (directory / "six_natural-history.jsonl").write_text("immutable\n")
+            with patch.object(story_probe, "Frontend") as frontend, self.assertRaises(HarnessError):
+                story_probe.phase(args)
+            frontend.assert_not_called()
+            self.assertEqual((directory / "six_natural-history.jsonl").read_text(), "immutable\n")
+
     def test_omitted_battle_payload_refused_before_frontend(self):
         from tools.rltest import test_custom_battle, test_native_relics, test_relic_cadence
         with tempfile.TemporaryDirectory() as directory:

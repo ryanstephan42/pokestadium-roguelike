@@ -43,9 +43,15 @@ BRIDGE_VIEW_FIELDS = (
 
 
 def read_bridge(emu):
+    six = has_six_roles(emu)
+    if six:
+        control = read_six_control(emu)
+        if control["role"] != 0:
+            return {"available": False, "role": control["role"]}
     size = 16 + 24 * len(BRIDGE_VIEW_FIELDS)
     require(emu.read_u32("gScBridgeProbeSize") == size, "Story bridge ABI mismatch")
-    values = struct.unpack(f">{size // 4}I", emu.read("gScBridgeProbe", size))
+    values = struct.unpack(f">{size // 4}I", emu.read(
+        "gScSixBridgeStorage" if six else "gScBridgeProbe", size))
     evidence = dict(zip(("enabled", "action", "boundary", "error"), values[:4]))
     for slot, name in enumerate(("initial_party", "initial_live", "carry_party", "carry_live",
                                  "current_party", "current_live")):
@@ -134,6 +140,13 @@ def decode_mon(raw):
 
 
 def read_progress(emu):
+    if has_six_roles(emu):
+        control = read_six_control(emu)
+        valid = (struct.unpack(">I", emu.read(emu.symbols.address("gScSixBridgeStorage") + 12, 4))[0]
+                 if control["role"] == 2 else 0)
+        return {**control, "ko_captures": control["events"],
+                "terminal": int(control["role"] == 2 and valid == 1), "injected": 0,
+                "award": 0, "learn_move": 0}
     offset = 19 * 4
     size = offset + 5 * ct.sizeof(Mon)
     require(emu.read_u32("gScProgressProbeSize") == size and
@@ -148,6 +161,16 @@ def read_progress(emu):
         start = offset + i * ct.sizeof(Mon)
         evidence[name] = decode_mon(raw[start:start + ct.sizeof(Mon)])
     return evidence
+
+
+def read_six_control(emu):
+    return dict(zip(("role", "error", "resumes", "pause_id", "events"),
+                    struct.unpack(">5I", emu.read("gScSixControl", 20))))
+
+
+def has_six_roles(emu):
+    addresses = getattr(emu.symbols, "addresses", None)
+    return isinstance(addresses, dict) and "gScSixControl" in addresses
 
 
 def require_ko_progress(evidence, synthetic, terminal=False):
@@ -651,8 +674,12 @@ def require_learning_storage(prebattle, paused, held):
 
 def require_probe_profile(map_path, phase):
     contents = Path(map_path).read_text()
-    require(("gScProbeSixProfile" in contents) == (phase == "six_entry"),
+    require(("gScProbeSixProfile" in contents) == (phase in ("six_entry", "six_natural")),
             "Six-party entry requires its separate profile; other scenarios refuse it")
+    if phase == "six_natural":
+        require(all(symbol in contents for symbol in
+                    ("gScSixControl", "gScSixBridgeStorage", "gScSixCombatStorage", "gScSixProgressStorage")),
+                "Six natural requires reviewed typed-role/event/terminal storage before Frontend")
     require(("gScProbeEmberProfile" in contents) == (phase in EMBER_PHASES),
             "Ember scenario requires its separate profile; original scenarios refuse it")
     if phase in ("bridge_init", "bridge_carry"):
@@ -1009,6 +1036,9 @@ def foreign_note(data, base, full=False):
 def phase(args):
     directory = Path(args.out)
     require_probe_profile(args.map, args.phase)
+    if args.phase == "six_natural":
+        require(not any(directory.glob("six_natural-*")),
+                "Six natural requires a new output; existing evidence must not be overwritten")
     expected_reload = None
     if args.phase == "ember_reload":
         require(args.reload_source is not None, "Ember reload requires immutable --reload-source")
@@ -1048,8 +1078,18 @@ def phase(args):
             data = source.read_bytes()
             (directory / name).write_bytes(data)
             provenance[name + "_sha256"] = hashlib.sha256(data).hexdigest()
-    if args.phase == "six_entry":
-        provenance["coverage_scope"] = "pure-host-five-recruits; initialized-native-entry-only"
+    if args.phase in ("six_entry", "six_natural"):
+        provenance["coverage_scope"] = ("pure-host-five-recruits; initialized-native-entry-only"
+                                        if args.phase == "six_entry" else
+                                        "natural-six-party; only observed CPU slots")
+        if args.phase == "six_natural":
+            provenance["shared_combat_budget"] = 18000
+            provenance["excluded_hold_policy"] = "exact60 once per verified learning generation"
+            data = (Path(args.map).parent / "story/data.json").read_bytes()
+            (directory / "six-data.json").write_bytes(data)
+            provenance["six_data_sha256"] = hashlib.sha256(data).hexdigest()
+            require((ROOT / "build/story/test_story_ember").is_file(),
+                    "Build existing generic completed-state codec validator before six natural")
         provenance["save_source_sha256"] = hashlib.sha256(
             (directory / "save-ram.bin").read_bytes()).hexdigest()
         for name in ("six-host-proof.jsonl", "six-checkpoint.sc01"):
@@ -1065,7 +1105,7 @@ def phase(args):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
                           "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e", "ember_entry", "ember_reload", "six_entry"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e", "ember_entry", "ember_reload", "six_entry", "six_natural"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -1073,6 +1113,12 @@ def phase(args):
         # Stabilize vanilla FlashRAM initialization, without invoking any story writer.
         native_command(emu, 1)
         pointer, before = save_ram(emu)
+        if args.phase == "six_natural":
+            from tools.rltest import story_six_natural
+            result = story_six_natural.run(emu, directory, before, sys.modules[__name__])
+            (directory / "six_natural-result.json").write_text(json.dumps(result, indent=2) + "\n")
+            print("story native six_natural: OK (only actually observed slots)")
+            return
         if args.phase == "six_entry":
             result = six_entry_only(emu, directory, before)
             (directory / "six_entry-result.json").write_text(
@@ -1384,7 +1430,7 @@ def main():
                                           "allocation", "checkpoint", "checkpoint_reload",
                                           "bridge_init", "bridge_carry",
                                           "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e",
-                                          "ember_entry", "ember_reload", "six_entry"))
+                                          "ember_entry", "ember_reload", "six_entry", "six_natural"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")
