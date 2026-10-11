@@ -14,6 +14,30 @@ UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
 
 .PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test story-test clean
 
+STORY_UI_SOURCES = test_story_ui.c ../src/story/sc_ui.c \
+	../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+	../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+	../src/story/sc_crc.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
+	../src/roguelike/rl_ui_model.c ../src/story/sc_scene.c \
+	../src/fragments/rl/rl_ui_mon.c ../build/story/sc_data.c
+STORY_UI_FLAGS = -I.. -iquote ../include -Wno-endif-labels -include scene_nodes_stubs.h
+
+.PHONY: story-ui-test
+story-ui-test:
+	cd .. && python3 tools/story_data.py
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(STORY_UI_FLAGS) $(STORY_UI_SOURCES) -o ../build/story/test_story_ui
+	../build/story/test_story_ui
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(STORY_UI_FLAGS) $(STORY_UI_SOURCES) -o ../build/story/test_story_ui_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_ui_san
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -DROGUELIKE -I.. \
+		../src/story/sc_ui.c -o ../build/story/sc_ui.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -EB -G 0 -non_shared -Xcpluscomm -nostdinc \
+		-woff 624,649,838 -DROGUELIKE -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 -DNDEBUG \
+		-D_FINALROM -DN_MICRO -DLANGUAGE_C -D_LANGUAGE_C -DBUILD_VERSION=VERSION_J \
+		-I../include -I../src -I../assets/us -I.. -I../build_rl \
+		-I../lib/ultralib/include -I../lib/ultralib/include/PR -I../lib/ultralib/include/ido \
+		../src/story/sc_scene.c -o ../build/story/sc_scene.o
+
 story-test:
 	cd .. && python3 tools/story_data.py
 	cd .. && python3 -m unittest host_tests.test_story_data
