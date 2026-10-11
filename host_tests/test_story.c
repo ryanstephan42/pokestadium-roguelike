@@ -542,6 +542,26 @@ static void test_story_save(void) {
     assert(memcmp(&loaded.state, &snapshot.state, sizeof(ScState)) == 0);
     memcpy(saved, bytes, sizeof(bytes));
     prior = loaded;
+    snapshot.state.party[5].species = 150;
+    snapshot.state.offer.species = 151;
+    assert(sc_save_encode(&snapshot, &sc_catalog, 0, bytes) == SC_SAVE_INVALID);
+    snapshot = prior;
+    snapshot.state.offered_slot = 0;
+    assert(sc_save_encode(&snapshot, &sc_catalog, 0, bytes) == SC_SAVE_INVALID);
+    snapshot = prior;
+    snapshot.state.return_phase = SC_BATTLE;
+    assert(sc_save_encode(&snapshot, &sc_catalog, 0, bytes) == SC_SAVE_INVALID);
+    snapshot = prior;
+    snapshot.state.learn_moves[5] = 1;
+    assert(sc_save_encode(&snapshot, &sc_catalog, 0, bytes) == SC_SAVE_INVALID);
+    snapshot = prior;
+    memcpy(bytes, saved, sizeof(bytes));
+    bytes[96 + 166 + 5 * 64] = 150;
+    bytes[96 + 166 + 6 * 64] = 151;
+    fix_crc(bytes);
+    assert(sc_save_decode(&loaded, &sc_catalog, &generation, bytes, sizeof(bytes)) == SC_SAVE_BAD_DATA);
+    assert(memcmp(&loaded, &prior, sizeof(loaded)) == 0);
+    memcpy(bytes, saved, sizeof(bytes));
     for (i = 0; i < sizeof(bytes); i++) {
         bytes[i] ^= 1;
         assert(sc_save_decode(&loaded, &sc_catalog, &generation, bytes, sizeof(bytes)) != SC_SAVE_OK);

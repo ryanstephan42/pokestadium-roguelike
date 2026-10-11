@@ -9,6 +9,13 @@ static void set_bit(RlU8 *bits, unsigned index) {
     bits[index / 8] |= (RlU8)(1U << (index % 8));
 }
 
+static void clear_offer(ScState *state) {
+    unsigned i;
+    unsigned char *bytes = (unsigned char *)&state->offer;
+    for (i = 0; i < sizeof(state->offer); i++) bytes[i] = 0;
+    state->offered_slot = RL_NO_SLOT;
+}
+
 static int gate_valid(const ScGate *gate, unsigned count) {
     unsigned i;
     if (!gate || count > SC_ENCOUNTER_CAPACITY ||
@@ -226,7 +233,9 @@ int sc_begin(ScState *state, const ScCatalog *catalog, unsigned encounter,
     state->defeated_mask = 0;
     state->evolution_mask = 0;
     state->learn_mask = 0;
-    state->offered_slot = RL_NO_SLOT;
+    clear_offer(state);
+    state->return_phase = SC_ROUTE;
+    for (i = 0; i < 6; i++) state->learn_moves[i] = 0;
     if (entry->kind == SC_GIFT) {
         state->offer = mons[0];
         state->offered_slot = 0;
@@ -339,7 +348,7 @@ static int resolve_offer(ScState *state, const ScCatalog *catalog) {
     set_bit(state->completed, state->encounter);
     state->milestones |= catalog->encounters[state->encounter].grants;
     retire(state, catalog);
-    state->offered_slot = RL_NO_SLOT;
+    clear_offer(state);
     state->phase = SC_ROUTE;
     return SC_OK;
 }
@@ -428,7 +437,10 @@ int sc_learn(ScState *state, const ScCatalog *catalog, unsigned party_slot,
     }
     state->learn_mask &= (RlU8)~(1U << party_slot);
     state->learn_moves[party_slot] = 0;
-    if (!state->learn_mask) state->phase = state->return_phase;
+    if (!state->learn_mask) {
+        state->phase = state->return_phase;
+        state->return_phase = SC_ROUTE;
+    }
     return SC_OK;
 }
 

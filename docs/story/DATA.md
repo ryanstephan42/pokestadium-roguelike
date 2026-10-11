@@ -276,6 +276,10 @@ or unknown version is rejected without migration or mutation of outputs.
 Validation includes canonical base/growth/PP and bounded Gen I stats, starter
 rival consistency, completed dependency clauses, exact retirement bits,
 locked fossil choice and an authentic pending donor offer.
+Inactive party slots and non-reward offers must contain zero serialized
+fields; non-reward `offered_slot` is `RL_NO_SLOT`. Resolved learning clears its
+return phase, and inactive learning fields are rejected. These checks exclude
+padding bytes and prevent unused state from surviving a save roundtrip.
 
 `sc_storage.c` is a two-slot, 1536-byte isolated note backend behind checked
 device callbacks. The native note identity is company `0x524c`, game `SC01`,

@@ -97,6 +97,17 @@ static int done(const ScState *state, unsigned i) {
     return (state->completed[i / 8] >> (i % 8)) & 1;
 }
 
+static int empty_mon(const RlMon *mon) {
+    RlMon copy = *mon;
+    RlU8 bytes[64];
+    ScWire wire;
+    unsigned i;
+    wire.write = bytes; wire.read = 0; wire.pos = 0;
+    mon_wire(&wire, &copy);
+    for (i = 0; i < sizeof(bytes); i++) if (bytes[i]) return 0;
+    return 1;
+}
+
 int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
     unsigned i, j, valid_clause;
     ScState expected;
@@ -107,7 +118,7 @@ int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
          state->options.starter != 4 && state->options.starter != 7) ||
         !state->party_count || state->party_count > 6 || state->rival_branch > 2 ||
         state->phase > SC_FINISHED || state->phase == SC_BATTLE || state->phase == SC_LEARNING ||
-        state->learn_mask || state->return_phase > SC_FINISHED ||
+        state->learn_mask || state->return_phase != SC_ROUTE ||
         state->evolution_mask >> state->party_count ||
         state->defeated_mask > 63 || state->healing_used >> catalog->graph->healing_count ||
         (state->encounter != SC_NO_ENCOUNTER && state->encounter >= catalog->count) ||
@@ -118,6 +129,10 @@ int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
         (state->phase == SC_FINISHED && !done(state, catalog->graph->champion))) return 0;
     for (i = 0; i < state->party_count; i++)
         if (!mon_valid(&state->party[i], catalog)) return 0;
+    for (i = state->party_count; i < 6; i++)
+        if (!empty_mon(&state->party[i])) return 0;
+    if (state->phase != SC_REWARD &&
+        (!empty_mon(&state->offer) || state->offered_slot != RL_NO_SLOT)) return 0;
     if (state->phase == SC_REWARD) {
         const ScEncounter *entry;
         RlMon team[6], offer;
