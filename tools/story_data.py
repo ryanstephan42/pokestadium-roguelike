@@ -42,6 +42,17 @@ SINGLE_MOVES = (
 )
 TEAM_MOVES = {"LORELEI": "BLIZZARD", "BRUNO": "FISSURE",
               "AGATHA": "TOXIC", "LANCE": "BARRIER"}
+RETIREMENT_AREAS = (
+    ("PewterGym", "BROCK", 1, "SetEvent"),
+    ("CeruleanGym", "MISTY", 2, "SetEvents"),
+    ("VermilionGym", "LT_SURGE", 3, "SetEventRange"),
+    ("CeladonGym", "ERIKA", 7, "SetEventRange"),
+    ("FuchsiaGym", "KOGA", 6, "SetEventRange"),
+    ("SaffronGym", "SABRINA", 7, "SetEventRange"),
+    ("CinnabarGym", "BLAINE", 7, "SetEventRange"),
+    ("ViridianGym", "GIOVANNI", 8, "SetEventRange"),
+    ("FightingDojo", "BLACKBELT", 4, "SetEventRange"),
+)
 
 
 class DataError(ValueError):
@@ -315,6 +326,53 @@ def object_battles(text, version):
             yield line_number, fields[5], fields[6], number(fields[7])
 
 
+def retirement_audit(encounters, scripts, version):
+    """Check bounded retirement facts, not general assembly control flow."""
+    rules = []
+    for area, leader, count, operation in RETIREMENT_AREAS:
+        path = f"scripts/{area}.asm"
+        rows = list(clean(scripts[path], version))
+        if area == "CinnabarGym":
+            headers = [re.fullmatch(r"CheckEvent (EVENT_BEAT_CINNABAR_GYM_TRAINER_\d+)", code)
+                       for _, code in rows if code.startswith("CheckEvent EVENT_BEAT_CINNABAR_GYM_TRAINER_")]
+        else:
+            headers = [re.match(r"trainer (EVENT_\w+),", code)
+                       for _, code in rows if code.startswith("trainer ")]
+        require(len(headers) == count and all(headers),
+                f"Changed retirement trainer headers in {area}")
+        flags = [match[1] for match in headers]
+        prefix = flags[0].rsplit("_", 1)[0]
+        require(flags == [f"{prefix}_{i}" for i in range(count)],
+                f"Non-contiguous retirement flags in {area}")
+        if area == "FightingDojo":
+            operands = ["EVENT_BEAT_KARATE_MASTER", flags[-1]]
+            trigger = [e for e in encounters if e["area"] == area and e.get("party") == 1]
+        else:
+            operands = flags if count <= 2 else [flags[0], flags[-1]]
+            trigger = [e for e in encounters if e["area"] == area and e.get("class") == leader]
+        directive = operation + " " + ", ".join(operands)
+        matches = [line for line, code in rows if code == directive]
+        require(len(matches) == 1 and len(trigger) == 1,
+                f"Changed retirement trigger in {area}")
+        retired = [e["id"] for e in encounters if e["area"] == area and
+                   e["kind"] == "trainer" and e["id"] != trigger[0]["id"]]
+        require(len(retired) == count, f"Changed retirement inventory in {area}")
+        rules.append({"after": trigger[0]["id"], "retires": sorted(retired),
+                      "source": path, "line": matches[0], "operation": operation,
+                      "events": operands})
+    path = "scripts/PewterGym.asm"
+    matches = [line for line, code in clean(scripts[path], version)
+               if code == "ResetEvents EVENT_1ST_ROUTE22_RIVAL_BATTLE, EVENT_ROUTE22_RIVAL_WANTS_BATTLE"]
+    require(len(matches) == 1, "Changed early rival retirement")
+    early = "Route22/rival-early"
+    require(any(e["id"] == early for e in encounters), "Missing early rival")
+    rules.append({"after": rules[0]["after"], "retires": [early],
+                  "source": path, "line": matches[0], "operation": "ResetEvents",
+                  "events": ["EVENT_1ST_ROUTE22_RIVAL_BATTLE",
+                             "EVENT_ROUTE22_RIVAL_WANTS_BATTLE"]})
+    return rules
+
+
 def audit(source):
     paths = source.paths()
     for path in ("home/move_mon.asm", "engine/pokemon/experience.asm",
@@ -444,6 +502,9 @@ def audit(source):
             "pp": pp, "encounters": encounters, "stored_parties": 391,
             "unreferenced_parties": [list(entry) for entry in sorted(all_parties - used)],
             "script_event_evidence": evidence,
+            "retirement_audit": {
+                version: retirement_audit(entries, script_texts, version)
+                for version, entries in encounters.items()},
             "availability_audit_complete": False,
             "availability_note": "Map/script encounter inventory is not a verified traversal/retirement graph.",
             "sources": dict(sorted(source.provenance.items()))}

@@ -73,6 +73,26 @@ choice 30, Lapras 15, one Mt. Moon fossil revival 30 and Old Amber revival 30.
 Ghost Marowak 30 advances the story without a recruit/transfer reward.
 Access/fossil-choice/expiration policy is deliberately deferred to graph review.
 
+### Bounded retirement audit
+
+The JSON now records ten source-checked retirement rules, with exact trigger
+and affected encounter IDs, event operands and pinned-source line numbers.
+All eight gym leaders deactivate their remaining gym trainers (41 total);
+the Dojo master deactivates the four other Blackbelts. Brock additionally
+expires the optional first Route 22 rival. These 46 distinct retirements are
+identical in Red and Blue. Source trainer-header counts (explicit battle-event
+checks for Cinnabar's custom quiz script) and contiguous event indices must
+match the expected deactivation directive or the audit fails.
+
+Evidence: each corresponding `scripts/*Gym.asm` leader postbattle handler,
+[`PewterGym.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/PewterGym.asm#L76-L79)
+and
+[`FightingDojo.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/FightingDojo.asm#L73).
+These are independently bounded facts, **not a complete graph**. Ship departure,
+Silph object removal, rival prerequisites, static permissions, route access and
+full branch/version traversals remain under review. The C emitter deliberately
+does not install these partial rules or change `graph_reviewed = 0`.
+
 ## Isolated C89 progression
 
 `src/story/sc_core.c` and `sc_progression.c` use `RlMon` as a boundary record,

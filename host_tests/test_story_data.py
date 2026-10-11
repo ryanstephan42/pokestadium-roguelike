@@ -7,6 +7,7 @@ import unittest
 from tools.story_data import (
     DataError, REVISION, Source, base_stats, clean, construct_moves,
     constants, object_battles, trainer_key,
+    retirement_audit,
 )
 
 
@@ -126,6 +127,25 @@ class CanonicalInventoryTests(unittest.TestCase):
         self.assertFalse(any(mon["species"] == 151 for mon in wild))
         self.assertEqual(sum(e["kind"] == "gift" for e in entries), 6)
         self.assertEqual(sum(e["kind"] == "ghost" for e in entries), 1)
+
+    def test_reviewed_retirement_subset(self):
+        red = self.data["retirement_audit"]["red"]
+        self.assertEqual(red, self.data["retirement_audit"]["blue"])
+        self.assertEqual(len(red), 10)
+        retired = [identifier for rule in red for identifier in rule["retires"]]
+        self.assertEqual(len(retired), 46)
+        self.assertEqual(len(set(retired)), 46)
+        entries = {e["id"]: e for e in self.data["encounters"]["red"]}
+        for rule in red:
+            self.assertIn(rule["after"], entries)
+            self.assertNotIn(rule["after"], rule["retires"])
+            self.assertTrue(all(identifier in entries for identifier in rule["retires"]))
+            self.assertTrue(rule["line"] > 0)
+        self.assertEqual(red[-1]["retires"], ["Route22/rival-early"])
+        self.assertEqual(red[-1]["after"], red[0]["after"])
+        # Matching inventory alone cannot authorize a retirement policy.
+        with self.assertRaisesRegex(DataError, "headers"):
+            retirement_audit(list(entries.values()), {"scripts/PewterGym.asm": ""}, "red")
 
     def test_construct_every_species_level(self):
         for mon in self.data["species"]:
