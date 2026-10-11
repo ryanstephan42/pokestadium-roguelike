@@ -7,6 +7,9 @@
 #include "src/2E110.h"
 #include "src/roguelike/rl_text.h"
 #include "src/stage_loader.h"
+#ifdef STORY_NATIVE_UI
+#include "src/story/sc_native_resources.h"
+#endif
 
 extern u8 pokemon_icons_ROM_START[];
 extern u8 pokemon_icons_ROM_END[];
@@ -22,6 +25,13 @@ static RlUiItem sDemoItems[10];
 static s32 sDemoSelection;
 
 s32 rl_ui_init(void) {
+#ifdef STORY_NATIVE_UI
+    if (!sc_native_resources_acquire(&sIconArchive, &sMoveNames, &sSpeciesNames)) {
+        HAL_Printf(8, 8, "Story UI: checked resource acquisition failed");
+        return RL_UI_INVALID;
+    }
+    return RL_UI_NONE;
+#else
     sIconArchive = NULL;
     if (D_800AC870 == NULL) {
         func_8001E94C(0x1C, 0);
@@ -38,6 +48,7 @@ s32 rl_ui_init(void) {
         return RL_UI_INVALID;
     }
     return RL_UI_NONE;
+#endif
 }
 
 const char* rl_ui_move_name(unsigned move) {

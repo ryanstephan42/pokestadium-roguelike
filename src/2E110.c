@@ -7,6 +7,36 @@
 static BinArchive* D_800AF740;
 static char** D_800AF744;
 
+#ifdef STORY_NATIVE_UI
+typedef struct ScTextRestore {
+    BinArchive *archive;
+    char **substitutions;
+} ScTextRestore;
+
+static void sc_text_restore(MainPoolBlock *block, u32 arg) {
+    ScTextRestore *restore = (ScTextRestore *)block;
+    (void)arg;
+    D_800AF740 = restore->archive;
+    D_800AF744 = restore->substitutions;
+}
+
+s32 func_8002D510Checked(void) {
+    ScTextRestore *restore;
+    unsigned i;
+    restore = main_pool_alloc_with_func(sizeof(*restore), 0, 0, sc_text_restore);
+    if (!restore) return 0;
+    restore->archive = D_800AF740;
+    restore->substitutions = D_800AF744;
+    D_800AF740 = func_800044F4(textdata_ROM_START, NULL, 1, 0);
+    D_800AF744 = NULL;
+    if (!D_800AF740 || D_800AF740->num_files < D_800AF740_NUM_FILES) return 0;
+    D_800AF744 = main_pool_alloc(D_800AF740_NUM_FILES * sizeof(char *), 0);
+    if (!D_800AF744) return 0;
+    for (i = 0; i < D_800AF740_NUM_FILES; i++) D_800AF744[i] = NULL;
+    return 1;
+}
+#endif
+
 void func_8002D510(void) {
     s32 i;
 
@@ -19,6 +49,10 @@ void func_8002D510(void) {
 }
 
 char** func_8002D5AC(s32 file_number) {
+#ifdef STORY_NATIVE_UI
+    if (!D_800AF740 || !D_800AF744 || file_number < 0 ||
+        file_number >= D_800AF740->num_files) return NULL;
+#endif
     return (char**)func_8000484C(D_800AF740, file_number);
 }
 
