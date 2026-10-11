@@ -235,7 +235,7 @@ int rl_meta_choose_species(const RlMeta *meta, RlU32 *rng,
             if (species[j] == species[i] && bst[j] != bst[i])
                 return RL_INVALID;
         }
-        if (rl_meta_species_unlocked(meta, species[i])) continue;
+        if (!rl_meta_species_unlocked(meta, species[i])) continue;
         for (j = 0; j < i; j++)
             if (species[j] == species[i]) break;
         if (j != i) continue;
@@ -246,7 +246,7 @@ int rl_meta_choose_species(const RlMeta *meta, RlU32 *rng,
     if (!total) return RL_EMPTY;
     roll = rl_random_bounded(rng, total);
     for (i = 0; i < count; i++) {
-        if (rl_meta_species_unlocked(meta, species[i])) continue;
+        if (!rl_meta_species_unlocked(meta, species[i])) continue;
         for (j = 0; j < i; j++)
             if (species[j] == species[i]) break;
         if (j != i) continue;

@@ -14,6 +14,11 @@ static unsigned sPpDrawn;
 static unsigned sRosterNamesDrawn;
 static unsigned sOrderDrawn;
 static unsigned sDrawnMoves[4];
+static int sStorageEnabled, sUncertainWrite, sWriteCount;
+static RlSaveStatus sReadFailure;
+static RlMeta sDiskMeta;
+static RunState sDiskRun;
+static RlU8 sDiskHasRun;
 static unsigned sSpeciesSeen[152];
 static char sSpeciesNames[152][16];
 static char sDetailText[16][128];
@@ -21,12 +26,15 @@ static unsigned sDetailCount;
 static unsigned sSuspendDrawn, sNodeStatusDrawn;
 
 void osSyncPrintf(const char* format, ...) {}
+s32 MathUtil_Random16(void) { return 123; }
 int rl_battle_apply_pp_pouch(RunState* run) {
     run->consumed_relics |= 1U << RL_PP_POUCH;
     return 1;
 }
 int rl_prepare_mon(RlMon* mon, int full_heal) {
-    mon->max_hp = 200;
+    unsigned i;
+    for (i = 0; i < 5; i++) mon->base_stats[i] = 40 + i * 10;
+    mon->max_hp = rl_mon_stat_value(mon, 0, mon->level);
     if (full_heal) mon->cur_hp = mon->max_hp;
     return 0;
 }
@@ -81,10 +89,27 @@ void rl_ui_list_draw(const RlUiList* list, s16 x, s16 y, s16 w) {}
 s32 rl_ui_mon_icon(s32 species, s16 x, s16 y) { return RL_UI_NONE; }
 void rl_ui_hp_bar(s16 x, s16 y, s16 w, u16 hp, u16 max_hp) {}
 void rl_scene_nodes_draw(void) {}
+void rl_scene_nodes_begin(RunState* run, const RlPool* rentals, unsigned mode,
+                          const RlMeta* meta) {}
 RlSaveStatus rl_save_load(unsigned port, RlMeta* meta, RunState* run, RlU8* has_run) {
+    if (sStorageEnabled) {
+        if (sReadFailure != RL_SAVE_OK) return sReadFailure;
+        *meta = sDiskMeta;
+        if (sDiskHasRun) *run = sDiskRun;
+        *has_run = sDiskHasRun;
+        return RL_SAVE_OK;
+    }
     return RL_SAVE_NOT_FOUND;
 }
 RlSaveStatus rl_save_store(unsigned port, const RlMeta* meta, const RunState* run, int create) {
+    if (sStorageEnabled) {
+        sWriteCount++;
+        if (sUncertainWrite < 0) return RL_SAVE_IO;
+        sDiskMeta = *meta;
+        sDiskHasRun = run != NULL;
+        if (run) sDiskRun = *run;
+        return sUncertainWrite ? RL_SAVE_IO : RL_SAVE_OK;
+    }
     return RL_SAVE_NO_DEVICE;
 }
 const char* rl_save_status_text(RlSaveStatus status) { return "Storage unavailable"; }
@@ -102,6 +127,9 @@ int main(int argc, char** argv) {
     unsigned seed, recruits;
     char label[48];
     RlBattleRules rules;
+    RlMeta profile_before;
+    RlMon draft_before[6];
+    unsigned old_count;
 
     if (argc == 2 && !strcmp(argv[1], "--layout")) {
         printf("{\"mon_size\":%u,\"reward_size\":%u,\"reward_mon\":%u,\"rules_size\":%u,\"relics\":%u,"
@@ -240,5 +268,204 @@ int main(int argc, char** argv) {
     sPlayMessage = "Node save status";
     rl_play_draw();
     assert(sSuspendDrawn == 1 && sNodeStatusDrawn == 1);
+
+    /* Actual scene draft uses registered weights, themes and budgeted kits. */
+    rl_play_init();
+    rl_meta_init(&sPlayMeta);
+    gRlPlayTestMode = 0;
+    gRlPlayTestSeed = 123;
+    sPlayStarterPool = RL_META_POOL_STARTERS;
+    sPlayAscension = 0;
+    assert(rl_play_begin_new());
+    memcpy(draft_before, sPlayDraft, sizeof(draft_before));
+    for (i = 0; i < 6; i++) {
+        unsigned j;
+        assert(rl_meta_species_unlocked(&sPlayMeta, sPlayDraft[i].species));
+        assert(sPlayDraft[i].level == 30 && sPlayDraft[i].dvs == 0x9999);
+        assert(sPlayDraft[i].held_relic == RL_NO_SLOT);
+        for (j = 0; j < 5; j++) assert(!sPlayDraft[i].stat_exp[j]);
+        for (j = 0; j < 4; j++)
+            assert(sPlayDraft[i].max_pp[j] == (sPlayDraft[i].moves[j] ? 15 : 0));
+    }
+    assert(rl_play_begin_new());
+    assert(!memcmp(draft_before, sPlayDraft, sizeof(draft_before)));
+    sPlayMeta.registered_species[(140 - 1) >> 3] |= 1U << ((140 - 1) & 7);
+    count = 0;
+    for (lane = 1; lane <= 128; lane++) {
+        gRlPlayTestSeed = lane;
+        assert(rl_play_begin_new());
+        for (i = 0; i < 6; i++) {
+            unsigned j;
+            assert(rl_meta_species_unlocked(&sPlayMeta, sPlayDraft[i].species));
+            if (sPlayDraft[i].species == 140) count++;
+            for (j = 0; j < i; j++)
+                assert(sPlayDraft[i].species != sPlayDraft[j].species);
+        }
+    }
+    assert(count > 0);
+    gRlPlayTestSeed = 123;
+    sPlayMeta.options = (1U << RL_META_THEME_1) | (1U << RL_META_KIT_POTION) |
+        (1U << RL_META_MOVESET_2);
+    gRlPlayProfile.theme = RL_META_THEME_FOREST;
+    gRlPlayProfile.kit = RL_META_KIT_POTION;
+    assert(rl_play_begin_new());
+    assert(gRlRun.money == 100 && gRlRun.bag[RL_POTION] == 1);
+    for (i = 0; i < 6; i++) {
+        unsigned j;
+        for (j = 0; j < 24; j++)
+            if (sPlayDraft[i].species == sPlayThemed[j]) break;
+        assert(j < 24);
+    }
+    before = gRlRun;
+    for (i = 0; i < 6; i++) {
+        RlMon mon_before;
+        mon_before = sPlayDraft[i];
+        assert(rl_play_cycle_variant(i));
+        assert(sPlayDraft[i].species == mon_before.species);
+        assert(sPlayDraft[i].dvs == mon_before.dvs &&
+               !memcmp(sPlayDraft[i].stat_exp, mon_before.stat_exp,
+                       sizeof(mon_before.stat_exp)));
+        assert(!memcmp(&before, &gRlRun, sizeof(before)));
+    }
+
+    /* UI edits retain a suspended run and retry the exact encoded candidate. */
+    sStorageEnabled = 1;
+    rl_meta_init(&sPlayMeta);
+    sPlayMeta.runs = 2;
+    sPlayMeta.currency = 100;
+    sPlayMeta.pending_registration_count = 2;
+    sPlayMeta.pending_species[(150 - 1) >> 3] |= 1U << ((150 - 1) & 7);
+    sPlayMeta.pending_species[(149 - 1) >> 3] |= 1U << ((149 - 1) & 7);
+    sPlayMeta.pending_species[(148 - 1) >> 3] |= 1U << ((148 - 1) & 7);
+    sDiskMeta = sPlayMeta;
+    rl_run_new(&sDiskRun, 88, 0);
+    sDiskRun.party[0] = sPlayDraft[0];
+    sDiskRun.party_count = 1;
+    sDiskRun.phase = RL_MAP;
+    sDiskRun.party[0].cur_hp -= 3;
+    sDiskRun.party[0].pp[0]--;
+    sDiskRun.party[0].status = 8;
+    sDiskHasRun = 1;
+    before = sDiskRun;
+    profile_before = sPlayMeta;
+    sUncertainWrite = 1;
+    assert(rl_play_edit(0, RL_META_MOVESET_2) == RL_SAVE_IO);
+    assert(gRlPlayProfile.edit_pending && sPlayMeta.currency == 100);
+    assert(sDiskMeta.currency == 70 && sWriteCount == 1);
+    assert(!memcmp(&before, &sDiskRun, sizeof(before)));
+    sDiskMeta.currency++;
+    rl_play_meta_menu();
+    rl_play_update_meta(RL_UI_A);
+    assert(gRlPlayProfile.edit_pending && sPlayMeta.currency == 100 &&
+           sWriteCount == 1);
+    assert(!strcmp(sPlayMessage,
+                   "Reinsert original Pak; retry save"));
+    sDiskMeta.currency--;
+    rl_play_update_meta(RL_UI_A);
+    assert(!gRlPlayProfile.edit_pending && sPlayMeta.currency == 70);
+    assert(sWriteCount == 1 && sPlayMeta.runs == profile_before.runs);
+    assert(rl_play_edit(2, 0) == RL_SAVE_IO);
+    assert(sDiskMeta.pending_registration_count == 1);
+    assert(rl_play_commit_edit() == RL_SAVE_OK);
+    assert(sPlayMeta.pending_registration_count == 1 && sWriteCount == 2);
+    assert(rl_play_edit(1, 150) == RL_SAVE_IO);
+    assert(rl_play_commit_edit() == RL_SAVE_OK);
+    assert(rl_meta_species_unlocked(&sPlayMeta, 150));
+    assert(sPlayMeta.pending_registration_count == 0 && sWriteCount == 3);
+    assert(!memcmp(&before, &sDiskRun, sizeof(before)));
+    old_count = sWriteCount;
+    assert(rl_play_edit(1, 150) == RL_SAVE_OK);
+    assert(sWriteCount == (int)old_count && sPlayMeta.pending_registration_count == 0);
+    assert(rl_play_edit(0, RL_META_EVENT_PACK_1) == RL_SAVE_INVALID);
+    rl_play_meta_menu();
+    sPlayList.cursor = 2;
+    old_count = sWriteCount;
+    rl_play_update_meta(RL_UI_A);
+    assert(sPlayMessage && !strcmp(sPlayMessage,
+                                  "Already owned; permanent coins were not spent"));
+    assert(sWriteCount == (int)old_count);
+
+    /* New Run cannot bypass pending choices, including after a cold load. */
+    sDiskMeta.pending_registration_count = 1;
+    sDiskMeta.pending_species[(149 - 1) >> 3] |= 1U << ((149 - 1) & 7);
+    rl_play_request_new();
+    assert(gRlPlayScene == RL_PLAY_REGISTER && sPlayNewAfterRegistration);
+    assert(!memcmp(&before, &sDiskRun, sizeof(before)));
+    sUncertainWrite = 0;
+    sPlayList.cursor = sPlayList.count - 2;
+    gRlPlayProfile.theme = RL_NO_SLOT;
+    gRlPlayProfile.kit = RL_META_KIT_DEFAULT;
+    rl_play_update_meta(RL_UI_A);
+    assert(gRlPlayScene == RL_PLAY_DRAFT && !sPlayMeta.pending_registration_count);
+
+    sDiskMeta.pending_registration_count = 2;
+    sDiskMeta.pending_species[(149 - 1) >> 3] |= 1U << ((149 - 1) & 7);
+    sDiskMeta.pending_species[(148 - 1) >> 3] |= 1U << ((148 - 1) & 7);
+    sPlayMeta = sDiskMeta;
+    sUncertainWrite = -1;
+    old_count = sWriteCount;
+    assert(rl_play_edit(2, 0) == RL_SAVE_IO);
+    assert(sDiskMeta.pending_registration_count == 2 &&
+           gRlPlayProfile.edit_candidate.pending_registration_count == 1);
+    sReadFailure = RL_SAVE_RECOVERED;
+    assert(rl_play_commit_edit() == RL_SAVE_RECOVERED);
+    assert(gRlPlayProfile.edit_pending && sPlayMeta.pending_registration_count == 2);
+    sReadFailure = RL_SAVE_OK;
+    sDiskRun.rng ^= 1;
+    assert(rl_play_commit_edit() == RL_SAVE_DEVICE_CHANGED);
+    assert(sWriteCount == (int)old_count + 1);
+    rl_play_meta_menu();
+    rl_play_update_meta(RL_UI_A);
+    assert(gRlPlayProfile.edit_pending &&
+           !strcmp(sPlayMessage,
+                   "Reinsert original Pak; retry save"));
+    assert(sWriteCount == (int)old_count + 1 &&
+           gRlPlayProfile.edit_candidate.pending_registration_count == 1);
+    sDiskRun.rng ^= 1;
+    sUncertainWrite = 0;
+    rl_play_update_meta(RL_UI_A);
+    assert(!gRlPlayProfile.edit_pending);
+    assert(sDiskMeta.pending_registration_count == 1 && sWriteCount == (int)old_count + 2);
+    assert(!memcmp(&before, &sDiskRun, sizeof(before)));
+
+    /* Terminal win recording remains once-only and distinct from profile edits. */
+    profile_before = sPlayMeta;
+    gRlRun = sDiskRun;
+    gRlRun.act = 3;
+    gRlRun.row = gRlRun.lane = 0;
+    gRlRun.phase = RL_WON;
+    gRlRun.party[0].species = 8;
+    gRlRun.stats.battles = gRlRun.stats.wins = 1;
+    rl_map_generate(&gRlRun.map, &gRlRun.rng, 3, 0);
+    sPlaySummaryPrepared = sPlaySummarySaved = 0;
+    sUncertainWrite = 1;
+    old_count = sWriteCount;
+    assert(rl_play_store(0) == RL_SAVE_IO);
+    assert(sPlaySummaryPrepared && !sPlaySummarySaved && !sDiskHasRun);
+    assert(sDiskMeta.runs == profile_before.runs + 1 &&
+           sDiskMeta.wins == profile_before.wins + 1);
+    assert(sDiskMeta.currency == profile_before.currency + 35);
+    assert(sDiskMeta.pending_registration_count == profile_before.pending_registration_count + 1);
+    before = gRlRun;
+    rl_play_resume();
+    assert(!memcmp(&before, &gRlRun, sizeof(before)) &&
+           sPlaySummaryPrepared && !sPlaySummarySaved);
+    assert(sPlayMessage && !strcmp(sPlayMessage,
+                                  "Retry unsaved results before resuming another run"));
+    sDiskMeta.currency++;
+    rl_play_make_summary();
+    assert(!strcmp(sPlayMessage,
+                   "Reinsert original Pak; retry save"));
+    rl_play_update_summary(RL_UI_A);
+    assert(sPlaySummaryPrepared && !sPlaySummarySaved &&
+           sWriteCount == (int)old_count + 1);
+    assert(!memcmp(&before, &gRlRun, sizeof(before)));
+    sDiskMeta.currency--;
+    rl_play_update_summary(RL_UI_A);
+    assert(sWriteCount == (int)old_count + 1 && sPlaySummarySaved);
+    assert(rl_play_edit(1, 8) == RL_SAVE_IO);
+    assert(rl_play_commit_edit() == RL_SAVE_OK);
+    assert(sPlayMeta.currency == profile_before.currency + 35 &&
+           sPlayMeta.runs == profile_before.runs + 1);
     return 0;
 }
