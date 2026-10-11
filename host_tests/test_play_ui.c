@@ -222,6 +222,21 @@ int main(int argc, char** argv) {
     }
     assert(rl_play_begin_new());
     assert(!memcmp(draft_before, sPlayDraft, sizeof(draft_before)));
+    sPlayMeta.registered_species[(140 - 1) >> 3] |= 1U << ((140 - 1) & 7);
+    count = 0;
+    for (lane = 1; lane <= 128; lane++) {
+        gRlPlayTestSeed = lane;
+        assert(rl_play_begin_new());
+        for (i = 0; i < 6; i++) {
+            unsigned j;
+            assert(rl_meta_species_unlocked(&sPlayMeta, sPlayDraft[i].species));
+            if (sPlayDraft[i].species == 140) count++;
+            for (j = 0; j < i; j++)
+                assert(sPlayDraft[i].species != sPlayDraft[j].species);
+        }
+    }
+    assert(count > 0);
+    gRlPlayTestSeed = 123;
     sPlayMeta.options = (1U << RL_META_THEME_1) | (1U << RL_META_KIT_POTION) |
         (1U << RL_META_MOVESET_2);
     gRlPlayProfile.theme = RL_META_THEME_FOREST;
