@@ -271,8 +271,8 @@ class CanonicalInventoryTests(unittest.TestCase):
     def test_access_fact_evidence(self):
         facts = self.data["access_fact_audit"]["red"]
         self.assertEqual(facts, self.data["access_fact_audit"]["blue"])
-        self.assertEqual(len(facts), 17)
-        self.assertEqual(len({fact["id"] for fact in facts}), 17)
+        self.assertEqual(len(facts), 19)
+        self.assertEqual(len({fact["id"] for fact in facts}), 19)
         self.assertTrue(all(fact["line"] <= fact["end_line"] for fact in facts))
         source = Source(Path(__file__).resolve().parents[1] / ".local/story-source", False)
         source.paths()
@@ -402,6 +402,135 @@ class CanonicalInventoryTests(unittest.TestCase):
         self.assertFalse(healing_available(graph, completed, "heal:RedsHouse1F", "standard"))
         with self.assertRaises(DataError):
             healing_available(graph, set(), "heal:SSAnne1FRooms", "standard")
+
+    def test_required_story_chains_and_midgame_gym_freedom(self):
+        for version in ("red", "blue"):
+            for branch in range(3):
+                graph = candidate(self.data, version, branch)
+                order, _ = traverse(graph)
+                completed = set(order)
+                for identifier in ("CeruleanCity/TEXT_CERULEANCITY_ROCKET",
+                                   "PokemonTower2F/rival-tower", "SilphCo7F/rival-silph",
+                                   "Route22/rival-late"):
+                    self.assertIn(identifier, completed)
+                self.assertLess(order.index("CeruleanCity/TEXT_CERULEANCITY_ROCKET"),
+                                order.index("travel:east"))
+                self.assertLess(order.index("PokemonTower2F/rival-tower"),
+                                order.index("PokemonTower6F/ghost"))
+                # The approved regional abstraction does not force optional gym trainers.
+                for area, cls in (("CeladonGym", "ERIKA"), ("FuchsiaGym", "KOGA"),
+                                  ("SaffronGym", "SABRINA")):
+                    boss = next(e["id"] for e in graph["encounters"].values()
+                                if e["area"] == area and e.get("class") == cls)
+                    self.assertTrue(all(not dep.startswith(("CeladonGym/", "FuchsiaGym/",
+                                                            "SaffronGym/"))
+                                        for clause in graph["nodes"][boss]["clauses"]
+                                        for dep in clause))
+                    prerequisites = set(graph["nodes"][boss]["clauses"][0])
+                    self.assertTrue(available(graph, prerequisites, set(), boss))
+                self.assertFalse(available(graph, {"travel:bill", "field:cut"}, set(),
+                                           "travel:east"))
+                self.assertFalse(available(graph, {"field:cut", "travel:scope"}, set(),
+                                           "PokemonTower6F/ghost"))
+
+    def test_vermilion_healing_before_bill_but_ship_requires_ticket(self):
+        for version in ("red", "blue"):
+            graph = candidate(self.data, version)
+            completed = {"travel:moon-exit"}
+            self.assertTrue(healing_available(graph, completed, "heal:VermilionPokecenter",
+                                              "standard"))
+            self.assertFalse(healing_available(graph, set(), "heal:VermilionPokecenter",
+                                               "standard"))
+            self.assertTrue(available(graph, completed, set(), "travel:bicycle"))
+            route6 = [e["id"] for e in graph["encounters"].values() if e["area"] == "Route6"]
+            self.assertEqual(len(route6), 6)
+            for identifier in route6:
+                self.assertTrue(available(graph, completed, set(), identifier))
+            self.assertFalse(available(graph, completed, set(),
+                                       "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
+            completed.add("travel:bill")
+            self.assertTrue(available(graph, completed, set(),
+                                      "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
+
+    def test_minimal_campaign_all_versions_branches_and_coasts(self):
+        for version in ("red", "blue"):
+            for branch in range(3):
+                for fossil in range(2):
+                    for coast in ("east", "west"):
+                        graph = candidate(self.data, version, branch, fossil)
+                        if coast == "west":
+                            graph["nodes"]["travel:fuchsia"]["clauses"].reverse()
+                        completed, retired = set(), set()
+                        visiting = set()
+                        def reach(identifier):
+                            if identifier in completed:
+                                return
+                            self.assertNotIn(identifier, visiting, "Dependency cycle")
+                            self.assertNotIn(identifier, retired, "Required node retired")
+                            visiting.add(identifier)
+                            for dependency in graph["nodes"][identifier]["clauses"][0]:
+                                reach(dependency)
+                            advance(graph, completed, retired, identifier, destination_warp=1)
+                            visiting.remove(identifier)
+                        reach("ChampionsRoom/rival-champion")
+                        required_rivals = {e["id"] for e in graph["encounters"].values()
+                                           if e["kind"] == "rival"} - {"Route22/rival-early"}
+                        self.assertTrue(required_rivals <= completed)
+                        self.assertIn("CeruleanCity/TEXT_CERULEANCITY_ROCKET", completed)
+                        self.assertIn("Route12/snorlax" if coast == "east" else
+                                      "Route16/snorlax", completed)
+                        self.assertNotIn("Route16/snorlax" if coast == "east" else
+                                         "Route12/snorlax", completed)
+                        for entry in graph["encounters"].values():
+                            if entry["kind"] == "gift":
+                                self.assertNotIn(entry["id"], completed)
+                            if entry["area"] in ("PewterGym", "CeruleanGym", "VermilionGym",
+                                                 "CeladonGym", "FuchsiaGym", "SaffronGym",
+                                                 "CinnabarGym", "ViridianGym"):
+                                self.assertEqual(entry["id"] in completed,
+                                                 entry.get("class") in
+                                                 ("BROCK", "MISTY", "LT_SURGE", "ERIKA",
+                                                  "KOGA", "SABRINA", "BLAINE", "GIOVANNI"))
+                        self.assertIn("Route22/rival-early", retired)
+                        for entry in graph["encounters"].values():
+                            if entry["area"] == "CeruleanCaveB1F":
+                                self.assertTrue(available(graph, completed, retired, entry["id"]))
+                        self.assertTrue(available(graph, completed, retired,
+                                                  "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
+                        reach("travel:ship-departure")
+                        self.assertFalse(available(graph, completed, retired,
+                                                   "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
+
+    def test_all_retirement_and_healing_dependencies(self):
+        for version in ("red", "blue"):
+            graph = candidate(self.data, version)
+            for trigger, affected in graph["retires"].items():
+                completed = set(graph["nodes"][trigger]["clauses"][0])
+                retired = set()
+                self.assertTrue(available(graph, completed, retired, trigger, destination_warp=1))
+                for identifier in affected - completed - {trigger}:
+                    self.assertNotIn(identifier, retired)
+                advance(graph, completed, retired, trigger, destination_warp=1)
+                self.assertEqual(retired, affected - completed)
+                for identifier in retired:
+                    self.assertFalse(available(graph, set(graph["nodes"][identifier]["clauses"][0]),
+                                               retired, identifier))
+            for identifier, permission in graph["healing"].items():
+                completed = set(permission["required"])
+                self.assertTrue(healing_available(graph, completed, identifier, "standard"))
+                self.assertTrue(healing_available(graph, completed, identifier, "standard",
+                                                  {identifier}))
+                self.assertTrue(healing_available(graph, completed, identifier, "limited"))
+                self.assertFalse(healing_available(graph, completed, identifier, "limited",
+                                                   {identifier}))
+                self.assertFalse(healing_available(graph, completed, identifier, "brutal"))
+                for dependency in permission["required"]:
+                    self.assertFalse(healing_available(graph, completed - {dependency},
+                                                       identifier, "standard"))
+                if permission["retires_after"] is not None:
+                    self.assertFalse(healing_available(graph,
+                                                       completed | {permission["retires_after"]},
+                                                       identifier, "standard"))
 
     def test_construct_every_species_level(self):
         for mon in self.data["species"]:

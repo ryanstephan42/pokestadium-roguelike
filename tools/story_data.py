@@ -487,6 +487,18 @@ def ship_retirement(encounters, scripts, version):
 def access_fact_audit(source, version):
     facts = []
     specifications = (
+        ("bill_cerulean_exit", "scripts/BillsHouse.asm",
+         ["SetEvent EVENT_GOT_SS_TICKET", "ld a, TOGGLE_CERULEAN_GUARD_1",
+          "ld [wToggleableObjectIndex], a", "predef ShowObject",
+          "ld a, TOGGLE_CERULEAN_GUARD_2", "ld [wToggleableObjectIndex], a",
+          "predef HideObject"]),
+        ("fuji_silph_entry", "scripts/PokemonTower7F.asm",
+         ["SetEvent EVENT_RESCUED_MR_FUJI", "SetEvent EVENT_RESCUED_MR_FUJI_2",
+          "ld a, TOGGLE_MR_FUJIS_HOUSE_MR_FUJI", "ld [wToggleableObjectIndex], a",
+          "predef ShowObject", "ld a, TOGGLE_SAFFRON_CITY_E",
+          "ld [wToggleableObjectIndex], a", "predef HideObject",
+          "ld a, TOGGLE_SAFFRON_CITY_F", "ld [wToggleableObjectIndex], a",
+          "predef ShowObject"]),
         ("cut_badge", "engine/menus/start_sub_menus.asm",
          [".cut", "bit BIT_CASCADEBADGE, a", "jp z, .newBadgeRequired"]),
         ("surf_badge", "engine/menus/start_sub_menus.asm",

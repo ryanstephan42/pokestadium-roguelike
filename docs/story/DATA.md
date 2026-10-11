@@ -120,13 +120,14 @@ does not install these partial rules or change `graph_reviewed = 0`.
 
 ### Access facts and candidate traversals
 
-Seventeen exact source sequences are now checked in both retail versions and
+Nineteen exact source sequences are now checked in both retail versions and
 recorded with source line ranges: Cut/Cascade, Surf/Soul and Strength/Rainbow
 badge eligibility; the corresponding HM acquisitions; Tower Silph Scope
 identification; both finite Snorlax/Flute triggers; fossil choice exclusion;
 Old Amber acquisition; seven badges opening Viridian Gym; and Hall of Fame
 removing the Cerulean Cave guard; the lab's exact fossil item/species mapping
-and level-30 handover; and both Dojo gifts' mutually exclusive claim guards.
+and level-30 handover; both Dojo gifts' mutually exclusive claim guards;
+Bill's ticket/guard relocation and Fuji's Silph entrance guard relocation.
 Virtual Console-only battle patches are
 explicitly excluded, just as debug-only code is excluded.
 
@@ -138,13 +139,17 @@ Important references:
 Battle core source has a separately bounded 256 KiB download allowance; all
 other allowlisted source files retain the 128 KiB limit.
 
-`tools/story_graph.py` is a **host-only candidate policy**, separate from the C
+`tools/story_graph.py` is a **host-only review policy**, separate from the C
 catalog. It gives all 361 inventory IDs explicit region/dependency clauses and
-21 nonbattle milestone nodes. Full sweeps cover both versions, all three
+22 nonbattle milestone nodes. Full sweeps cover both versions, all three
 locked rival branches and both fossil choices (12 traversals), without
 duplicate encounters or dangling edges. Destructive milestones are postponed
 until available optional encounters are consumed; minimal eastern/western
 Fuchsia traversals instead exercise skipped encounters and retirement.
+Twenty-four minimal Champion traversals cover every version/rival/fossil
+choice through both coasts without requiring optional gym trainers or gifts.
+Every retirement trigger and healing access/expiry clause is exercised in
+both versions, including Standard reuse, Limited once and Brutal denial.
 Both Fuchsia approaches remain usable, field permissions require the correct
 badge, no HM move slot is required, and the selected fossil branch carries
 through to its single revival offer. Captain-room HM01 receipt is a separately
@@ -159,16 +164,30 @@ Dome/Kabuto; revival cannot independently switch that branch. Per-encounter
 tests check all static/gift permission clauses and deny premature access
 (Scope, Flute, Surf, Strength, Dojo/Silph clearance, fossils and postgame).
 
-**Those tests prove candidate-graph invariants, not canonical overworld
-reachability.** They do not prove that all 361 IDs can actually be fought on one
-original-game playthrough. Remaining source/topology review includes forced
-Nugget Bridge/exit paths, Card Key/warp paths, route partition boundaries
-(notably Route 19 shore interactions), and mandatory versus optional late
-rival traversal. Free nonbattle travel/item actions are the planned menu
-adaptation, not trainer wins or extra XP. Saffron beverage/Bicycle/Safari
-prerequisites require a clearly documented no-economy adaptation.
+**Direct user scope decision, relayed by the coordinator:** "Yes—optional
+regional trainers, with required rivals/gyms/story battles". Thus regional
+trainers are optional unless required by an explicit storyline chain; this
+does not reproduce terrain line-of-sight forcing or exact tile navigation.
+Nugget Bridge's five trainers/Rocket, the fossil guard, Cerulean thief,
+required rival stages, Hideout door guards/lift-key trainer, Tower ghost and
+Fuji Rockets, Silph rival/boardroom guard and all eight gym leaders/League
+remain explicit required chains. The early Route 22 rival alone is optional.
+Midgame gym freedom and both Fuchsia approaches are preserved.
+The thief gates the eastern story route, not Vermilion: the region-menu
+southern underground route, Route 6/11, Bicycle voucher and Vermilion Center
+open on reaching Cerulean. Bill's ticket remains required for the ship.
+
+These tests prove the approved region-menu graph invariants, **not exact
+original-game terrain reachability**. Free nonbattle travel/item actions
+are the planned no-economy menu adaptation, not trainer wins or extra XP:
+Bill/ticket, captain/HM01, fossil acquisition/revival, Celadon guard beverage,
+Bicycle, Safari Surf/Gold Teeth/Strength, Card Key and Mansion Secret Key.
+No shops, repeated item purchases or additional wild battles are introduced.
+Route 19's two shore trainers remain accessible before Surf, while sea
+trainers require Surf. Exact original tile-path proof is no longer an
+acceptance requirement under the explicit user scope.
 The candidate remains `reviewed = False`; it is not emitted into either ROM
-or used to bypass `SC_UNREVIEWED`.
+or used to bypass `SC_UNREVIEWED` pending independent milestone acceptance.
 
 ### Healing permission evidence
 
@@ -185,8 +204,15 @@ The host candidate attaches access clauses to these stable identities, applies
 the locked Standard/Limited/Brutal rules, and prevents all healing during the
 League sequence. Tests cover unavailable-before-access, once-per-location use,
 Brutal denial, Silph retirement and League lock. These permissions are not yet
-wired into pure C/native UI; topology review still governs actual location
-access and return travel.
+wired into pure C/native UI. Access uses unlocked regions rather than current
+tile position: returning to an unlocked healing location is free, except for
+the explicit League lock and Silph nurse expiry. Standard never consumes a
+healing location; Limited consumes each identity once and Brutal denies all.
+Vermilion Center no longer inherits the ship's Bill/ticket prerequisite.
+Its earlier access is the explicit no-tile-path region abstraction through
+Route 5/6's ungated underground connection, not a claim about collision tiles.
+Silph nurse retains the Card Key door-access condition; her source expiry
+after Giovanni remains independent of that condition.
 
 ## Isolated C89 progression
 

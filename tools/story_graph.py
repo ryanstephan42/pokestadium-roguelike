@@ -8,6 +8,7 @@ GYMS = {
     "CeladonGym": "ERIKA", "FuchsiaGym": "KOGA", "SaffronGym": "SABRINA",
     "CinnabarGym": "BLAINE", "ViridianGym": "GIOVANNI",
 }
+REGION_SCOPE = "Optional regional trainers; required rivals, gyms and story battles."
 
 
 def candidate(data, version, rival_branch=0, fossil_choice=0):
@@ -34,13 +35,13 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
     region("Route3 Route4 MtMoon1F MtMoonB2F MtMoonPokecenter", (bosses["PewterGym"],))
     region("CeruleanCity CeruleanGym", ("travel:moon-exit",))
     region("Route24 Route25", ("CeruleanCity/rival-bridge",))
-    region("Route6 Route11", ("travel:bill",))
+    region("Route6 Route11", ("travel:moon-exit",))
     region("SSAnne1FRooms SSAnne2F SSAnne2FRooms SSAnneB1FRooms SSAnneBow",
            ("travel:bill",))
     region("VermilionGym", ("field:cut",))
     region("Route9 Route10 RockTunnel1F RockTunnelB1F Route8 PokemonTower2F "
            "PokemonTower3F PokemonTower4F PokemonTower5F PokemonTower6F "
-           "CeladonGym CeladonMansionRoofHouse GameCorner", ("field:cut",))
+           "CeladonGym CeladonMansionRoofHouse GameCorner", ("travel:east",))
     region("RocketHideoutB1F RocketHideoutB2F RocketHideoutB3F RocketHideoutB4F",
            ("GameCorner/TEXT_GAMECORNER_ROCKET",))
     region("PokemonTower7F", ("PokemonTower6F/ghost",))
@@ -48,8 +49,8 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
     region("SaffronGym", ("travel:saffron", "SilphCo11F/TEXT_SILPHCO11F_GIOVANNI"))
     region("SilphCo2F SilphCo3F SilphCo4F SilphCo5F SilphCo6F SilphCo7F "
            "SilphCo8F SilphCo9F SilphCo10F SilphCo11F", ("travel:silph",))
-    region("Route12", ("field:cut",))
-    region("Route16", ("field:cut",))
+    region("Route12", ("travel:east",))
+    region("Route16", ("travel:east",))
     region("Route13 Route14 Route15", ("Route12/snorlax",), ("travel:fuchsia",))
     region("Route17 Route18", ("Route16/snorlax", "travel:bicycle"), ("travel:fuchsia",))
     region("FuchsiaGym", ("travel:fuchsia",))
@@ -100,6 +101,8 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
         if identifier.startswith("Route25/") or identifier == "Route24/TEXT_ROUTE24_COOLTRAINER_M2":
             extra(identifier, "Route24/TEXT_ROUTE24_COOLTRAINER_M1")
     action("travel:bill", ("Route24/TEXT_ROUTE24_COOLTRAINER_M1",))
+    extra("CeruleanCity/TEXT_CERULEANCITY_ROCKET", "travel:bill")
+    action("travel:east", ("field:cut", "CeruleanCity/TEXT_CERULEANCITY_ROCKET"))
     action("event:hm01-received", ("SSAnne2F/rival-ship",))
     nodes["event:hm01-received"]["source_action"] = "SSAnneCaptainsRoom/HM01"
     nodes["event:hm01-received"]["sets_event"] = "EVENT_GOT_HM01"
@@ -107,11 +110,11 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
     nodes["travel:ship-departure"]["destination_warp"] = 1
     action("field:cut", ("event:hm01-received", bosses["CeruleanGym"]))
     action("travel:amber", ("field:cut",))
-    action("travel:saffron", ("field:cut",))
+    action("travel:saffron", ("travel:east",))
     hideout = "RocketHideoutB4F/TEXT_ROCKETHIDEOUTB4F_"
     extra(hideout + "GIOVANNI", hideout + "ROCKET1", hideout + "ROCKET2", hideout + "ROCKET3")
     action("travel:scope", (hideout + "GIOVANNI",))
-    extra("PokemonTower6F/ghost", "travel:scope")
+    extra("PokemonTower6F/ghost", "travel:scope", "PokemonTower2F/rival-tower")
     tower_rockets = tuple("PokemonTower7F/TEXT_POKEMONTOWER7F_ROCKET" + str(i)
                           for i in (1, 2, 3))
     action("travel:fuji", tower_rockets)
@@ -121,12 +124,12 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
         extra(identifier, "travel:flute")
     for suffix in ("COOLTRAINER_M", "SUPER_NERD", "FISHER5"):
         identifier = "Route12/TEXT_ROUTE12_" + suffix
-        nodes[identifier]["clauses"] = [["field:cut", "Route12/snorlax"],
+        nodes[identifier]["clauses"] = [["travel:east", "Route12/snorlax"],
                                          ["travel:fuchsia"]]
     for index in range(1, 7):
         nodes[f"Route16/TEXT_ROUTE16_BIKER{index}"]["clauses"] = [
             ["Route16/snorlax", "travel:bicycle"], ["travel:fuchsia", "travel:bicycle"]]
-    action("travel:bicycle", ("travel:bill",))
+    action("travel:bicycle", ("travel:moon-exit",))
     action("travel:fuchsia", ("Route12/snorlax",),
            ("Route16/snorlax", "travel:bicycle"))
     action("travel:surf", ("travel:fuchsia",))
@@ -162,9 +165,15 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
     for trigger, identifiers in retires.items():
         require(trigger in nodes and identifiers <= by_id.keys(),
                 "Dangling graph retirement")
+    healing = healing_permissions(data, version, bosses)
+    for permission in healing.values():
+        require(set(permission["required"]) <= nodes.keys() and
+                (permission["retires_after"] is None or permission["retires_after"] in nodes),
+                "Dangling healing dependency")
     return {"nodes": nodes, "retires": retires, "encounters": by_id,
             "reviewed": False, "fossil_offer": "CinnabarLabFossilRoom/gift-fossil",
-            "healing": healing_permissions(data, version, bosses)}
+            "healing": healing,
+            "scope": REGION_SCOPE}
 
 
 def healing_permissions(data, version, bosses):
@@ -173,13 +182,13 @@ def healing_permissions(data, version, bosses):
         "PewterPokecenter": ("OaksLab/rival-lab",),
         "MtMoonPokecenter": (bosses["PewterGym"],),
         "CeruleanPokecenter": ("travel:moon-exit",),
-        "VermilionPokecenter": ("travel:bill",),
-        "RockTunnelPokecenter": ("field:cut",),
-        "LavenderPokecenter": ("field:cut",), "CeladonPokecenter": ("field:cut",),
+        "VermilionPokecenter": ("travel:moon-exit",),
+        "RockTunnelPokecenter": ("travel:east",),
+        "LavenderPokecenter": ("travel:east",), "CeladonPokecenter": ("travel:east",),
         "SaffronPokecenter": ("travel:saffron",),
         "FuchsiaPokecenter": ("travel:fuchsia",),
         "CinnabarPokecenter": ("field:surf",),
-        "PokemonTower5F": ("field:cut",),
+        "PokemonTower5F": ("travel:east",),
         "SilphCo9F": ("travel:silph", "travel:card-key"),
         "IndigoPlateauLobby": ("travel:league",),
     }
