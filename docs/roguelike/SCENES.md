@@ -39,6 +39,34 @@ The selected starter shows its native species/move names, level, HP, and
 current/maximum PP for all four move slots before confirmation. Names come
 from Stadium's resident text archive, not a copied move-name catalog.
 
+Recruit and Safari lists name every candidate, and fossil choices name the
+actual Kabuto/Omanyte rather than just the fossil. Battle recruit rewards
+also name their offered Pokemon. Candidate numbers and party-slot numbers
+distinguish repeated species without changing their identities or action indices.
+All use the shared `rl_ui_mon_detail` panel for the selected Pokemon's native
+name, level, HP and four moves with current/maximum PP. Names and moves wrap
+using native font widths; the detail column does not overlap the candidate list.
+
+Silph Co. and Bill's PC show the incoming rental before confirmation. Selecting
+a replacement slot shows that slot's number/name alongside the incoming
+Pokemon's complete details, including Silph's slot-dependent level. This preview
+resolves the existing event helper only on a private run copy with the same
+node-local RNG stream; drawing never mutates the run. Party/item/release target
+lists also use native names and retain the selected slot's details on confirmation.
+Full-party recruit rejection and existing release/replacement rules are unchanged.
+
+Actual-scene host regressions cover Recruit, Safari, both fossils, Silph Co.,
+Bill's PC, repeated species, target confirmation, and 100 post-battle reward
+seeds. They assert native-name lookup results, exact level/HP/move/PP text,
+preview/confirmed-mon equality, and an unchanged run while browsing.
+These host checks do not establish native visual acceptance; the exact-head
+emulator preview and full gate remain required.
+`test_nodes` captures every Recruit/Safari/fossil choice and every trade target
+through D-pad inputs before confirmation, checking that browsing changes no
+run data. `test_play_run` likewise captures every reward choice after each real
+native win and records the offered recruit's HP, moves and PP beside the
+ignored screenshots for reviewer comparison.
+
 Highlighting a battle lane materializes W10's complete scaled encounter on
 a private run copy. The panel shows the source roster, trainer/round, species,
 and levels; the live RNG, party, route and generated content are untouched.

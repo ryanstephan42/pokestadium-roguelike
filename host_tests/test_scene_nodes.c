@@ -13,6 +13,8 @@ static char message_text[128];
 static char detail_text[8][128];
 static s16 detail_y[8];
 static unsigned detail_count;
+static char mon_text[16][128];
+static unsigned mon_count;
 static RlMon mons[4];
 static RlPool pool;
 static RlMeta profile;
@@ -50,13 +52,41 @@ void rl_ui_list_draw(const RlUiList* list, s16 x, s16 y, s16 w) {
     shown = list;
 }
 
+const char* rl_ui_species_name(unsigned species) {
+    switch (species) {
+    case 1: return "BULBASAUR";
+    case 2: return "IVYSAUR";
+    case 138: return "OMANYTE";
+    case 140: return "KABUTO";
+    default: assert(0); return "";
+    }
+}
+
+const char* rl_ui_move_name(unsigned move) {
+    assert(move == 0 || move == 1 || move == 33);
+    return move == 33 ? "TACKLE" : move == 1 ? "POUND" : "--";
+}
+
+void rl_ui_hp_bar(s16 x, s16 y, s16 w, u16 hp, u16 max_hp) {
+    assert(x == 400 && y == 132 && w == 190 && hp <= max_hp);
+}
+
+s32 rl_ui_mon_icon(s32 species, s16 x, s16 y) {
+    assert(species > 0 && species <= 151 && x == 550 && y == 90);
+    return RL_UI_NONE;
+}
+
 void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
-    (void)x; (void)y; (void)color;
-    if (y == 314) {
+    (void)color;
+    if (x >= 400) {
+        assert(y >= 50 && y <= 270 && mon_count < 16);
+        strcpy(mon_text[mon_count++], text);
+    }
+    if (x == 30 && (y == 314 || y == 360)) {
         strcpy(message_text, text);
         message = message_text;
     }
-    if (y >= 220 && y <= 360 && detail_count < 8) {
+    if (x == 30 && y >= 220 && y <= 360 && detail_count < 8) {
         strcpy(detail_text[detail_count], text);
         detail_y[detail_count++] = y;
     }
@@ -66,7 +96,7 @@ void rl_ui_text_wrap(s16 x, s16 y, s16 width, unsigned max_lines,
                      const char* text, Color_RGBA8 color) {
     char line[49];
     unsigned i, start, length, row, end, space;
-    (void)width;
+    if (x >= 400) assert(width == 200 && (max_lines == 1 || max_lines == 2));
     row = 0;
     start = 0;
     length = strlen(text);
@@ -91,6 +121,7 @@ void rl_ui_text_wrap(s16 x, s16 y, s16 width, unsigned max_lines,
 static void draw(void) {
     message = NULL;
     detail_count = 0;
+    mon_count = 0;
     rl_scene_nodes_draw();
     assert(shown != NULL);
 }
@@ -101,6 +132,22 @@ static int text_at(unsigned y, const char* text) {
         if ((unsigned)detail_y[i] == y && !strcmp(detail_text[i], text))
             return 1;
     return 0;
+}
+
+static void assert_mon_detail(const RlMon* mon) {
+    char text[48];
+    unsigned i;
+    assert(mon_count == 11);
+    assert(!strcmp(mon_text[0], rl_ui_species_name(mon->species)));
+    sprintf(text, "Level %03u", mon->level);
+    assert(!strcmp(mon_text[1], text));
+    sprintf(text, "HP %03u/%03u", mon->cur_hp, mon->max_hp);
+    assert(!strcmp(mon_text[2], text));
+    for (i = 0; i < 4; i++) {
+        assert(!strcmp(mon_text[3 + i * 2], rl_ui_move_name(mon->moves[i])));
+        sprintf(text, "PP %02u/%02u", mon->pp[i], mon->max_pp[i]);
+        assert(!strcmp(mon_text[4 + i * 2], text));
+    }
 }
 
 static void assert_wrapped_effect(unsigned first_y, unsigned last_y,
@@ -262,6 +309,102 @@ static void test_center_recruit(void) {
     assert(choose(0) == RL_SCENE_ONGOING);
     draw();
     assert(message && strstr(message, "Full"));
+}
+
+static void test_recruit_presentation(void) {
+    RunState run, before, expected;
+    RlMon candidates[3];
+    RlU32 rng;
+    unsigned mode, event, i, j, count;
+    char label[48];
+    for (mode = 0; mode < 5; mode++) {
+        event = mode == 1 ? 6 : mode == 2 ? 0 : mode == 3 ? 3 : 4;
+        init_run(&run, mode ? event_seed(event) : 23);
+        before = run;
+        expected = run;
+        /* Match the scene's node-local candidate stream, not the live RNG. */
+        rng = run.seed ^ 0x45564E54U;
+        rng ^= rng >> 16;
+        rng *= 0x7FEB352DU;
+        rng ^= rng >> 15;
+        rng *= 0x846CA68BU;
+        rng ^= rng >> 16;
+        expected.rng = rng ? rng : 1;
+        count = mode < 2 ? rl_event_wild_options(&expected, &pool, candidates, 3) :
+                mode == 2 ? 2 : 1;
+        if (mode >= 2) {
+            for (i = 0; i < count; i++) {
+                RunState copy;
+                copy = expected;
+                assert(rl_event_resolve(&copy, event, i, 0, &pool, NULL) == RL_OK);
+                candidates[i] = copy.party[mode == 2 ? run.party_count : 0];
+            }
+        }
+        rl_scene_nodes_begin(&run, &pool, mode ? RL_EVENT : RL_RECRUIT);
+        draw();
+        for (i = 0; i < count; i++) {
+            assert(strstr(shown->items[i].text, rl_ui_species_name(candidates[i].species)));
+            if (mode < 3) {
+                assert(shown->items[i].text[0] == (char)('1' + i));
+                assert(shown->items[i].text[1] == ' ');
+            }
+            while ((unsigned)shown->cursor < i)
+                assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
+            draw();
+            assert_mon_detail(&candidates[i]);
+        }
+        assert(!memcmp(&run, &before, sizeof(run)));
+        if (mode >= 3) {
+            assert(choose(0) == RL_SCENE_ONGOING);
+            for (j = 0; j < run.party_count; j++) {
+                expected = before;
+                expected.rng = rng ? rng : 1;
+                assert(rl_event_resolve(&expected, event, 0, j, &pool, NULL) == RL_OK);
+                while ((unsigned)shown->cursor < j)
+                    assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
+                draw();
+                sprintf(label, "%u %s", j + 1, rl_ui_species_name(run.party[j].species));
+                assert(!strcmp(shown->items[j].text, label));
+                assert(text_at(276, "Replace party slot:") && text_at(296, label));
+                assert_mon_detail(&expected.party[j]);
+            }
+            assert(!memcmp(&run, &before, sizeof(run)));
+            assert(choose(1) == RL_SCENE_COMPLETED);
+            assert(!memcmp(&run.party[1], &expected.party[1], sizeof(RlMon)));
+        } else {
+            assert(choose(0) == RL_SCENE_COMPLETED);
+            assert(!memcmp(&run.party[2], &candidates[0], sizeof(RlMon)));
+        }
+    }
+    /* Same species remains distinguishable by actual party/candidate slot. */
+    init_run(&run, 23);
+    run.party[1] = run.party[0];
+    run.party[1].cur_hp--;
+    rl_scene_nodes_begin(&run, &pool, RL_SCENE_PARTY);
+    draw();
+    assert(!strcmp(shown->items[0].text, "1 BULBASAUR"));
+    assert(!strcmp(shown->items[1].text, "2 BULBASAUR"));
+    assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
+    draw();
+    assert_mon_detail(&run.party[1]);
+    assert(choose(1) == RL_SCENE_ONGOING);
+    assert(choose(1) == RL_SCENE_ONGOING);
+    draw();
+    assert(text_at(276, "2 BULBASAUR"));
+    assert_mon_detail(&run.party[1]);
+    mons[1].species = 1;
+    mons[1].pp[0] = 12;
+    pool.fixed_order = 1;
+    rl_scene_nodes_begin(&run, &pool, RL_RECRUIT);
+    draw();
+    assert(!strcmp(shown->items[0].text, "1 BULBASAUR"));
+    assert(!strcmp(shown->items[1].text, "2 BULBASAUR"));
+    assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
+    draw();
+    assert_mon_detail(&mons[1]);
+    pool.fixed_order = 0;
+    mons[1].species = 2;
+    mons[1].pp[0] = mons[1].max_pp[0];
 }
 
 static void test_bag_party(void) {
@@ -574,6 +717,7 @@ int main(void) {
     pool.fixed_order = 0;
     test_events();
     test_center_recruit();
+    test_recruit_presentation();
     test_bag_party();
     test_relic_inventory();
     test_shop();

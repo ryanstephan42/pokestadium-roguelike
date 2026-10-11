@@ -7,6 +7,28 @@ from tools.rltest.frontend import HarnessError, Symbols, _png
 
 
 class HelperTests(unittest.TestCase):
+    def test_recruit_capture_browses_real_inputs_without_confirming(self):
+        from tools.rltest.test_play_run import capture_choices
+
+        emu = Mock()
+        emu.output = Path("/captures")
+        emu.read.return_value = b"unchanged run"
+        capture_choices(emu, 3, "recruit")
+        self.assertEqual(emu.press.call_args_list, [
+            call("DOWN", frames=4, after=4),
+            call("DOWN", frames=4, after=4),
+            call("UP", frames=4, after=4),
+            call("UP", frames=4, after=4),
+        ])
+        self.assertEqual(emu.screenshot.call_args_list, [
+            call(Path("/captures/recruit-1.png")),
+            call(Path("/captures/recruit-2.png")),
+            call(Path("/captures/recruit-3.png")),
+        ])
+        emu.read.side_effect = [b"before", b"changed"]
+        with self.assertRaises(HarnessError):
+            capture_choices(emu, 1, "recruit")
+
     def test_node_fixture_enters_menu_before_native_probe(self):
         from tools.rltest import test_nodes
 

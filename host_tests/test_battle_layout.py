@@ -7,6 +7,7 @@ import subprocess
 import unittest
 
 from tools.rltest.test_custom_battle import BattleRules, Mon, PendingBattle
+from tools.rltest.test_play_run import Reward
 
 
 class BattleLayoutTests(unittest.TestCase):
@@ -18,6 +19,8 @@ class BattleLayoutTests(unittest.TestCase):
         ))
         self.assertEqual(actual, {
             "mon_size": ctypes.sizeof(Mon),
+            "reward_size": ctypes.sizeof(Reward),
+            "reward_mon": Reward.mon.offset,
             "rules_size": ctypes.sizeof(BattleRules),
             "relics": BattleRules.relics.offset,
             "pending_size": ctypes.sizeof(PendingBattle),
