@@ -3,6 +3,13 @@ SC_PROBE_O := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SC_PROBE_C))
 SC_PROBE_CATALOG := $(BUILD_DIR)/story/sc_data.o
 SC_COLD_NAMES := sc_core sc_graph sc_bridge sc_save sc_storage sc_pak_probe sc_cold sc_native_cold sc_make
 SC_COLD_O := $(addprefix $(BUILD_DIR)/src/story/,$(addsuffix .o,$(SC_COLD_NAMES))) $(SC_PROBE_CATALOG)
+ifeq ($(STORY_EMBER_PROBE),1)
+SC_EMBER_O := $(BUILD_DIR)/tools/rltest/story_ember_fixture.o
+SC_COLD_O += $(SC_EMBER_O)
+O_FILES += $(SC_EMBER_O)
+$(SC_EMBER_O): tools/rltest/story_ember_fixture.h $(wildcard src/story/*.h)
+$(shell mkdir -p $(BUILD_DIR)/tools/rltest)
+endif
 SC_HEADER_O := $(BUILD_DIR)/src/story/sc_cold_header.o
 SC_RELOCS_O := $(RL_DIR)/fragmentSC_relocs.o
 SC_RELOCS0_O := $(RL_DIR)/fragmentSC_relocs_pass1.o

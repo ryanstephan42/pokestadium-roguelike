@@ -23,6 +23,12 @@ gcc "${flags[@]}" -DSTORY_KO_PROBE host_tests/test_story_runtime.c src/story/sc_
     src/story/sc_graph.c src/story/sc_save.c src/story/sc_crc.c src/story/sc_storage.c src/story/sc_cold.c build/story/sc_data.c \
     -Wl,--gc-sections -o build/story/test_story_runtime_ko
 build/story/test_story_runtime_ko
+gcc "${flags[@]}" -DSTORY_KO_PROBE -DSTORY_EMBER_PROBE host_tests/test_story_ember_cold.c \
+    tools/rltest/story_ember_fixture.c src/story/sc_cold.c src/story/sc_core.c \
+    src/story/sc_combat.c src/story/sc_make.c src/story/sc_graph.c src/story/sc_progression.c \
+    src/story/sc_bridge.c src/story/sc_save.c src/story/sc_crc.c build/story/sc_data.c \
+    -Wl,--gc-sections -o build/story/test_story_ember_cold
+build/story/test_story_ember_cold
 gcc "${flags[@]}" host_tests/test_story_cold_load.c \
     -Wl,--gc-sections -o build/story/test_story_cold_load
 build/story/test_story_cold_load

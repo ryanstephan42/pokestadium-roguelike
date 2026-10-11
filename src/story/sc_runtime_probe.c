@@ -18,6 +18,9 @@ const RlU32 gScProgressMonOffset = (RlU32)&((ScProgressProbe *)0)->before_ko;
 #ifdef STORY_KO_PROBE
 const RlU32 gScProbeKoProfile = 1;
 #endif
+#ifdef STORY_EMBER_PROBE
+const RlU32 gScProbeEmberProfile = 1;
+#endif
 static ScState resident;
 static ScBridge bridge;
 static ScCombat combat;
@@ -280,11 +283,15 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
         bridge_views(player, &gScBridgeProbe.carry_party, &gScBridgeProbe.carry_live);
     }
     if (gScProbe.force_ko) {
+#ifdef STORY_EMBER_PROBE
+        goto invalid;
+#else
         gScProgressProbe.injected++;
         rl_battle_stage(live, 0) = 8; /* Synthetic +1 stage exercises KO refresh. */
         rl_battle_hp(foe) = 0;
         rl_battle_party_hp(rl_battle_party_mon(enemy, opponent)) = 0;
         gScProbe.force_ko = 0;
+#endif
     }
     rl_battle_party_hp(rl_battle_party_mon(player, active)) = rl_battle_hp(live);
     rl_battle_party_status(rl_battle_party_mon(player, active)) = rl_battle_status(live);

@@ -1071,6 +1071,80 @@ the immutable seed/copy remain `ca483ab3...726d2`. Both attempts stopped at
 their first failure and released the slot process-free. No retry, retuning,
 deadline increase, defeat-completion probe or full-gate grant remains active.
 
+### Separate canonical Charmander Ember coverage (source/host only)
+
+The coordinator authorized a separate Ember scenario, not a retry or retuning
+of the failed Bulbasaur L6 lab fixture. `STORY_EMBER_PROBE=1` requires
+`STORY_KO_PROBE=1` and builds into ignored `build_story_ember_probe/`.
+The harness accepts only `--phase ko_ember` with that profile marker; all
+original phases reject it. No atomic hook or defeat coverage was added.
+
+`tools/rltest/story_ember_fixture.c` constructs the checkpoint through existing
+pure APIs: Red, Standard, explicit Charmander, seed42; lab57 versus the
+rival-consistent Squirtle; all lab KOs, WIN, reward decline; graph-aware
+Viridian Pokecenter0 healing; Forest349's Weedle6 and Caterpie6 KOs, WIN,
+reward decline; the same available healing location; and an availability
+check for Forest351's sole Weedle9. Optional Forest350 remains uncompleted.
+There are no fabricated travel actions, direct completed-bit/stat/level/DV
+edits, recruits, transfers, or graph modifications. Every prior victory is
+**declared pure-host prehistory, not evidence of a native win**. Pure setup
+does not simulate damage/PP consumption; its healing calls are still checked
+against the actual graph and locked difficulty.
+
+`make -C host_tests story-test` persists the exact operation/state transcript
+at `build/story/ember-host-proof.jsonl` and a codec-validated, interrupted
+736-byte SC01 checkpoint at `build/story/ember-checkpoint.sc01`. Invalid
+target prerequisites or inaccessible healing reject preparation without
+changing the caller's output; they never patch the graph.
+
+| Point | XP/level | Stat EXP (HP/Attack/Defense/Speed/Special) | Canonical stats |
+|---|---|---|---|
+| Starter, DVs4528 from seed42 | 135/L5 | 0/0/0/0/0 | 19/11/9/12/10 |
+| Lab Squirtle5 KO (+70) | 205/L6 | 44/48/65/43/50 | 20/12/10/13/11 |
+| Forest Weedle6 KO (+66) | 271/L7 | 84/83/95/93/70 | 22/13/11/14/12 |
+| Forest Caterpie6 KO (+67), checkpoint | 338/L8 | 129/113/130/138/90 | 24/14/12/16/13 |
+| Target Weedle9 KO (+99), host expectation | 437/L9 | 169/148/160/188/110 | 26/16/13/17/14 |
+
+The starter retains Scratch10/Growl45, PP35/40 at entry. Its first learning
+prompt is Ember52 at L9, PP25, published into empty slot3 by the existing
+single resume. Target materialization calls actual `sc_team`: Weedle13/L9,
+Poison Sting40/String Shot81, PP35/40, stats27/12/11/15/10. Although
+`sc_team` draws encounter-seeded RNG for every enemy, `sc_make_mon` selects
+the catalog's authored DVs when `fixed_dvs=1`; this exact canonical target
+therefore has8889. The fixture never overwrites that result or imports lab
+values. Target and progression numbers are assertions, not a predicted win.
+
+The cold profile uses the shared pure constructor only for PREPARE. It
+stores its interrupted checkpoint before entering target351 and exports the
+normal compact combat values, then unloads normally. Other cold commands
+and original profiles retain their prior fixtures. Force requests are
+explicitly rejected in the Ember profile rather than executing a force
+write. Existing CPU rules, no frontend input, natural capture/history,
+6,000 prelearning / 6,000 postresume / 60 hold bounds, immediate loss/error/
+no-learning failures, save identity, one resume, native/resident terminal
+carry, WIN/reward/target completion and strict memory assertions apply.
+Native provenance and result/history files explicitly label the pure
+prehistory separately and hash the host proof/checkpoint and source save.
+
+Source build measurement: cold RAM175968 (+2096 versus original173872);
+resident pool starts8011DD80 (64 bytes earlier than original8011DDC0),
+and the resident-import checker finds no reference into the cold image.
+The new pure constructor reserves736 stack bytes in its compiled frame,
+on top of the cold entry's88-byte frame and nested pure calls. These are
+static measurements, **not runtime stack/allocation acceptance**; all
+existing allocation, map/pool and written-stack requirements remain strict.
+No native execution, completed reload, six-party, Transform, defeat budget
+or full gate has been authorized or run for this scenario.
+
+Both original runtime profiles and31 Python helpers pass alongside the new
+pure/sanitized checkpoint and cold preparation tests. Vanilla still reports
+`build/pokestadium-us.z64: OK`; default RL ROM and original KO ROM/ELF
+hashes reproduce unchanged. The rebuilt original KO map differs only in
+discarded `sc_cold.o .mdebug` size808 to810, due to guarded source/debug
+metadata; the original frozen map/artifacts remain untouched. Exact Ember
+artifacts and source delta require independent review before a separate
+execution grant.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

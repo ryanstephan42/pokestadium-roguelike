@@ -181,6 +181,72 @@ def require_ko_progress(evidence, synthetic, terminal=False):
                 "Duplicate KO replay altered XP/stat experience")
 
 
+EMBER_SCOPE = "pure-host-prehistory-not-native-wins; target-natural-native-battle"
+
+
+def require_ember_progress(evidence, terminal=False):
+    require(not evidence["error"] and evidence["ko_captures"] == 1 and
+            evidence["injected"] == 0 and evidence["award"] == 99 and
+            evidence["learn_move"] == 52, f"Ember KO attribution mismatch: {evidence}")
+    before, after = evidence["before_ko"], evidence["after_ko"]
+    require(before["species"] == after["species"] == 4 and
+            before["dvs"] == after["dvs"] == 0x4528 and
+            before["exp"] == 338 and before["level"] == 8 and
+            before["max_hp"] == 24 and before["hp"] > 0 and
+            before["stat_exp"] == [129, 113, 130, 138, 90] and
+            before["current_stats"] == [24, 14, 12, 16, 13] and
+            before["moves"] == [10, 45, 0, 0] and
+            after["exp"] == 437 and after["level"] == 9 and
+            after["stat_exp"] == [169, 148, 160, 188, 110] and
+            after["current_stats"] == [26, 16, 13, 17, 14] and
+            after["max_hp"] == 26 and after["hp"] == before["hp"] + 2 and
+            after["moves"] == before["moves"] and after["pp"] == before["pp"] and
+            after["status"] == before["status"],
+            f"Ember canonical KO/state preservation mismatch: {evidence}")
+    require(after == {**before, "exp": 437, "level": 9, "max_hp": 26,
+                      "hp": before["hp"] + 2, "stat_exp": [169, 148, 160, 188, 110],
+                      "current_stats": [26, 16, 13, 17, 14]},
+            "Ember KO changed unrelated mon fields")
+    if terminal:
+        require(evidence["resumes"] == 1 and evidence["terminal"] == 1 and
+                evidence["resume_stages"] == evidence["ko_stages"],
+                "Ember learning resume/stage mismatch")
+        require(evidence["after_resume"] ==
+                {**after, "moves": [10, 45, 0, 52], "pp": after["pp"][:3] + [25],
+                 "max_pp": [35, 40, 0, 25]},
+                "Ember publication changed unrelated state or moves/PP")
+        native, resident = evidence["terminal_native"], evidence["terminal_resident"]
+        keys = ("species", "level", "exp", "dvs", "hp", "max_hp", "status", "fainted",
+                "stat_exp", "current_stats", "moves", "pp", "max_pp")
+        require(all(native[key] == resident[key] for key in keys) and
+                resident["exp"] == 437 and resident["stat_exp"] == after["stat_exp"] and
+                resident["moves"] == [10, 45, 0, 52],
+                "Ember terminal native/resident carry or duplicate KO mismatch")
+
+
+def require_ember_entry(result, raw, party):
+    require(len(party) == 1 and result["phase"] == 1 and result["ko_count"] == 0,
+            "Ember target did not start as a fresh singleton battle")
+    mon = party[0]
+    require(mon["species"] == 4 and mon["dvs"] == 0x4528 and mon["level"] == 8 and
+            mon["exp"] == 338 and mon["hp"] == mon["max_hp"] == 24 and
+            not mon["status"] and not mon["fainted"] and
+            mon["moves"] == [10, 45, 0, 0] and mon["pp"] == mon["max_pp"] == [35, 40, 0, 0] and
+            mon["stat_exp"] == [129, 113, 130, 138, 90] and
+            mon["current_stats"] == [24, 14, 12, 16, 13],
+            f"Ember pure checkpoint identity mismatch: {party}")
+    completed = bytearray(64)
+    for index in (57, 349):
+        completed[index // 8] |= 1 << (index % 8)
+    require(raw[38:102] == bytes(completed) and
+            raw[102:166] == bytes(64) and
+            struct.unpack_from(">4I", raw)[0:2] == (42, 476557059) and
+            struct.unpack_from(">4I", raw)[3] == 1 and
+            raw[16:20] == bytes([0, 0, 0, 4]) and raw[22] == 0 and
+            struct.unpack_from(">H", raw, 36)[0] == 351,
+            "Ember graph prehistory or target encounter mismatch")
+
+
 def require_resume_native(progress, native):
     mon = progress["after_resume"]
     party, live = native["carry_party"], native["carry_live"]
@@ -214,6 +280,8 @@ def capture_progress(emu, directory, label):
     result = read_probe(emu)
     memory = memory_evidence(emu, result)
     for name, data in (("result", result), ("memory", memory)):
+        if name == "result" and label.startswith("ko_ember-"):
+            data = {**data, "coverage_scope": EMBER_SCOPE}
         (directory / f"{label}-{name}.json").write_text(json.dumps(data, indent=2) + "\n")
     progress = read_progress(emu)
     (directory / f"{label}-progress.json").write_text(json.dumps(progress, indent=2) + "\n")
@@ -380,15 +448,17 @@ def finish_synthetic_command(emu, directory):
     return finish_command(emu)
 
 
-def wait_natural_probe(emu, directory, learning):
+def wait_natural_probe(emu, directory, learning, phase_name="ko_natural"):
     label = "prelearning" if learning else "postresume"
     description = "per-KO learning pause" if learning else "story probe native command"
-    with (directory / f"ko_natural-{label}-machine-history.jsonl").open("w") as history:
+    with (directory / f"{phase_name}-{label}-machine-history.jsonl").open("w") as history:
         def ready(instance):
             probe = read_probe(instance)
             progress = read_progress(instance)
             machine = read_native_machine(instance) if probe["active"] else None
-            history.write(json.dumps({"frame": instance.frame, "probe": probe,
+            history_probe = ({**probe, "coverage_scope": EMBER_SCOPE}
+                             if phase_name == "ko_ember" else probe)
+            history.write(json.dumps({"frame": instance.frame, "probe": history_probe,
                                       "progress": progress, "machine": machine}) + "\n")
             history.flush()
             require(not probe["force_ko"] and not progress["injected"],
@@ -411,8 +481,11 @@ def require_learning_storage(prebattle, paused, held):
 
 
 def require_probe_profile(map_path, phase):
+    contents = Path(map_path).read_text()
+    require(("gScProbeEmberProfile" in contents) == (phase == "ko_ember"),
+            "Ember scenario requires its separate profile; original scenarios refuse it")
     if phase in ("bridge_init", "bridge_carry"):
-        require("gScProbeKoProfile" not in Path(map_path).read_text(),
+        require("gScProbeKoProfile" not in contents,
                 "Bridge phases unavailable in STORY_KO_PROBE profile")
 
 
@@ -647,6 +720,23 @@ def phase(args):
         "map_sha256": hashlib.sha256(Path(args.map).read_bytes()).hexdigest(),
         "core_sha256": hashlib.sha256(Path(args.core).read_bytes()).hexdigest(),
     }
+    if args.phase == "ko_ember":
+        provenance["coverage_scope"] = EMBER_SCOPE
+        provenance["fixture"] = {
+            "seed": 42, "pure_wins": [57, 349], "declined_rewards": [57, 349],
+            "graph_heals": [0, 0], "skipped_optional": 350, "native_target": 351,
+            "prelearning_budget": 6000, "postresume_budget": 6000, "hold_frames": 60,
+            "expected_win_is_assertion_not_prediction": True,
+        }
+        provenance["save_source_sha256"] = hashlib.sha256(
+            (directory / "save-ram.bin").read_bytes()).hexdigest()
+        provenance["core_options"] = {"mupen64plus-pak1": "memory",
+                                      "mupen64plus-angrylion-multithread": "4"}
+        for name in ("ember-host-proof.jsonl", "ember-checkpoint.sc01"):
+            source = ROOT / "build/story" / name
+            data = source.read_bytes()
+            (directory / name).write_bytes(data)
+            provenance[name + "_sha256"] = hashlib.sha256(data).hexdigest()
     (directory / f"{args.phase}-provenance.json").write_text(
         json.dumps(provenance, indent=2) + "\n")
     options = {"mupen64plus-pak1": "none" if args.phase == "missing" else "memory",
@@ -656,7 +746,7 @@ def phase(args):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
                           "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -732,8 +822,9 @@ def phase(args):
             after = save_ram(emu)[1]
             story_owned_changes(before, after, base)
             (directory / "save-ram.bin").write_bytes(after)
-        elif args.phase in ("battle", "natural", "ko_synthetic", "ko_natural"):
+        elif args.phase in ("battle", "natural", "ko_synthetic", "ko_natural", "ko_ember"):
             synthetic = args.phase in ("battle", "ko_synthetic")
+            ember = args.phase == "ko_ember"
             base = find_pak(before)
             start_command(emu, 3)
             try:
@@ -742,16 +833,18 @@ def phase(args):
             except HarnessError:
                 capture_progress(emu, directory, f"{args.phase}-failure")
                 raise
-            initial_result, _, _, _, initial_memory = capture_progress(
+            initial_result, _, entry_state, entry_party, initial_memory = capture_progress(
                 emu, directory, f"{args.phase}-entry")
             (directory / f"{args.phase}-prebattle-save.bin").write_bytes(save_ram(emu)[1])
             validate_memory(initial_memory, initial_result)
+            if ember:
+                require_ember_entry(initial_result, entry_state, entry_party)
             if synthetic:
                 require(initial_result["max_hp"] == 22, "GB HP-DV fixture did not start at HP22")
                 set_field(emu, "force_ko", 1)
             try:
-                if args.phase == "ko_natural":
-                    wait_natural_probe(emu, directory, learning=True)
+                if args.phase in ("ko_natural", "ko_ember"):
+                    wait_natural_probe(emu, directory, learning=True, phase_name=args.phase)
                 else:
                     wait_probe(emu, lambda result: result["phase"] == 2, 6000, "per-KO learning pause")
             except HarnessError:
@@ -763,13 +856,18 @@ def phase(args):
             (directory / f"{args.phase}-learning-save.bin").write_bytes(paused_save)
             prebattle_save = (directory / f"{args.phase}-prebattle-save.bin").read_bytes()
             require_learning_storage(prebattle_save, paused_save, paused_save)
-            require_ko_progress(progress, synthetic)
+            if ember:
+                require_ember_progress(progress)
+            else:
+                require_ko_progress(progress, synthetic)
             validate_memory(paused_memory, paused)
             paused = read_probe(emu)
-            require(paused["ko_count"] == 1 and paused["level"] == 7 and paused["max_hp"] == 24,
+            require(paused["ko_count"] == 1 and paused["level"] == (9 if ember else 7) and
+                    paused["max_hp"] == (26 if ember else 24),
                     f"Expected exactly one canonical level-up at the KO: {paused}")
             require(paused["native_max_hp"] == paused["live_max_hp"] == paused["max_hp"] and
-                    paused["native_dvs"] == paused["live_dvs"] == paused["dvs"] == 0x8889,
+                    paused["native_dvs"] == paused["live_dvs"] == paused["dvs"] ==
+                    (0x4528 if ember else 0x8889),
                     f"GB stats/DVs were replaced by native recalculation: {paused}")
             if synthetic:
                 require(paused["attack_stage"] == 8 and
@@ -809,17 +907,25 @@ def phase(args):
                 if args.phase == "ko_synthetic":
                     result = finish_synthetic_command(emu, directory)
                 else:
-                    if args.phase == "ko_natural":
-                        wait_natural_probe(emu, directory, learning=False)
+                    if args.phase in ("ko_natural", "ko_ember"):
+                        wait_natural_probe(emu, directory, learning=False, phase_name=args.phase)
                     result = finish_command(emu)
             except HarnessError:
                 capture_progress(emu, directory, f"{args.phase}-failure")
                 raise
-            result, final_progress, _, final_party, final_memory = capture_progress(
+            result, final_progress, terminal_state, final_party, final_memory = capture_progress(
                 emu, directory, f"{args.phase}-terminal")
             after = save_ram(emu)[1]
             (directory / f"{args.phase}-terminal-save.bin").write_bytes(after)
-            require_ko_progress(final_progress, synthetic, terminal=True)
+            if ember:
+                require_ember_progress(final_progress, terminal=True)
+                completed = bytearray(64)
+                for index in (57, 349, 351):
+                    completed[index // 8] |= 1 << (index % 8)
+                require(terminal_state[38:102] == bytes(completed),
+                        "Ember terminal commit changed unexpected graph completion bits")
+            else:
+                require_ko_progress(final_progress, synthetic, terminal=True)
             require_resume_native(final_progress, read_bridge(emu))
             require(final_party == [final_progress["terminal_resident"]],
                     "Cold commit changed terminal party persistence")
@@ -833,7 +939,8 @@ def phase(args):
             story_owned_changes(before, after, base)
             (directory / "save-ram.bin").write_bytes(after)
             (directory / "completed-party.json").write_text(json.dumps(final_party, indent=2) + "\n")
-            (directory / "completed-result.json").write_text(json.dumps(result, indent=2) + "\n")
+            recorded_result = {**result, "coverage_scope": EMBER_SCOPE} if ember else result
+            (directory / "completed-result.json").write_text(json.dumps(recorded_result, indent=2) + "\n")
         else:
             require(native_command(emu, 2, create=1, runs=42)[1] == 0, "RL01 baseline failed")
             pointer, baseline = save_ram(emu)
@@ -857,10 +964,11 @@ def phase(args):
                 story_owned_changes(fixture, after, base)
                 require(native_command(emu, 1)[4] == 42, "SC01 changed RL01 meta")
                 (directory / "save-ram.bin").write_bytes(save_ram(emu)[1])
-        (directory / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n")
+        recorded_result = {**result, "coverage_scope": EMBER_SCOPE} if args.phase == "ko_ember" else result
+        (directory / f"{args.phase}-result.json").write_text(json.dumps(recorded_result, indent=2) + "\n")
         if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload",
                           "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember"):
             evidence = memory_evidence(emu, result)
             (directory / f"{args.phase}-memory.json").write_text(json.dumps(evidence, indent=2) + "\n")
             raw, party = decode_party(emu, result)
@@ -921,7 +1029,7 @@ def main():
                                           "battle", "natural", "reload", "missing", "full",
                                           "allocation", "checkpoint", "checkpoint_reload",
                                           "bridge_init", "bridge_carry",
-                                          "ko_synthetic", "ko_natural", "ko_reload"))
+                                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")

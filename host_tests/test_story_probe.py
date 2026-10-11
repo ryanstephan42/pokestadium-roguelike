@@ -22,6 +22,8 @@ from tools.rltest.story_probe import (
     read_bridge,
     require_bridge,
     require_ko_progress,
+    require_ember_progress,
+    require_ember_entry,
     read_progress,
     require_resume_native,
     require_learning_storage,
@@ -35,6 +37,98 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_ember_exact_ko_resume_and_terminal_rejections(self):
+        before = dict(species=4, level=8, exp=338, dvs=0x4528, hp=17, max_hp=24,
+                      status=0x40, fainted=0, moves=[10, 45, 0, 0], pp=[31, 39, 0, 0],
+                      max_pp=[35, 40, 0, 0], stat_exp=[129, 113, 130, 138, 90],
+                      current_stats=[24, 14, 12, 16, 13])
+        after = {**before, "level": 9, "exp": 437, "hp": 19, "max_hp": 26,
+                 "stat_exp": [169, 148, 160, 188, 110], "current_stats": [26, 16, 13, 17, 14]}
+        resumed = {**after, "moves": [10, 45, 0, 52], "pp": [31, 39, 0, 25],
+                   "max_pp": [35, 40, 0, 25]}
+        evidence = dict(error=0, ko_captures=1, injected=0, award=99, learn_move=52,
+                        resumes=1, terminal=1, ko_stages=[7, 6, 5, 7, 7, 7],
+                        resume_stages=[7, 6, 5, 7, 7, 7], before_ko=before,
+                        after_ko=after, after_resume=resumed,
+                        terminal_native=copy.deepcopy(resumed), terminal_resident=resumed)
+        require_ember_progress(evidence, terminal=True)
+        for key, value in (("injected", 1), ("award", 100), ("ko_captures", 2),
+                           ("learn_move", 73), ("resumes", 2), ("terminal", 0)):
+            wrong = copy.deepcopy(evidence)
+            wrong[key] = value
+            with self.assertRaises(HarnessError):
+                require_ember_progress(wrong, terminal=True)
+        for name, key, value in (("after_ko", "hp", 18), ("after_ko", "status", 0),
+                                 ("before_ko", "dvs", 0x8889),
+                                 ("after_resume", "pp", [31, 39, 0, 10]),
+                                 ("terminal_native", "exp", 536)):
+            wrong = copy.deepcopy(evidence)
+            wrong[name][key] = value
+            with self.assertRaises(HarnessError):
+                require_ember_progress(wrong, terminal=True)
+
+    def test_ember_entry_requires_exact_graph_checkpoint(self):
+        mon = dict(species=4, dvs=0x4528, level=8, exp=338, hp=24, max_hp=24,
+                   status=0, fainted=0, moves=[10, 45, 0, 0], pp=[35, 40, 0, 0],
+                   max_pp=[35, 40, 0, 0], stat_exp=[129, 113, 130, 138, 90],
+                   current_stats=[24, 14, 12, 16, 13])
+        raw = bytearray(644)
+        struct.pack_into(">4I", raw, 0, 42, 476557059, 0, 1)
+        raw[16:20] = bytes([0, 0, 0, 4])
+        struct.pack_into(">H", raw, 36, 351)
+        for index in (57, 349):
+            raw[38 + index // 8] |= 1 << (index % 8)
+        result = dict(phase=1, ko_count=0)
+        require_ember_entry(result, raw, [mon])
+        for offset in (0, 16, 22, 36, 38 + 350 // 8, 102):
+            wrong = bytearray(raw)
+            wrong[offset] ^= 1
+            with self.assertRaises(HarnessError):
+                require_ember_entry(result, wrong, [mon])
+        with self.assertRaises(HarnessError):
+            require_ember_entry(result, raw, [{**mon, "exp": 419}])
+
+    def test_ember_profile_is_mutually_exclusive_before_frontend(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "probe.map"
+            path.write_text("gScProbeKoProfile\ngScProbeEmberProfile\n")
+            require_probe_profile(path, "ko_ember")
+            for phase in ("ko_natural", "ko_synthetic", "bridge_init", "create", "ko_reload"):
+                with self.assertRaises(HarnessError):
+                    require_probe_profile(path, phase)
+            path.write_text("gScProbeKoProfile\n")
+            with self.assertRaises(HarnessError):
+                require_probe_profile(path, "ko_ember")
+
+    def test_ember_passive_wait_preserves_budget_scope_and_no_writes(self):
+        from tools.rltest import story_probe
+        from tools.rltest.frontend import Frontend
+        emu = Mock(frame=0)
+        emu.wait.side_effect = lambda predicate, **kwargs: Frontend.wait(emu, predicate, **kwargs)
+        probe = dict(command=3, status=0xFFFFFFFF, active=0, phase=1, force_ko=0)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe", return_value=probe), \
+                patch.object(story_probe, "read_progress", return_value=dict(injected=0, error=0)), \
+                patch.object(story_probe, "read_native_machine") as native, \
+                patch.object(story_probe, "synthetic_selector_input") as selector:
+            directory = Path(temporary)
+            for learning in (True, False):
+                emu.frame = 0
+                emu.step.side_effect = lambda frames=1: setattr(emu, "frame", emu.frame + frames)
+                with self.assertRaises(HarnessError):
+                    wait_natural_probe(emu, directory, learning, phase_name="ko_ember")
+                self.assertEqual(emu.frame, 6000)
+                label = "prelearning" if learning else "postresume"
+                rows = (directory / f"ko_ember-{label}-machine-history.jsonl").read_text().splitlines()
+                self.assertEqual(len(rows), 6001)
+                last = json.loads(rows[-1])
+                self.assertEqual(last["frame"], 6000)
+                self.assertIn("not-native-wins", last["probe"]["coverage_scope"])
+            native.assert_not_called()
+            selector.assert_not_called()
+            emu.set_input.assert_not_called()
+            emu.write_u32.assert_not_called()
+
     def test_natural_waits_record_before_step_without_input_or_writes(self):
         from tools.rltest import story_probe
         from tools.rltest.frontend import Frontend

@@ -1,6 +1,9 @@
 #ifdef STORY_NATIVE_PROBE
 #include "sc_cold.h"
 #include "sc_native_probe.h"
+#ifdef STORY_EMBER_PROBE
+#include "tools/rltest/story_ember_fixture.h"
+#endif
 
 int sc_cold_entry(int unused, ScColdRequest *request) {
     static ScSnapshot snapshot;
@@ -40,6 +43,16 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
         return 0x100 + SC_INVALID;
     status = sc_new(&snapshot.state, &sc_catalog, &options, request->seed);
     if (status != SC_OK) return 0x100 + status;
+#ifdef STORY_EMBER_PROBE
+    if (request->command == SC_COLD_PREPARE) {
+        if (request->seed != 42) return 0x100 + SC_INVALID;
+        status = sc_ember_checkpoint(&snapshot.state, &sc_catalog, 0, 0);
+        if (status != SC_OK) {
+            osSyncPrintf("story Ember probe: pure checkpoint preparation failed\n");
+            return 0x100 + status;
+        }
+    } else
+#endif
     if (request->command != SC_COLD_NEW) {
         snapshot.state.party[0].dvs = 0x8889;
         snapshot.state.party[0].level = 6;
@@ -59,12 +72,23 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
         return SC_SAVE_OK;
     }
     for (i = 0; i < sc_catalog.count; i++) {
-        const char *a = sc_encounters[i].id, *b = "OaksLab/rival-lab";
+        const char *a = sc_encounters[i].id, *b =
+#ifdef STORY_EMBER_PROBE
+            request->command == SC_COLD_PREPARE ?
+            "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER4" :
+#endif
+            "OaksLab/rival-lab";
         while (*a && *a == *b) { a++; b++; }
         if (*a == *b) lab = i;
     }
+#ifdef STORY_EMBER_PROBE
+    i = request->command == SC_COLD_PREPARE ? 0 : snapshot.state.rival_branch;
+    if (sc_begin(&snapshot.state, &sc_catalog, lab, i) != SC_OK ||
+        sc_team(&snapshot.state, &sc_catalog, lab, i,
+#else
     if (sc_begin(&snapshot.state, &sc_catalog, lab, snapshot.state.rival_branch) != SC_OK ||
         sc_team(&snapshot.state, &sc_catalog, lab, snapshot.state.rival_branch,
+#endif
                  request->opponents, &count) != SC_OK ||
         sc_combat_prepare(request->combat, &snapshot.state, &sc_catalog) != SC_OK) {
         osSyncPrintf("story probe: cold combat preparation failed\n");

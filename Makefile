@@ -59,6 +59,12 @@ N64_EMULATOR ?=
 ROGUELIKE ?= 0
 STORY_PROBE ?= 0
 STORY_KO_PROBE ?= 0
+STORY_EMBER_PROBE ?= 0
+ifeq ($(STORY_EMBER_PROBE),1)
+  ifneq ($(STORY_KO_PROBE),1)
+    $(error STORY_EMBER_PROBE=1 requires STORY_KO_PROBE=1)
+  endif
+endif
 ifeq ($(STORY_KO_PROBE),1)
   ifneq ($(STORY_PROBE),1)
     $(error STORY_KO_PROBE=1 requires STORY_PROBE=1)
@@ -123,6 +129,9 @@ ifeq ($(ROGUELIKE),1)
     BUILD_DIR := build_story_probe
     ifeq ($(STORY_KO_PROBE),1)
       BUILD_DIR := build_story_ko_probe
+      ifeq ($(STORY_EMBER_PROBE),1)
+        BUILD_DIR := build_story_ember_probe
+      endif
     endif
   endif
   ROM       := $(BUILD_DIR)/$(TARGET)-rl.z64
@@ -158,6 +167,9 @@ ifeq ($(ROGUELIKE),1)
     BUILD_DEFINES += -DSTORY_NATIVE_PROBE
     ifeq ($(STORY_KO_PROBE),1)
       BUILD_DEFINES += -DSTORY_KO_PROBE
+      ifeq ($(STORY_EMBER_PROBE),1)
+        BUILD_DEFINES += -DSTORY_EMBER_PROBE
+      endif
     endif
   endif
   ifneq ($(wildcard src/fragments/rl/rl_ui.c),)
