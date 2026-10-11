@@ -42,11 +42,13 @@ run; select three starters and confirm Begin Run; select a route, then Start
 Battle in the active-party list. In battle Z opens Battle, then a C direction
 chooses its corresponding move. Escape closes the preview.
 
-SDL2's built-in standard GameController fallback is intentional when no
-installed autoconfig profile exists; "not configured, using fallback" in the
-log does not mean the controller is unbound. Do not paste udev button numbers
-into this SDL2 profile. `RL_PREVIEW_PAD=1 scripts/rl-preview.sh` selects another
-SDL device index if needed; inspect the input/autoconfig lines in the local log.
+Controller autodetection is disabled and all Xbox SDL2 bindings are explicit.
+This is necessary because RetroArch's `"nul"` bindings otherwise fall back to
+autoconfig: the built-in SDL2 profile would re-enable ordinary D-pad navigation
+and the inverted right-stick C directions. Face/shoulder/trigger/left-stick
+bindings preserve the original SDL2 standard layout. Do not paste udev button
+numbers into this SDL2 profile. `RL_PREVIEW_PAD=1 scripts/rl-preview.sh` selects
+another SDL device index if needed; inspect the input lines in the local log.
 The tested host enumerated Xbox first and the Keychron keyboard's joystick
 interface second.
 
