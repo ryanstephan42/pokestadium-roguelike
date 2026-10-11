@@ -883,7 +883,7 @@ Normal RL ROM remains the prior story-branch hash `a4fab9f9...125d`, not a
 claim of merged-master identity. No emulator rerun is authorized for this
 profile until source review and a new explicit bounded grant.
 
-#### Synthetic KO post-resume timeout and selector candidate
+#### Synthetic KO post-resume timeouts and CPU scheduling candidate
 
 The separately granted exact `2b78aa5` KO-profile run passed required resources
 (100 allocation attempts, zero failures), the 69-XP/stat-experience award,
@@ -906,10 +906,10 @@ and the result sequence. The previous `finish_command` merely waits with L
 held; it supplies no Fight/C-button move selection after entry/resume.
 Its original captures do not include the enemy/queued-actor machine state,
 so the precise stalled native selector/animation state is not recoverable
-from that run. Missing selection is a source-supported scheduling candidate,
-not an emulator-confirmed root cause or proof that no enemy remained alive.
+from that run. The original missing-human-selection interpretation below was superseded by
+the CPU admission evidence; it is not an emulator-confirmed root cause.
 
-The harness-only candidate captures actual native control, both original
+The historical `af33545` harness candidate captured actual native control, both original
 parties, remaining living counts, current/queued actors, machine result and
 controller masks while ownership is valid. Active boundary/failure save bytes
 are also durable. Only `ko_synthetic` post-resume gets a selector driver:
@@ -923,6 +923,75 @@ animation, terminal, switch and surrender states receive no input. Natural
 KO and bridge flows remain unchanged and ungranted. All target code, ABI,
 pool layout and frozen ROM/map/ELF are unchanged; this candidate needs source
 review and a separate native grant, with strict resources still required.
+
+The separately granted `af33545` run also timed out: 247 history rows contain
+31 machine transitions and 216 Fight inputs, with a singleton enemy at
+live/original HP0, result0 and no terminal capture. Both original team flags
+were `03` (CPU bit2), port1, so `func_8430F8B8` selected `func_8430DFCC`, not
+the human selector. Its zero side-controller masks were for `gControllers[1]`;
+they do not demonstrate missing frontend port0 input or global-update failure.
+The human helper's missing CPU admission guard was a harness error. Only the
+same KO/hold/save/resume intermediate evidence is accepted; no RESULT,
+terminal carry, commit or reload is accepted.
+
+Source supports a distinct fixture-precondition hypothesis. The immediate
+pre-intro HP0 injection precedes CPU AI selection. In `func_8437FC10`, a dead
+singleton with no living alternative cannot satisfy the replacement do/while
+condition. The timeout PC has not been observed at this loop: this remains
+a source-supported AI dead-singleton hypothesis, not an actual-PC diagnosis.
+
+The frame-boundary scheduling proposal was withdrawn before submission.
+Initial mode2 is already after `func_84320108` synchronously called
+`func_8437345C`/`func_843732B8`. A later ordinary action2/step2/substep6
+boundary also fails for the **same two-HP-write fixture**: `func_84323FA0`
+case6 reaches `func_84323B50` and `func_84320CEC`, but `func_84308164`
+reads original-party HP. With original enemy HP0, dead-actor handling calls
+`func_84320768`, or dead-other handling calls `func_84320C38`; both enter
+action5 rather than `func_8432079C`/`func_8437345C`/`func_843732B8`.
+`func_84321AAC` then sets state10 unless native exhaustion already set12.
+Thus normal faint animation does not prove exhausted-party/result handling.
+No frame-boundary injection change remains in this diagnostic-only delta.
+
+A distinct, **unimplemented and uncleared** atomic probe-hook design needs
+review. The proposed point is inside `func_8437345C`, **after**
+`func_84372670` and `func_8437176C`, immediately before the existing
+`D_84390288==0` / `func_843732B8` block, admitted only from the first
+`func_84320108` round-formation call. This allows CPU choices, native queued
+move calculation, PP/effects and ordinary HP-dependent status handling to
+run with living parties before the synthetic HP0 write. If either mon
+already fainted or a special path is active, refuse rather than restore HP.
+Aliases `D_843C5238/523C` have been refreshed for that calculation; the next
+instruction path performs the genuine faint/exhaustion check without
+another CPU selection pass. A hook before72670 is not equivalent: both
+72670 and7176C consume HP and alter queued-move semantics.
+
+The design must use a one-shot first-round admission/latch, preserve queued
+moves, and exclude production/natural-KO execution. It must not call story
+observation, learning or a reentrant frame pump inside the native calculator:
+the next normal gate alone captures/awards/pauses. Immutable pre-injection
+and immediate post-injection/faint evidence must bind HP/PP/stages to actual
+native values, including legal native PP expenditure and HP changes. Any
+probe-only snapshots need a reviewed existing-buffer lifecycle or explicit
+resident-size accounting; no new hot buffers or pool waiver are approved.
+The exact 69 XP/statEXP, L7/XP304, canonical stats, save identity, fresh
+60-frame hold and one73/PP10 resume assertions remain required. Diagnostic
+ticks count gate calls, including held gates; the hold claim is no
+logic/presentation/XP/save advancement, not zero ticks.
+
+Passive diagnostics distinguish team flags/port, real `gControllers[0]`
+down/pressed/raw OSContPad, side-controller masks, actor aliases,
+logic/presentation/gate counters and AI timer/choice/latch. The stripped
+frozen map exposes `D_84390124`; exact KO-profile pass1/object evidence places
+timer at anchor-4, choice at anchor+14 and latch at anchor+18 (hex offsets).
+Saved game-thread context uses the existing timeout-tool offsets
+state16/SP244/RA260/PC284/cause288/badvaddr292. It is explicitly **saved
+thread context**, not a live instruction trace or proof of the executing PC.
+The diagnostic-only delta adds CPU/human/port admission to the input helper
+and records counter changes plus 120-frame heartbeats before further input.
+No target C, imports, ABI, asset/pool layout, force scheduling, deadline or
+natural-KO behavior changes. It is not a terminal-fix/rerun candidate.
+Exact source review and a separately reviewed scheduling implementation are
+still required; no emulator or full-gate execution is authorized.
 
 ## Verification scope and remaining review
 

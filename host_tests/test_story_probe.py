@@ -33,6 +33,26 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_cpu_command_never_drives_human_input_and_logs_counters(self):
+        from tools.rltest import story_probe
+        machine = dict(mode=1, sequence=0, result=0,
+                       sides=[dict(flags=3, port=1, hp=22, menu=0, choice=0)])
+        emu = Mock(frame=0)
+        emu.step.side_effect = lambda: setattr(emu, "frame", emu.frame + 1)
+        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, resume=0,
+                     ticks=1, logic_steps=1, presentation_steps=1, pause_ticks=0)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe",
+                             side_effect=[probe, {**probe, "logic_steps": 2}, {"command": 0}]), \
+                patch.object(story_probe, "read_native_machine", return_value=machine), \
+                patch.object(story_probe, "finish_command", return_value={"command": 0}):
+            finish_synthetic_command(emu, Path(temporary))
+            emu.hold.assert_not_called()
+            history = (Path(temporary) / "ko_synthetic-machine-history.jsonl").read_text()
+            self.assertNotIn('"input":', history)
+            self.assertEqual(len(history.splitlines()), 2)
+        emu.write.assert_not_called()
+
     def test_native_machine_fresh_enemy_party_and_bounds(self):
         machine_address, side0, side1 = 0x80100000, 0x80101000, 0x80103000
         team0, team1 = 0x800AE544, 0x800AE760
@@ -50,20 +70,47 @@ class StoryHarnessTests(unittest.TestCase):
         blocks = {machine_address: machine, side0 + 0x654: control0,
                   side1 + 0x654: control1, team0: team, team1: foe,
                   0x80010000: bytes(12), 0x80010020: bytes(12)}
+        ai, port, pad = bytearray(0x20), bytearray(0x24), bytearray(6)
+        struct.pack_into(">I", ai, 0, 0x3F800000)
+        struct.pack_into(">I", ai, 0x18, 33)
+        struct.pack_into(">I", port, 0x20, 0x80020100)
+        struct.pack_into(">H", port, 6, 0x8000)
+        struct.pack_into(">H", pad, 0, 0x8000)
+        thread = bytearray(0x128)
+        struct.pack_into(">I", thread, 284, 0x8437FC10)
+        blocks.update({0x80200100: ai, 0x80020000: port, 0x80020100: pad,
+                       0x80200300: thread})
         pointers = {0x80200000: machine_address, 0x80200010: side0,
                     0x80200014: side1, side0 + 0x724: team0, side1 + 0x724: team1}
+        pointers.update({0x80200200: side0 + 0x68C, 0x80200204: side1 + 0x68C,
+                         0x80200208: 0, 0x8020020C: side0, 0x80200210: side1})
         emu = Mock()
         emu.resolve.side_effect = {"D_84390240": 0x80200000,
-                                   "D_84390010": 0x80200010}.__getitem__
+                                   "D_84390010": 0x80200010, "D_84390124": 0x80200104,
+                                   "gControllers": 0x80020000,
+                                   "D_843C5238": 0x80200200, "D_843C523C": 0x80200204,
+                                   "D_84390288": 0x80200208, "D_84390204": 0x8020020C,
+                                   "D_84390200": 0x80200210, "pThreads": 0x80200300}.__getitem__
         emu.read_u32.side_effect = pointers.__getitem__
         emu.read.side_effect = lambda address, size: bytes(blocks[address][:size])
         initial = read_native_machine(emu)
         self.assertEqual(initial["sides"][1]["living"], 0)
+        self.assertEqual(initial["port0"]["down"], 0x8000)
+        self.assertEqual(initial["port0"]["pad_button"], 0x8000)
+        self.assertEqual(initial["sides"][0]["buttons_down"], 0)
+        self.assertEqual(initial["ai_timer_bits"], 0x3F800000)
+        self.assertEqual(initial["ai_choice"], 33)
+        self.assertEqual(initial["saved_thread_context"]["pc"], 0x8437FC10)
+        struct.pack_into(">I", ai, 0x1C, 1)
+        team[0:2] = b"\3\1"
         struct.pack_into(">H", foe, 0x1E, 3)
         struct.pack_into(">H", control1, 0x44, 3)
         current = read_native_machine(emu)
         self.assertEqual(current["sides"][1]["party_hp"], [3])
         self.assertEqual(current["sides"][1]["hp"], 3)
+        self.assertEqual(current["ai_pending"], 1)
+        self.assertEqual(current["sides"][0]["flags"], 3)
+        self.assertEqual(current["sides"][0]["port"], 1)
         self.assertEqual(initial["sides"][1]["party_hp"], [0])
         pointers[side1 + 0x724] = 0x80400000
         with self.assertRaisesRegex(HarnessError, "cap4"):
@@ -76,7 +123,7 @@ class StoryHarnessTests(unittest.TestCase):
     def test_synthetic_selector_only_drives_unqueued_fight_and_move(self):
         probe = dict(active=1, phase=1, resume=0)
         machine = dict(mode=1, sequence=0, result=0,
-                       sides=[dict(hp=24, menu=0, choice=0, moves=[33, 45, 0, 73],
+                       sides=[dict(flags=1, port=0, hp=24, menu=0, choice=0, moves=[33, 45, 0, 73],
                                    pp=[35, 40, 0, 10])])
         self.assertEqual(synthetic_selector_input(probe, machine), "fight")
         machine["sides"][0].update(menu=1, choice=1)
@@ -90,7 +137,11 @@ class StoryHarnessTests(unittest.TestCase):
                              dict(hp=24, menu=3, choice=1),
                              dict(hp=24, menu=0, choice=2),
                              dict(hp=24, menu=1, choice=0)):
-            self.assertIsNone(synthetic_selector_input(probe, {**machine, "sides": [changed_side]}))
+            self.assertIsNone(synthetic_selector_input(
+                probe, {**machine, "sides": [{"flags": 1, "port": 0, **changed_side}]}))
+        for flags, port in ((3, 1), (3, 0), (1, 1)):
+            side = {**machine["sides"][0], "flags": flags, "port": port}
+            self.assertIsNone(synthetic_selector_input(probe, {**machine, "sides": [side]}))
         machine["sides"][0]["pp"][0] = 0
         with self.assertRaisesRegex(HarnessError, "usable native move"):
             synthetic_selector_input(probe, machine)
@@ -99,9 +150,10 @@ class StoryHarnessTests(unittest.TestCase):
         from tools.rltest import story_probe
         emu = Mock(frame=0)
         emu.step.side_effect = lambda: setattr(emu, "frame", emu.frame + 1)
-        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, resume=0)
+        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, resume=0,
+                     ticks=1, logic_steps=1, presentation_steps=1, pause_ticks=0)
         machine = dict(mode=1, step=0, actor=0, sequence=0, action=0, result=0,
-                       sides=[dict(hp=24, menu=0, choice=0)])
+                       sides=[dict(flags=1, port=0, hp=24, menu=0, choice=0)])
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.object(story_probe, "read_probe", return_value=probe), \
                 patch.object(story_probe, "read_native_machine", return_value=machine):
@@ -120,11 +172,12 @@ class StoryHarnessTests(unittest.TestCase):
         from tools.rltest import story_probe
         emu = Mock(frame=0)
         emu.step.side_effect = lambda: setattr(emu, "frame", emu.frame + 1)
-        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, resume=0)
+        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, resume=0,
+                     ticks=1, logic_steps=1, presentation_steps=1, pause_ticks=0)
         machine = dict(mode=1, step=0, actor=0, sequence=0, action=0, result=0,
-                       sides=[dict(hp=24, menu=0, choice=0)])
+                       sides=[dict(flags=1, port=0, hp=24, menu=0, choice=0)])
         pending = {**probe, "phase": 2, "resume": 1}
-        queued = {**machine, "sides": [dict(hp=24, menu=3, choice=1)]}
+        queued = {**machine, "sides": [dict(flags=1, port=0, hp=24, menu=3, choice=1)]}
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.object(story_probe, "read_probe",
                              side_effect=[pending, probe, probe, {"command": 0}]), \

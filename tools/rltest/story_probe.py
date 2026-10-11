@@ -238,11 +238,35 @@ def read_native_machine(emu):
     machine = read(machine_address, 0xE0)
     word = lambda data, offset: struct.unpack_from(">I", data, offset)[0]
     half = lambda data, offset: struct.unpack_from(">H", data, offset)[0]
+    # Exact compiled 2b78aa5 object layout: timer/choice/pending relative to D_84390124.
+    ai = read(emu.resolve("D_84390124") - 4, 0x20)
+    port_address = emu.resolve("gControllers")
+    port = read(port_address, 0x24)
+    pad_address = word(port, 0x20)
+    pad = read(pad_address, 6)
+    thread = read(emu.resolve("pThreads"), 0x128)
     result = {
         "address": machine_address, "raw": machine.hex(),
         "mode": word(machine, 0x1C), "step": word(machine, 0x20),
         "actor": half(machine, 0x2C), "sequence": word(machine, 0x30),
         "action": word(machine, 0x38), "result": word(machine, 0x40),
+        "substep": word(machine, 0x3C), "secondary": word(machine, 0x34),
+        "effect": word(machine, 0x48), "hit_state": machine[0x1A],
+        "continuation": word(machine, 0x4C),
+        "native_hold": emu.read_u32(emu.resolve("D_84390288")),
+        "actor_side": emu.read_u32(emu.resolve("D_84390204")),
+        "target_side": emu.read_u32(emu.resolve("D_84390200")),
+        "saved_thread_context": {"state": half(thread, 16), "sp": word(thread, 244),
+                                 "ra": word(thread, 260), "pc": word(thread, 284),
+                                 "cause": word(thread, 288), "badvaddr": word(thread, 292)},
+        "ai_timer_bits": word(ai, 0), "ai_choice": word(ai, 0x18),
+        "ai_pending": word(ai, 0x1C),
+        "actor_mon": emu.read_u32(emu.resolve("D_843C5238")),
+        "target_mon": emu.read_u32(emu.resolve("D_843C523C")),
+        "port0": {"address": port_address, "raw": port.hex(),
+                  "down": half(port, 6), "pressed": half(port, 8),
+                  "pad_address": pad_address, "pad_raw": pad.hex(),
+                  "pad_button": half(pad, 0)},
         "sides": [],
     }
     sides_address = emu.resolve("D_84390010")
@@ -260,6 +284,7 @@ def read_native_machine(emu):
         result["sides"].append({
             "address": address, "control_raw": control.hex(),
             "team_address": team_address, "team_raw": team.hex(),
+            "flags": team[0], "port": team[1],
             "active": active, "count": count, "hp": hp, "party_hp": party_hp,
             "living": sum(value != 0 for value in party_hp),
             "choice": word(control, 4), "menu": word(control, 0x10),
@@ -269,6 +294,12 @@ def read_native_machine(emu):
             "buttons_down": half(controller, 6), "buttons_pressed": half(controller, 8),
             "moves": list(control[0x57:0x5B]),
             "pp": [value & 63 for value in control[0x6A:0x6E]],
+            "status": control[0x4D], "volatile": list(control[0x84:0x8C]),
+            "presentation_flags": half(control, 0x34),
+            "stages": list(control[0x94:0x9A]),
+            "party_pp": [value & 63 for value in
+                         team[0x3C + active * 0x54:0x40 + active * 0x54]],
+            "pending_hp": [half(control, 0x46), half(control, 0x48)],
         })
     return result
 
@@ -278,7 +309,7 @@ def synthetic_selector_input(probe, machine):
             machine["result"] or machine["mode"] != 1 or machine["sequence"] != 0):
         return None
     player = machine["sides"][0]
-    if not player["hp"]:
+    if player["flags"] & 2 or player["port"] != 0 or not player["hp"]:
         return None
     if player["menu"] == 0 and player["choice"] == 0:
         return "fight"
@@ -307,10 +338,10 @@ def finish_synthetic_command(emu, directory):
                         (probe["phase"] == 1 or (probe["phase"] == 2 and probe["resume"] == 1)),
                         f"Unexpected synthetic post-resume phase: {probe}")
                 machine = read_native_machine(emu)
-                controls = {key: machine[key] for key in
-                            ("mode", "step", "actor", "sequence", "action", "result", "sides")}
+                controls = (machine, {key: probe[key] for key in
+                                     ("ticks", "logic_steps", "presentation_steps", "pause_ticks")})
                 # Keep transition history durable before attempting any controller input.
-                if controls != previous:
+                if controls != previous or (emu.frame % 120 == 0):
                     history.write(json.dumps({"frame": emu.frame, "probe": probe,
                                               "machine": machine}) + "\n")
                     history.flush()
