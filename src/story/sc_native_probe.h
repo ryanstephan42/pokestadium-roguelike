@@ -7,6 +7,7 @@
 #include "sc_combat.h"
 
 #ifdef STORY_SIX_PROBE
+int sc_native_return_identity(RlMon *returned, const RlMon *launched);
 int sc_native_mapping(const ScState *state, unsigned count, const RlU8 indices[6],
                        RlU8 output[6]);
 #endif

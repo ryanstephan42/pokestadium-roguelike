@@ -332,6 +332,15 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     result->enemy_count = opponent->unk_002;
     for (i = 0; i < player->unk_002; i++) {
         rl_from_native(&player->unk_01C[i], &result->player[i]);
+#ifdef STORY_SIX_PROBE
+        if (gScProbeActive &&
+            sc_native_return_identity(&result->player[i], &party[result->player_index[i]]) != SC_OK) {
+            gRlBattleActive = 0;
+            gCurrentGameState = return_state;
+            osSyncPrintf("story six probe: terminal launch identity mismatch\n");
+            return -1;
+        }
+#endif
     }
     for (i = 0; i < opponent->unk_002; i++) {
         rl_from_native(&opponent->unk_01C[i], &result->enemy[i]);

@@ -1447,10 +1447,11 @@ ownership, required assets, isolated storage, allocations and stack sentinel.
 Initial native gate(s) may already have occurred; this is not zero-ever-update
 or six-switch/participant-XP coverage. No six-party combat budget is approved.
 
-The isolated cold image is176000 bytes,32 more than Ember and2128 more than
-the original KO profile. Compiled constructor frame792 nests `sc_on_ko`800
-and `sc_ko_values`760, with cold entry88:2440 bytes before further callees/
-outer callers. Other observed frames include `sc_new`720, native publish608,
+The first isolated cold image was176000 bytes,32 more than Ember and2128 more
+than the original KO profile. Its constructor frame792 nested `sc_on_ko`800
+and `sc_ko_values`760; including addXP48/recalculate56/cold entry88/poll144/
+cold call24 gave a known2712 bytes before deeper/outer callers, not2440 as
+an exhaustive bound. Other observed frames include `sc_new`720, native publish608,
 native capture56/observe88, runtime tick112/poll144, launcher192,
 `sc_state_valid`1376 and `sc_team`496. These are static frame observations,
 not exhaustive SP bounds; no prior written watermark establishes safety.
@@ -1458,6 +1459,51 @@ Actual six-party required assets/peak allocation/headroom and written-stack
 observations remain untested until an independently reviewed entry grant.
 No emulator, Transform implementation/seed search, defeat, full gate or merge
 was authorized or performed in this source/host milestone.
+
+#### Six-party conversion and constructor review correction
+
+Independent review caught a real terminal refusal hidden by the first runtime
+mock: `rl_from_native` returns base stats in display order
+HP/Special/Speed/Defense/Attack and generates the native species name for an
+unnamed story mon. The strict story comparison uses canonical
+HP/Attack/Defense/Speed/Special and an empty nickname. The six-only launcher
+now validates the returned species/growth/relic, the exact known display-order
+permutation, and the nickname against the launch nickname or the existing
+`func_80021CA4` species-name helper with the same ASCII conversion. Only after
+validation does it restore canonical base stats/nickname. Dynamic
+HP/PP/status/moves/current stats/XP/statEXP/level/DVs/fainting remain untouched
+and subject to the original strict all-slot terminal comparison.
+
+The runtime regression now executes actual `rl_start_battle`, `rl_to_native`
+and `rl_from_native`; only the engine/OS/team-registration dependencies are
+host stubs. It covers asymmetric Charmander39/52/43/65/50, empty and custom
+nicknames, rejected base-stat/name corruption, canonical and reversed parties
+including both distinct Weedle identities, participant KO publication and
+all-six terminal carry. Independent native HP/PP/move/stat/XP/DV/status/level/
+species/name corruption refuses commit. This is host adapter evidence, not
+native battle acceptance.
+
+The new constructor's full-state scratch is cold-only static storage behind
+`STORY_SIX_PROBE`, with explicit ownership/refusal and release on every return;
+output is still copied only after complete success. Ordinary host builds
+retain automatic scratch and callback reentrancy. Both paths have regression
+coverage; nested cold calls refuse without changing the output and a later
+call succeeds. The isolated cold footprint increases; no hot state/catalog or
+mailbox/party/progress ABI grows.
+Compiled wrapper32 plus worker152 replaces the old792 constructor frame:
+608 fewer nested stack bytes, a known2104-byte constructor/KO branch including
+the earlier2712 chain's same callees/wrappers. The cold image is176752 bytes
+(+752 vs first six baseline); scratch state644 plus ownership4 is cold-only.
+Identity normalization has a72-byte frame and calls the existing name helper.
+
+The existing codec path is separate from constructor execution:
+encode704 -> state-valid1376 -> new720 -> make-mon152 -> recalculate56
+is3008 before storage64/Pak-store32/cold-entry88/cold-call24/poll144, giving
+3360 known bytes before further callees/outer game callers. It must not be
+added to the constructor branch or treated as a full stack bound. The codec
+is unchanged to preserve accepted profiles and transactional/reentrant APIs.
+Cold-loader threshold/ownership tests remain required; source-only
+measurements do not establish live SP safety or six-party entry acceptance.
 
 ## Verification scope and remaining review
 

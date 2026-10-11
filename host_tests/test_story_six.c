@@ -5,6 +5,13 @@
 #include "src/story/sc_save.h"
 
 static unsigned recruits, learns, rows;
+static ScState nested;
+
+static void reenter(const char *operation, unsigned index, const ScState *state,
+                     int status, void *context) {
+    (void)operation; (void)index; (void)state; (void)status; (void)context;
+    assert(sc_six_checkpoint(&nested, &sc_catalog, NULL, NULL) == SC_OK);
+}
 
 static void trace(const char *operation, unsigned index, const ScState *state,
                    int status, void *context) {
@@ -55,6 +62,8 @@ int main(int argc, char **argv) {
     unsigned i;
     FILE *file;
     assert(sc_six_checkpoint(&state, &sc_catalog, trace, NULL) == SC_OK);
+    assert(sc_six_checkpoint(&team, &sc_catalog, reenter, NULL) == SC_OK);
+    assert(!memcmp(&state, &team, sizeof(state)) && !memcmp(&state, &nested, sizeof(state)));
     assert(recruits == 5 && learns && rows && state.party_count == 6);
     assert(sc_state_valid(&state, &sc_catalog) && sc_available(&state, &sc_catalog, 58));
     assert(state.rng == 1441438134U && rows == 37 && learns == 1);

@@ -69,6 +69,31 @@ static int mapping_valid(const ScState *state, unsigned count, const RlU8 mappin
 }
 
 #ifdef STORY_SIX_PROBE
+int sc_native_return_identity(RlMon *returned, const RlMon *launched) {
+    static const unsigned order[5] = {0, 4, 3, 2, 1};
+    char name[11];
+    unsigned i;
+    if (!returned || !launched || returned->species != launched->species ||
+        returned->growth != launched->growth || returned->held_relic != launched->held_relic)
+        return SC_INVALID;
+    for (i = 0; i < 5; i++)
+        if (returned->base_stats[i] != launched->base_stats[order[i]]) return SC_INVALID;
+    if (launched->nickname[0]) {
+        for (i = 0; i < 11; i++)
+            if (returned->nickname[i] != launched->nickname[i]) return SC_INVALID;
+    } else {
+        func_80021CA4(name, launched->species);
+        for (i = 0; i < 10 && name[i]; i++) {
+            char value = (unsigned char)name[i] < 128 ? name[i] : '?';
+            if (returned->nickname[i] != value) return SC_INVALID;
+        }
+        if (returned->nickname[i]) return SC_INVALID;
+    }
+    /* Unnamed native records carry a species display name, not a story nickname. */
+    for (i = 0; i < 5; i++) returned->base_stats[i] = launched->base_stats[i];
+    for (i = 0; i < 11; i++) returned->nickname[i] = launched->nickname[i];
+    return SC_OK;
+}
 int sc_native_mapping(const ScState *state, unsigned count, const RlU8 indices[6],
                        RlU8 output[6]) {
     unsigned i;
