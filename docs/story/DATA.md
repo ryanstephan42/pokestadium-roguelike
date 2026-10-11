@@ -993,6 +993,44 @@ natural-KO behavior changes. It is not a terminal-fix/rerun candidate.
 Exact source review and a separately reviewed scheduling implementation are
 still required; no emulator or full-gate execution is authorized.
 
+#### Natural-first passive history candidate
+
+Following diagnostic-only source clearance of `3c6dc264`, terminal diagnosis
+is proposed through ordinary `ko_natural` CPU combat, not another synthetic
+hook. This harness-only delta records every sampled frame in
+`ko_natural-prelearning-machine-history.jsonl` and
+`ko_natural-postresume-machine-history.jsonl`, including the boundary/timeout
+frame. Each row contains fresh mailbox counters, progression and the full
+owned native machine/AI/controllers/parties, flushed before the next core
+step or assertion. Inactive ownership records `machine:null` and never reads
+freed battle pointers. Per-frame history is bounded by the unchanged
+6,000-frame learning and 6,000-frame post-resume waits; no sampling gap or
+retry is introduced.
+
+The passive waits never call the synthetic selector, issue controller input,
+write native memory, force HP or change teams/rules/seed. Existing command
+launch and final menu cleanup are unchanged; after the recorded terminal
+wait, `finish_command` observes the already-cleared mailbox without another
+battle step before its existing cleanup. The explicit single learning
+resume remains outside the waits. Force requests/injections, progression
+errors and status failures are refused after their durable history row;
+command completion before learning is an explicit failure (including a
+natural loss). Existing catch paths capture raw resident state, party,
+progress/native views, memory and save bytes before propagating the failure.
+No learning or a budget timeout is failed evidence, not permission to tune
+the fixture, add input, extend time or force RESULT.
+
+Exact injected0/69 XP/statEXP/L7/XP304/DVs/stats, actual before-KO HP/PP/status,
+fresh 60-frame hold/save identity, one73/PP10 publication, valid native RESULT
+versus resident before cold commit, strict required assets/zero allocation
+failures/map/pool/written-stack assertions remain unchanged. Real CPU combat
+may lose or fail to reach learning in the budget; this is not a source-based
+prediction of success. No target resident bytes, imports, ABI or ROM changes.
+The atomic synthetic hook remains deferred. A natural terminal result would
+not retroactively establish synthetic terminal carry. This exact passive
+delta requires independent source review and a separate coordinator-granted
+natural-only execution; no emulator/full-gate grant is implied.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

@@ -380,6 +380,31 @@ def finish_synthetic_command(emu, directory):
     return finish_command(emu)
 
 
+def wait_natural_probe(emu, directory, learning):
+    label = "prelearning" if learning else "postresume"
+    description = "per-KO learning pause" if learning else "story probe native command"
+    with (directory / f"ko_natural-{label}-machine-history.jsonl").open("w") as history:
+        def ready(instance):
+            probe = read_probe(instance)
+            progress = read_progress(instance)
+            machine = read_native_machine(instance) if probe["active"] else None
+            history.write(json.dumps({"frame": instance.frame, "probe": probe,
+                                      "progress": progress, "machine": machine}) + "\n")
+            history.flush()
+            require(not probe["force_ko"] and not progress["injected"],
+                    "Natural KO observed a synthetic force request or injection")
+            require(not progress["error"] and
+                    (probe["status"] == 0xFFFFFFFF or probe["status"] < 0x100),
+                    f"Natural {label} failed: {probe}")
+            if learning:
+                require(probe["command"] != 0,
+                        f"Natural command ended without learning: {probe}")
+                return probe["phase"] == 2
+            return probe["command"] == 0
+
+        emu.wait(ready, frames=6000, description=description)
+
+
 def require_learning_storage(prebattle, paused, held):
     require(paused == prebattle, "Learning pause changed durable prebattle storage")
     require(held == prebattle, "Learning hold changed durable prebattle storage")
@@ -725,7 +750,10 @@ def phase(args):
                 require(initial_result["max_hp"] == 22, "GB HP-DV fixture did not start at HP22")
                 set_field(emu, "force_ko", 1)
             try:
-                wait_probe(emu, lambda result: result["phase"] == 2, 6000, "per-KO learning pause")
+                if args.phase == "ko_natural":
+                    wait_natural_probe(emu, directory, learning=True)
+                else:
+                    wait_probe(emu, lambda result: result["phase"] == 2, 6000, "per-KO learning pause")
             except HarnessError:
                 capture_progress(emu, directory, f"{args.phase}-failure")
                 raise
@@ -781,6 +809,8 @@ def phase(args):
                 if args.phase == "ko_synthetic":
                     result = finish_synthetic_command(emu, directory)
                 else:
+                    if args.phase == "ko_natural":
+                        wait_natural_probe(emu, directory, learning=False)
                     result = finish_command(emu)
             except HarnessError:
                 capture_progress(emu, directory, f"{args.phase}-failure")

@@ -1,6 +1,7 @@
 import struct
 import ctypes
 import copy
+import json
 import subprocess
 import sys
 import tempfile
@@ -28,11 +29,138 @@ from tools.rltest.story_probe import (
     read_native_machine,
     synthetic_selector_input,
     finish_synthetic_command,
+    wait_natural_probe,
 )
 from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_natural_waits_record_before_step_without_input_or_writes(self):
+        from tools.rltest import story_probe
+        from tools.rltest.frontend import Frontend
+        emu = Mock(frame=0)
+        emu.wait.side_effect = lambda predicate, **kwargs: Frontend.wait(emu, predicate, **kwargs)
+        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, force_ko=0)
+        progress = dict(injected=0, error=0)
+        machine = dict(sides=[dict(flags=3, port=1, hp=22)], ai_timer_bits=0)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe",
+                             side_effect=[probe, {**probe, "phase": 2},
+                                          {**probe, "phase": 2, "resume": 1}, probe,
+                                          {**probe, "command": 0, "active": 0}]), \
+                patch.object(story_probe, "read_progress", return_value=progress), \
+                patch.object(story_probe, "read_native_machine",
+                             return_value=machine) as native, \
+                patch.object(story_probe, "synthetic_selector_input") as selector:
+            directory = Path(temporary)
+
+            def step(frames=1):
+                name = "prelearning" if emu.frame == 0 else "postresume"
+                rows = (directory / f"ko_natural-{name}-machine-history.jsonl").read_text().splitlines()
+                self.assertEqual(json.loads(rows[-1])["frame"], emu.frame)
+                emu.frame += frames
+
+            emu.step.side_effect = step
+            wait_natural_probe(emu, directory, learning=True)
+            self.assertEqual(emu.frame, 1)
+            wait_natural_probe(emu, directory, learning=False)
+            self.assertEqual(emu.frame, 3)
+            rows = [json.loads(row) for row in (
+                directory / "ko_natural-postresume-machine-history.jsonl").read_text().splitlines()]
+            self.assertEqual(len(rows), 3)
+            self.assertEqual(rows[0]["probe"]["resume"], 1)
+            self.assertIsNone(rows[-1]["machine"])
+            self.assertEqual(native.call_count, 4)
+            selector.assert_not_called()
+        emu.hold.assert_not_called()
+        emu.stick.assert_not_called()
+        emu.release.assert_not_called()
+        emu.write.assert_not_called()
+        emu.write_u32.assert_not_called()
+        self.assertTrue(all(call.kwargs["frames"] == 6000 for call in emu.wait.call_args_list))
+
+    def test_natural_wait_refuses_loss_errors_and_injection_after_history(self):
+        from tools.rltest import story_probe
+        from tools.rltest.frontend import Frontend
+        baseline = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, force_ko=0)
+        cases = [
+            (True, {**baseline, "command": 0, "active": 0}, dict(injected=0, error=0),
+             "ended without learning"),
+            (False, {**baseline, "status": 257}, dict(injected=0, error=0), "failed"),
+            (False, baseline, dict(injected=0, error=1), "failed"),
+            (True, {**baseline, "force_ko": 1}, dict(injected=0, error=0), "synthetic"),
+            (False, baseline, dict(injected=1, error=0), "synthetic"),
+        ]
+        for learning, probe, progress, message in cases:
+            with self.subTest(message=message, learning=learning), \
+                    tempfile.TemporaryDirectory() as temporary, \
+                    patch.object(story_probe, "read_probe", return_value=probe), \
+                    patch.object(story_probe, "read_progress", return_value=progress), \
+                    patch.object(story_probe, "read_native_machine", return_value={}) as native:
+                emu = Mock(frame=0)
+                emu.wait.side_effect = lambda predicate, **kwargs: Frontend.wait(
+                    emu, predicate, **kwargs)
+                with self.assertRaisesRegex(HarnessError, message):
+                    wait_natural_probe(emu, Path(temporary), learning)
+                label = "prelearning" if learning else "postresume"
+                row = json.loads((Path(temporary) /
+                                  f"ko_natural-{label}-machine-history.jsonl").read_text())
+                self.assertEqual(row["probe"], probe)
+                self.assertEqual(row["progress"], progress)
+                if not probe["active"]:
+                    native.assert_not_called()
+                emu.step.assert_not_called()
+                emu.write.assert_not_called()
+                emu.hold.assert_not_called()
+                emu.stick.assert_not_called()
+
+    def test_natural_wait_deadlines_unchanged_in_both_stages(self):
+        from tools.rltest import story_probe
+        from tools.rltest.frontend import Frontend
+        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, force_ko=0)
+        for learning in (True, False):
+            with self.subTest(learning=learning), tempfile.TemporaryDirectory() as temporary, \
+                    patch.object(story_probe, "read_probe", return_value=probe), \
+                    patch.object(story_probe, "read_progress", return_value=dict(injected=0, error=0)), \
+                    patch.object(story_probe, "read_native_machine", return_value={}):
+                emu = Mock(frame=7)
+                emu.wait.side_effect = lambda predicate, **kwargs: Frontend.wait(
+                    emu, predicate, **kwargs)
+                emu.step.side_effect = lambda frames=1: setattr(emu, "frame", emu.frame + frames)
+                with self.assertRaisesRegex(HarnessError, "Timed out"):
+                    wait_natural_probe(emu, Path(temporary), learning)
+                self.assertEqual(emu.frame, 6007)
+                label = "prelearning" if learning else "postresume"
+                rows = (Path(temporary) /
+                        f"ko_natural-{label}-machine-history.jsonl").read_text().splitlines()
+                self.assertEqual(len(rows), 6001)
+                self.assertEqual(json.loads(rows[-1])["frame"], 6007)
+                emu.write.assert_not_called()
+                emu.hold.assert_not_called()
+                emu.stick.assert_not_called()
+
+    def test_natural_completed_failure_capture_avoids_inactive_machine(self):
+        from tools.rltest import story_probe
+        result = dict(active=0, command=0, status=0, phase=3)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe", return_value=result), \
+                patch.object(story_probe, "memory_evidence", return_value={}), \
+                patch.object(story_probe, "read_progress", return_value={"terminal": 1}), \
+                patch.object(story_probe, "read_bridge", return_value={"carry_live": {}}), \
+                patch.object(story_probe, "decode_party", return_value=(b"state", [{"hp": 0}])), \
+                patch.object(story_probe, "save_ram", return_value=(0, b"persisted-save")), \
+                patch.object(story_probe, "read_native_machine") as native:
+            directory = Path(temporary)
+            story_probe.capture_progress(Mock(), directory, "ko_natural-failure")
+            self.assertEqual((directory / "ko_natural-failure-save.bin").read_bytes(),
+                             b"persisted-save")
+            self.assertEqual((directory / "ko_natural-failure-state.bin").read_bytes(), b"state")
+            self.assertEqual(json.loads((directory / "ko_natural-failure-party.json").read_text()),
+                             [{"hp": 0}])
+            self.assertEqual(json.loads((directory / "ko_natural-failure-result.json").read_text()),
+                             result)
+            native.assert_not_called()
+
     def test_cpu_command_never_drives_human_input_and_logs_counters(self):
         from tools.rltest import story_probe
         machine = dict(mode=1, sequence=0, result=0,
