@@ -61,6 +61,17 @@ SOFTWARE_OPTIONS = {
     "mupen64plus-rsp-plugin": "hle",
     "mupen64plus-cpucore": "dynamic_recompiler",
 }
+ANGRYLION_THREADS_OPTION = "mupen64plus-angrylion-multithread"
+
+
+def _software_options(options):
+    result = {**SOFTWARE_OPTIONS, **(options or {})}
+    threads = os.environ.get("RLTEST_ANGRYLION_THREADS")
+    if threads is not None:
+        if threads not in {str(count) for count in range(1, 65)}:
+            raise HarnessError("RLTEST_ANGRYLION_THREADS must be an integer from 1 to 64")
+        result[ANGRYLION_THREADS_OPTION] = threads
+    return result
 
 
 class Symbols:
@@ -134,12 +145,12 @@ class Frontend:
 
     def __init__(self, core, rom, map_path, output=".local/rltest", *, options=None,
                  ram_order="word-swapped", timeout=110):
+        self.options = _software_options(options)
         self.core_path = Path(core).expanduser().resolve()
         self.rom_path = Path(rom).resolve()
         self.symbols = Symbols(map_path)
         self.output = Path(output).resolve()
         self.output.mkdir(parents=True, exist_ok=True)
-        self.options = {**SOFTWARE_OPTIONS, **(options or {})}
         if ram_order not in ("word-swapped", "big"):
             raise ValueError("ram_order must be 'word-swapped' or 'big'")
         self.ram_order = ram_order
@@ -157,6 +168,7 @@ class Frontend:
         self.initialized = self.loaded = False
         self.deadline = time.monotonic() + timeout
         self._strings = {}
+        self._angrylion_threads_supported = False
         self._rom_data = None
         self._log = LogPrint(self._log_message)
         self._log_interface = LogInterface(self._log)
@@ -180,6 +192,13 @@ class Frontend:
                 raise HarnessError("Unsupported libretro API version")
             self.core.retro_init()
             self.initialized = True
+            self._check()
+            if (ANGRYLION_THREADS_OPTION in self.options
+                    and not self._angrylion_threads_supported):
+                raise HarnessError(
+                    f"Core does not support {ANGRYLION_THREADS_OPTION}; "
+                    "unset RLTEST_ANGRYLION_THREADS or use Mupen64Plus-Next"
+                )
             if debug:
                 print("[rltest] core initialized", file=sys.stderr)
             info = SystemInfo()
@@ -267,6 +286,8 @@ class Frontend:
                     choices = variables[index].value.decode().split(";", 1)[1].strip().split("|")
                     if key in self.options and self.options[key] not in choices:
                         raise HarnessError(f"Unsupported core option {key}={self.options[key]}")
+                    if key == ANGRYLION_THREADS_OPTION:
+                        self._angrylion_threads_supported = True
                     self.options.setdefault(key, choices[0])
                     if "RLTEST_DEBUG" in os.environ:
                         print(f"[rltest] {key}={self.options[key]} choices={choices}", file=sys.stderr)
