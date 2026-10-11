@@ -186,7 +186,9 @@ RetroArch profile. See [PREVIEW.md](PREVIEW.md) for the renderer comparison,
 local evidence paths and physical-controller checklist. At the title, press N64 Start and
 pass Game Pak Check with N64 A. In Menu Select, hold L and press N64 A to open
 Roguelike. N64 A confirms, N64 B backs out, the D-pad moves through lists, and
-the C-buttons (right stick on the configured preview controller) navigate
+the C-buttons (D-pad on the configured Xbox preview controller) navigate
 battle moves. With the preview script, keyboard Enter is Start, Z is N64 A,
 X is N64 B and Q is L (hold Q through the Menu Select fade while pressing Z).
 Arrow keys navigate; I/K/J/L are C-up/down/left/right.
+On Xbox, the left stick handles directional/menu navigation; the right stick
+is not bound to C-buttons.

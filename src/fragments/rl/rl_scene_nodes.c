@@ -64,14 +64,16 @@ static void node_number(char* out, unsigned value, unsigned digits) {
     }
 }
 
-static void node_mon_label(char* out, const RlMon* mon) {
-    node_copy(out, "No.000 Lv000 HP000/000");
-    node_number(out + 3, mon->species, 3);
-    node_number(out + 9, mon->level, 3);
-    node_number(out + 15, mon->cur_hp, 3);
-    node_number(out + 19, mon->max_hp, 3);
-    out[22] = mon->fainted || !mon->cur_hp ? '!' : ' ';
-    out[23] = 0;
+static void node_mon_label(char* out, const RlMon* mon, unsigned slot) {
+    unsigned length;
+    node_number(out, slot + 1, 1);
+    out[1] = ' ';
+    node_copy(out + 2, rl_ui_species_name(mon->species));
+    if (mon->fainted || !mon->cur_hp) {
+        for (length = 0; out[length]; length++) {}
+        out[length++] = '!';
+        out[length] = 0;
+    }
 }
 
 /* Content identities must survive opening Bag, purchases, and suspend/reentry. */
@@ -155,10 +157,26 @@ static void node_done(const char* message) {
 
 static void node_root(void);
 
+/* Resolve only on a private copy, with the same stream used on confirmation. */
+static int node_event_mon(unsigned choice, unsigned slot, RlMon* out) {
+    RunState copy;
+    unsigned index;
+    if (sEvent != 0 && sEvent != 3 && sEvent != 4) return 0;
+    copy = *sRun;
+    copy.rng = node_seed(0x45564E54U);
+    if (sEvent == 0) copy.party_count = 0;
+    if (rl_event_resolve_unlocked(&copy, sEvent, choice, slot, sRentals,
+                                 &sMovePool, rl_meta_permitted_relics(sMeta)) != RL_OK)
+        return 0;
+    index = sEvent == 0 ? 0 : slot;
+    *out = copy.party[index];
+    return 1;
+}
+
 static void node_party(const char* title, unsigned page) {
     unsigned i;
     for (i = 0; i < sRun->party_count; i++) {
-        node_mon_label(sLabels[i], &sRun->party[i]);
+        node_mon_label(sLabels[i], &sRun->party[i], i);
         node_add(i, sLabels[i], i);
     }
     node_add(i, "Back", RL_NO_SLOT);
@@ -220,6 +238,7 @@ static void node_relics(void) {
 
 static void node_root(void) {
     unsigned i, n;
+    RlMon preview;
     const char* title;
     n = 0;
     sChoice = 0;
@@ -265,10 +284,24 @@ static void node_root(void) {
         title = rl_events[sEvent].name;
         if (sEvent == 6) {
             for (i = 0; i < sWildCount; i++) {
-                node_mon_label(sLabels[n], &sWild[i]);
+                node_mon_label(sLabels[n], &sWild[i], i);
                 node_add(n, sLabels[n], i);
                 n++;
             }
+        } else if (sEvent == 0) {
+            for (i = 0; i < 2; i++) {
+                node_number(sLabels[n], i + 1, 1);
+                sLabels[n][1] = ' ';
+                node_copy(sLabels[n] + 2, rl_ui_species_name(i ? 138 : 140));
+                node_add(n, sLabels[n], i);
+                n++;
+            }
+        } else if ((sEvent == 3 || sEvent == 4) && node_event_mon(0, 0, &preview)) {
+            node_copy(sLabels[n], "Receive ");
+            node_copy(sLabels[n] + 8, rl_ui_species_name(preview.species));
+            node_add(n, sLabels[n], 0);
+            n++;
+            node_add(n++, rl_events[sEvent].choices[1], 1);
         } else {
             node_add(n++, rl_events[sEvent].choices[0], 0);
             node_add(n++, rl_events[sEvent].choices[1], 1);
@@ -277,7 +310,7 @@ static void node_root(void) {
     case RL_RECRUIT:
         title = "Recruit: choose one rental";
         for (i = 0; i < sWildCount; i++) {
-            node_mon_label(sLabels[n], &sWild[i]);
+            node_mon_label(sLabels[n], &sWild[i], i);
             node_add(n, sLabels[n], i);
             n++;
         }
@@ -485,7 +518,8 @@ int rl_scene_nodes_update(u16 pressed) {
         } else {
             sChoice = value;
             if ((sEvent == 2 || sEvent == 3 || sEvent == 4) && value == 0)
-                node_party("Choose a Pokemon", NODE_TARGET);
+                node_party(sEvent == 2 ? "Deposit which Pokemon?" :
+                           "Replace which Pokemon?", NODE_TARGET);
             else {
                 result = node_event(value, 0);
                 if (result == RL_OK) node_done("Event resolved.");
@@ -577,10 +611,53 @@ void rl_scene_nodes_draw(void) {
     char label[48];
     unsigned value;
     int relic_shop;
+    int mon_page;
+    const RlMon* mon;
+    RlMon preview;
+    mon = NULL;
+    mon_page = 0;
+    if (sRun && sList.cursor >= 0 && sList.cursor < sList.count) {
+        value = sValues[sList.cursor];
+        if (sPage == NODE_ROOT && (sMode == RL_RECRUIT ||
+            (sMode == RL_EVENT && (sEvent == 0 || sEvent == 3 ||
+                                  sEvent == 4 || sEvent == 6)))) {
+            mon_page = 1;
+            if ((sMode == RL_RECRUIT || sEvent == 6) && value < sWildCount)
+                mon = &sWild[value];
+            else if (sMode == RL_EVENT && value < (sEvent == 0 ? 2U : 1U) &&
+                     node_event_mon(value, 0, &preview))
+                mon = &preview;
+        } else if (sPage == NODE_TARGET || sPage == NODE_SWAP ||
+                   (sPage == NODE_ROOT && sMode == RL_SCENE_PARTY) ||
+                   (sPage == NODE_PARTY_ACTION && sChoice == 101)) {
+            mon_page = 1;
+            if (value < sRun->party_count) {
+                mon = &sRun->party[value];
+                if (sPage == NODE_TARGET && sMode == RL_EVENT &&
+                    sChoice == 0 && (sEvent == 3 || sEvent == 4) &&
+                    node_event_mon(0, value, &preview)) {
+                    node_mon_label(label, mon, value);
+                    rl_ui_text(30, 276, "Replace party slot:", sGold);
+                    rl_ui_text_wrap(30, 296, 340, 1, label, sWhite);
+                    mon = &preview;
+                }
+            }
+        } else if (sPage == NODE_MOVE || sPage == NODE_RELEASE ||
+                   (sPage == NODE_PARTY_ACTION &&
+                    (sMode == RL_SCENE_PARTY || sChoice == 102))) {
+            mon_page = 1;
+            if (sSlot < sRun->party_count) {
+                mon = &sRun->party[sSlot];
+                node_mon_label(label, mon, sSlot);
+                rl_ui_text_wrap(30, 276, 340, 1, label, sGold);
+            }
+        }
+    }
     relic_shop = sPage == NODE_ROOT && sMode == RL_MART &&
         sList.cursor >= 0 && (unsigned)sList.cursor < sShopCount &&
         sShop[sValues[sList.cursor]].item == RL_RELIC_ITEM;
-    rl_ui_list_draw(&sList, 18, 18, 604);
+    rl_ui_list_draw(&sList, 18, 18, mon_page ? 364 : 604);
+    if (mon) rl_ui_mon_detail(mon, 400, 50);
     if (sRun && sPage != NODE_RELICS) {
         node_copy(label, "Coins 0000000000  Party 0/6");
         node_number(label + 6, sRun->money, 10);
@@ -588,7 +665,8 @@ void rl_scene_nodes_draw(void) {
         rl_ui_text(30, 220, label, sGold);
     }
     if (sPage == NODE_ROOT && sMode == RL_EVENT) {
-        rl_ui_text(30, 250, sDescriptions[sEvent], sWhite);
+        rl_ui_text_wrap(30, 250, mon_page ? 340 : 570,
+                        mon_page ? 3 : 2, sDescriptions[sEvent], sWhite);
         if (sEvent == 8)
             rl_ui_text_wrap(30, 276, 570, 1,
                             "Amber/Master Ball recruit unavailable.", sGold);
@@ -618,8 +696,11 @@ void rl_scene_nodes_draw(void) {
         rl_ui_text_wrap(30, 306, 570, 2,
                         rl_scene_relic_status(sRun, value), sGold);
     }
-    if (sMessage) rl_ui_text(30, 314, sMessage, sRed);
-    rl_ui_text(30, relic_shop ? 394 : 354,
+    if (sMessage) {
+        if (mon_page) rl_ui_text_wrap(30, 340, 570, 2, sMessage, sRed);
+        else rl_ui_text(30, 314, sMessage, sRed);
+    }
+    rl_ui_text(30, mon_page || relic_shop ? 394 : 354,
                (sPage == NODE_ROOT &&
                 (sMode == RL_SCENE_BAG || sMode == RL_SCENE_PARTY)) ?
                "D-pad: select   A: confirm   B: back   R: relics" :

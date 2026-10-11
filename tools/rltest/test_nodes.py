@@ -12,6 +12,7 @@ from tools.rltest.test_play_run import (
     press, read_run, reenter_roguelike, require, scene,
     start_new_run, wait_scene,
     enter_roguelike_from_menu,
+    capture_choices,
 )
 from tools.rltest.test_custom_battle import Mon, PendingBattle
 
@@ -114,9 +115,14 @@ def verify_events(emu, routes=EVENT_ROUTES):
         print(f"event {event}: seed={seed} lane={lane}", flush=True)
         before = enter_node(emu, seed, lane, 4)
         suspend_node(emu, f"event-{event:02d}")
+        if event in (0, 3, 4, 6):
+            capture_choices(emu, 3 if event == 6 else 2 if event == 0 else 1,
+                            f"event-{event:02d}-candidate-details")
         # Berry Forest's money branch is observable even with a healthy draft.
         select(emu, 1 if event == 9 else 0)
         if event in (2, 3, 4):
+            capture_choices(emu, read_run(emu).party_count,
+                            f"event-{event:02d}-target-details")
             press(emu, "N64_A")
         emu.screenshot(emu.output / f"event-{event:02d}-choice.png")
         wait_scene(emu, SCENE_MAP)
@@ -198,6 +204,7 @@ def verify_center_recruit_and_tools(emu):
 
     enter_node(emu, 1, 1, 5)
     suspend_node(emu, "recruit")
+    capture_choices(emu, 3, "recruit-candidate-details")
     press(emu, "N64_A")
     wait_scene(emu, SCENE_MAP)
     run = read_run(emu)

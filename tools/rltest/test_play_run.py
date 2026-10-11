@@ -2,6 +2,7 @@
 
 import argparse
 import ctypes
+import json
 from pathlib import Path
 
 from tools.rltest.frontend import Frontend, HarnessError
@@ -36,6 +37,10 @@ class Run(ctypes.BigEndianStructure):
         ("stats", Stats), ("daycare", Mon),
         ("daycare_nodes", ctypes.c_uint8), ("daycare_active", ctypes.c_uint8),
     ]
+
+class Reward(ctypes.BigEndianStructure):
+    _fields_ = [("kind", ctypes.c_uint8), ("detail", ctypes.c_uint8),
+                ("amount", ctypes.c_uint16), ("mon", Mon)]
 
 
 SCENE_MENU = 0
@@ -72,6 +77,36 @@ def wait_draft(emu):
 
 def press(emu, button, after=4):
     emu.press(button, frames=4, after=after)
+
+def capture_choices(emu, count, label):
+    """Browse only through controller input, leaving the cursor/run unchanged."""
+    before = emu.read("gRlRun", ctypes.sizeof(Run))
+    for index in range(count):
+        emu.step(20)
+        emu.screenshot(emu.output / f"{label}-{index + 1}.png")
+        if index + 1 < count:
+            press(emu, "DOWN")
+    for _ in range(count - 1):
+        press(emu, "UP")
+    require(emu.read("gRlRun", ctypes.sizeof(Run)) == before,
+            f"{label}: browsing changed persistent run state")
+
+
+def capture_reward_details(emu, battle_index):
+    count = emu.read_u32("gRlPlayRewardCount")
+    require(1 <= count <= 4, "invalid native reward count")
+    rewards = (Reward * count).from_buffer_copy(
+        emu.read("gRlPlayRewards", ctypes.sizeof(Reward) * count))
+    capture_choices(emu, count, f"reward-details-battle-{battle_index}")
+    evidence = [
+        {"choice": i + 1, "species": reward.mon.species,
+         "level": reward.mon.level, "hp": reward.mon.cur_hp,
+         "max_hp": reward.mon.max_hp, "moves": list(reward.mon.moves),
+         "pp": list(reward.mon.pp), "max_pp": list(reward.mon.max_pp)}
+        for i, reward in enumerate(rewards) if reward.kind == 0
+    ]
+    (emu.output / f"reward-recruits-battle-{battle_index}.json").write_text(
+        json.dumps(evidence, indent=2) + "\n")
 
 
 def submit_first_move(emu):
@@ -189,6 +224,9 @@ def choose_active_and_battle(emu, battle_index):
     require(emu.read_u32("gRlBattleActive") == 0, "battle-active flag was not cleared")
     after = read_run(emu)
     require(after.stats.battles == battle_index, "battle result was not recorded")
+    require(scene(emu) == SCENE_REWARD,
+            f"battle {battle_index} did not produce a reward screen")
+    capture_reward_details(emu, battle_index)
     if battle_index < 3:
         require(scene(emu) == SCENE_REWARD,
                 f"test battle {battle_index} did not win into the reward scene: {scene(emu)}")
