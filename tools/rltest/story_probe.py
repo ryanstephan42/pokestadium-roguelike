@@ -117,15 +117,111 @@ def decode_party(emu, result):
     for slot in range(count):
         start = offset + slot * ct.sizeof(Mon)
         mon_raw = raw[start:start + ct.sizeof(Mon)]
-        mon = Mon.from_buffer_copy(mon_raw)
-        party.append(dict(species=mon.species, level=mon.level, exp=mon.exp, dvs=mon.dvs,
-                          hp=mon.cur_hp, max_hp=mon.max_hp, fainted=mon.fainted,
-                          status=mon.status, moves=list(mon.moves), pp=list(mon.pp),
-                          max_pp=list(mon.max_pp), growth=mon.growth,
-                          stat_exp=list(mon.stat_exp), base_stats=list(mon.base_stats),
-                          current_stats=list(mon.current_stats), held_relic=mon.held_relic,
-                          nickname=mon_raw[Mon.nickname.offset:Mon.nickname.offset + 11].hex()))
+        party.append(decode_mon(mon_raw))
     return raw, party
+
+
+def decode_mon(raw):
+    mon = Mon.from_buffer_copy(raw)
+    return dict(species=mon.species, level=mon.level, exp=mon.exp, dvs=mon.dvs,
+                hp=mon.cur_hp, max_hp=mon.max_hp, fainted=mon.fainted,
+                status=mon.status, moves=list(mon.moves), pp=list(mon.pp),
+                max_pp=list(mon.max_pp), growth=mon.growth,
+                stat_exp=list(mon.stat_exp), base_stats=list(mon.base_stats),
+                current_stats=list(mon.current_stats), held_relic=mon.held_relic,
+                nickname=raw[Mon.nickname.offset:Mon.nickname.offset + 11].hex())
+
+
+def read_progress(emu):
+    offset = 19 * 4
+    size = offset + 5 * ct.sizeof(Mon)
+    require(emu.read_u32("gScProgressProbeSize") == size and
+            emu.read_u32("gScProgressMonOffset") == offset, "Story progression ABI mismatch")
+    raw = emu.read("gScProgressProbe", size)
+    words = struct.unpack(">19I", raw[:offset])
+    evidence = dict(zip(("ko_captures", "resumes", "terminal", "error", "injected",
+                         "award", "learn_move"), words[:7]))
+    evidence["ko_stages"], evidence["resume_stages"] = list(words[7:13]), list(words[13:19])
+    for i, name in enumerate(("before_ko", "after_ko", "after_resume",
+                              "terminal_resident", "terminal_native")):
+        start = offset + i * ct.sizeof(Mon)
+        evidence[name] = decode_mon(raw[start:start + ct.sizeof(Mon)])
+    return evidence
+
+
+def require_ko_progress(evidence, synthetic, terminal=False):
+    require(not evidence["error"] and evidence["ko_captures"] == 1 and
+            evidence["injected"] == int(synthetic) and evidence["award"] == 69 and
+            evidence["learn_move"] == 73, f"KO attribution mismatch: {evidence}")
+    before, after = evidence["before_ko"], evidence["after_ko"]
+    require(before["exp"] == 235 and before["level"] == 6 and
+            before["stat_exp"] == [0] * 5 and
+            after["exp"] == 304 and after["level"] == 7 and after["dvs"] == 0x8889 and
+            after["stat_exp"] == [39, 52, 43, 65, 50] and
+            after["current_stats"] == [24, 13, 13, 12, 15] and
+            after["hp"] == before["hp"] + 2 and after["max_hp"] == 24 and
+            after["moves"] == before["moves"] and after["pp"] == before["pp"] and
+            after["status"] == before["status"], f"Exactly-once canonical KO mismatch: {evidence}")
+    if synthetic:
+        require(evidence["ko_stages"][0] == 8, "Injected +1 Attack stage was not retained")
+    if terminal:
+        require(evidence["resumes"] == 1 and evidence["terminal"] == 1 and
+                evidence["resume_stages"] == evidence["ko_stages"],
+                "Learning resume/stage preservation mismatch")
+        resumed = evidence["after_resume"]
+        require(resumed == {**after, "moves": [33, 45, 0, 73],
+                            "pp": after["pp"][:3] + [10], "max_pp": [35, 40, 0, 10]},
+                "Learning changed unrelated state or failed move/PP publication")
+        native, resident = evidence["terminal_native"], evidence["terminal_resident"]
+        keys = ("species", "level", "exp", "dvs", "hp", "max_hp", "status", "fainted",
+                "stat_exp", "current_stats", "moves", "pp", "max_pp")
+        require(all(native[key] == resident[key] for key in keys),
+                "Terminal native/result resident carry mismatch")
+        require(resident["exp"] == 304 and resident["stat_exp"] == after["stat_exp"],
+                "Duplicate KO replay altered XP/stat experience")
+
+
+def require_resume_native(progress, native):
+    mon = progress["after_resume"]
+    party, live = native["carry_party"], native["carry_live"]
+    require(all(party[key] == mon[key] for key in
+                ("species", "level", "exp", "dvs", "hp", "max_hp", "status")) and
+            [party[f"stats{i}"] for i in range(5)] == mon["current_stats"] and
+            [party[f"moves{i}"] for i in range(4)] == mon["moves"] and
+            [party[f"pp{i}"] for i in range(4)] == mon["pp"],
+            "Resumed original native party publication mismatch")
+    require(all(live[key] == mon[key] for key in
+                ("species", "level", "dvs", "hp", "max_hp", "status")) and
+            [live[f"moves{i}"] for i in range(4)] == mon["moves"] and
+            [live[f"pp{i}"] for i in range(4)] == mon["pp"] and
+            [live[f"stage{i}"] for i in range(6)] == progress["resume_stages"],
+            "Resumed live moves/PP/stages publication mismatch")
+    scale = (25, 28, 33, 40, 50, 66, 100, 150, 200, 250, 300, 350, 400)
+    for i in range(4):
+        stage = progress["resume_stages"][i]
+        require(1 <= stage <= 13, "Invalid resumed stage")
+        value = max(1, min(999, mon["current_stats"][i + 1] * scale[stage - 1] // 100))
+        if i == 0 and mon["status"] & 0x10:
+            value //= 2
+        if i == 2 and mon["status"] & 0x40:
+            value //= 4
+        require(live[f"base{i}"] == mon["current_stats"][i + 1] and
+                live[f"stats{i + 1}"] == max(1, value),
+                "Resumed live canonical stats/status/stage mismatch")
+
+
+def capture_progress(emu, directory, label):
+    result = read_probe(emu)
+    memory = memory_evidence(emu, result)
+    for name, data in (("result", result), ("memory", memory)):
+        (directory / f"{label}-{name}.json").write_text(json.dumps(data, indent=2) + "\n")
+    progress = read_progress(emu)
+    (directory / f"{label}-progress.json").write_text(json.dumps(progress, indent=2) + "\n")
+    (directory / f"{label}-native.json").write_text(json.dumps(read_bridge(emu), indent=2) + "\n")
+    raw, party = decode_party(emu, result)
+    (directory / f"{label}-state.bin").write_bytes(raw)
+    (directory / f"{label}-party.json").write_text(json.dumps(party, indent=2) + "\n")
+    return result, progress, raw, party, memory
 
 
 def require_fixture_party(party, hp=17, pp=7, status=4):
@@ -366,7 +462,8 @@ def phase(args):
                   options=options, timeout=900) as emu, probe_deadline(emu, directory):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
-                          "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry"):
+                          "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
+                          "ko_synthetic", "ko_natural", "ko_reload"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -378,10 +475,10 @@ def phase(args):
             result = command(emu, 2, 1)
             require(result["status"] == 2 and save_ram(emu)[1] == before,
                     f"Missing Pak did not fail read-only: {result}")
-        elif args.phase in ("reload", "interrupted_reload", "checkpoint_reload"):
+        elif args.phase in ("reload", "interrupted_reload", "checkpoint_reload", "ko_reload"):
             result = command(emu, 1)
             interrupted = args.phase != "reload"
-            if args.phase != "checkpoint_reload":
+            if args.phase not in ("checkpoint_reload", "ko_reload"):
                 require(result["status"] == 0 and bool(result["interrupted"]) == interrupted and
                         result["level"] == (6 if interrupted else 7) and
                         result["phase"] == (0 if interrupted else 3),
@@ -442,56 +539,93 @@ def phase(args):
             after = save_ram(emu)[1]
             story_owned_changes(before, after, base)
             (directory / "save-ram.bin").write_bytes(after)
-        elif args.phase in ("battle", "natural"):
+        elif args.phase in ("battle", "natural", "ko_synthetic", "ko_natural"):
+            synthetic = args.phase in ("battle", "ko_synthetic")
             base = find_pak(before)
             start_command(emu, 3)
-            wait_probe(emu, lambda result: result["active"] and result["ticks"],
-                       1800, "resident fragment-62 probe")
-            if args.phase == "battle":
-                require(read_probe(emu)["max_hp"] == 22, "GB HP-DV fixture did not start at HP22")
+            try:
+                wait_probe(emu, lambda result: result["active"] and result["ticks"],
+                           1800, "resident fragment-62 probe")
+            except HarnessError:
+                capture_progress(emu, directory, f"{args.phase}-failure")
+                raise
+            initial_result, _, _, _, initial_memory = capture_progress(
+                emu, directory, f"{args.phase}-entry")
+            (directory / f"{args.phase}-prebattle-save.bin").write_bytes(save_ram(emu)[1])
+            validate_memory(initial_memory, initial_result)
+            if synthetic:
+                require(initial_result["max_hp"] == 22, "GB HP-DV fixture did not start at HP22")
                 set_field(emu, "force_ko", 1)
-            wait_probe(emu, lambda result: result["phase"] == 2, 6000, "per-KO learning pause")
+            try:
+                wait_probe(emu, lambda result: result["phase"] == 2, 6000, "per-KO learning pause")
+            except HarnessError:
+                capture_progress(emu, directory, f"{args.phase}-failure")
+                raise
+            paused, progress, resident, paused_party, paused_memory = capture_progress(
+                emu, directory, f"{args.phase}-learning")
+            require_ko_progress(progress, synthetic)
+            validate_memory(paused_memory, paused)
             paused = read_probe(emu)
             require(paused["ko_count"] == 1 and paused["level"] == 7 and paused["max_hp"] == 24,
                     f"Expected exactly one canonical level-up at the KO: {paused}")
             require(paused["native_max_hp"] == paused["live_max_hp"] == paused["max_hp"] and
                     paused["native_dvs"] == paused["live_dvs"] == paused["dvs"] == 0x8889,
                     f"GB stats/DVs were replaced by native recalculation: {paused}")
-            if args.phase == "battle":
+            if synthetic:
                 require(paused["attack_stage"] == 8 and
                         paused["live_attack"] == paused["live_base_attack"] * 150 // 100,
                         f"KO refresh lost the synthetic +1 stage: {paused}")
             address, size = paused["state_address"], paused["state_size"]
             require(0x80000000 <= address < address + size <= map_value(args.map, "heap_BSS_START"),
                     "Story state is not in fixed resident memory before the main pool")
-            resident = emu.read(address, size)
             combat_start, combat_size = paused["combat_address"], paused["combat_size"]
             require(0x80000000 <= combat_start < combat_start + combat_size <=
                     map_value(args.map, "heap_BSS_START") and combat_size < 1024,
                     "Combat view is not small fixed resident value data")
             combat = emu.read(combat_start, combat_size)
+            paused_native = read_bridge(emu)
             require(not paused["cold_busy"] and not paused["cold_address"] and
                     paused["cold_calls"] == 1 and paused["cold_before"] == paused["cold_after"],
                     f"Cold preparation did not return/unload before battle: {paused}")
             emu.step(60)
-            held = read_probe(emu)
+            held, held_progress, held_state, held_party, held_memory = capture_progress(
+                emu, directory, f"{args.phase}-held")
+            held_native = read_bridge(emu)
             require(held["pause_ticks"] > paused["pause_ticks"], "Learning pause did not pump frames")
-            require(emu.read(address, size) == resident and
+            require(held_state == resident and held_party == paused_party and held_progress == progress and
+                    held_native == paused_native and
+                    all(held_native[f"current_{kind}"] == paused_native[f"initial_{kind}"]
+                        for kind in ("party", "live")) and
                     emu.read(combat_start, combat_size) == combat and
                     all(held[key] == paused[key] for key in (
                         "exp", "ko_count", "logic_steps", "presentation_steps", "cold_calls")),
                     "Learning advanced state, XP, presentation or battle actions")
+            validate_memory(held_memory, held)
             set_field(emu, "resume", 1)
-            result = finish_command(emu)
+            try:
+                result = finish_command(emu)
+            except HarnessError:
+                capture_progress(emu, directory, f"{args.phase}-failure")
+                raise
+            result, final_progress, _, final_party, final_memory = capture_progress(
+                emu, directory, f"{args.phase}-terminal")
+            after = save_ram(emu)[1]
+            (directory / f"{args.phase}-terminal-save.bin").write_bytes(after)
+            require_ko_progress(final_progress, synthetic, terminal=True)
+            require_resume_native(final_progress, read_bridge(emu))
+            require(final_party == [final_progress["terminal_resident"]],
+                    "Cold commit changed terminal party persistence")
+            validate_memory(final_memory, result)
             require(result["status"] == 0 and result["ko_count"] == 1 and result["phase"] == 3 and
                     result["post_pool_crc"] == result["completed_crc"],
                     f"Battle result was not durably committed after pool return: {result}")
             require(result["cold_calls"] == 2 and not result["cold_busy"] and
                     not result["cold_address"] and result["cold_before"] == result["cold_after"],
                     f"Postbattle cold reload/commit ownership failed: {result}")
-            after = save_ram(emu)[1]
             story_owned_changes(before, after, base)
             (directory / "save-ram.bin").write_bytes(after)
+            (directory / "completed-party.json").write_text(json.dumps(final_party, indent=2) + "\n")
+            (directory / "completed-result.json").write_text(json.dumps(result, indent=2) + "\n")
         else:
             require(native_command(emu, 2, create=1, runs=42)[1] == 0, "RL01 baseline failed")
             pointer, baseline = save_ram(emu)
@@ -517,7 +651,8 @@ def phase(args):
                 (directory / "save-ram.bin").write_bytes(save_ram(emu)[1])
         (directory / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n")
         if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload",
-                          "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry"):
+                          "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
+                          "ko_synthetic", "ko_natural", "ko_reload"):
             evidence = memory_evidence(emu, result)
             (directory / f"{args.phase}-memory.json").write_text(json.dumps(evidence, indent=2) + "\n")
             raw, party = decode_party(emu, result)
@@ -539,6 +674,14 @@ def phase(args):
                 checkpoint = json.loads((directory / "checkpoint-result.json").read_text())
                 require(result["completed_crc"] == checkpoint["completed_crc"],
                         "Checkpoint load changed completed encounter CRC")
+            if args.phase == "ko_reload":
+                expected_party = json.loads((directory / "completed-party.json").read_text())
+                expected_result = json.loads((directory / "completed-result.json").read_text())
+                require(result["status"] == 0 and result["phase"] == 3 and not result["interrupted"] and
+                        party == expected_party and result["completed_crc"] == expected_result["completed_crc"] and
+                        not any(result[key] for key in ("ko_count", "ticks", "logic_steps", "presentation_steps")),
+                        f"Decoded completed checkpoint/replay mismatch: {result}")
+                require(save_ram(emu)[1] == before, "Completed reload modified storage")
             if args.phase in ("bridge_init", "bridge_carry"):
                 require_bridge(bridge_evidence, party, carry=args.phase == "bridge_carry")
                 require(result["command"] == 6 and result["active"] == 1 and result["phase"] == 1 and
@@ -569,7 +712,8 @@ def main():
     parser.add_argument("--phase", choices=("create", "interrupt", "interrupted_reload",
                                           "battle", "natural", "reload", "missing", "full",
                                           "allocation", "checkpoint", "checkpoint_reload",
-                                          "bridge_init", "bridge_carry"))
+                                          "bridge_init", "bridge_carry",
+                                          "ko_synthetic", "ko_natural", "ko_reload"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")

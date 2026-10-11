@@ -768,6 +768,78 @@ retain no such pointer. Final native-result versus story-resident carry
 comparison and synthetic/natural KO-learning execution remain a later,
 separately reviewed milestone.
 
+After separate grants, exact `959513af02836cf9e69fe3f4e0f3bfd52773d81c`
+passed `bridge_init` and then fresh-process `bridge_carry`. Independent
+read-only review accepted initializer/60-frame hold and injected-one-observe/
+60-frame hold respectively. Raw decoded resident data shows only HP16,
+PP slot 0 = 6 and status `0x48` changed in the carry run; fresh current native
+views match immutable boundary captures and canonical stats/stages/paralysis
+Speed remain intact. Each recorded 100 allocations, zero failures, cold pool
+balance at 2,957,408, direct map clear and 1,340 pre/post written margins with
+no new bottom writes (not exhaustive SP safety). Evidence and seed/prebattle
+hashes remain separate in `.local/rltest/story-bridge-959513a/`; both slots
+were released process-free. No natural move/status or terminal carry was proven.
+
+#### KO/learning and terminal carry diagnostics (pre-native review)
+
+The command-3 lab fixture remains canonical and separate from command 6.
+New pointer-free progression diagnostics retain before/after KO, after resume,
+terminal resident and terminal native-result mons, expected XP award, injected
+KO count, KO/resume counts, learned move and stage arrays. Target-compiled
+diagnostic size/mon offset and the existing canonical mon ABI are checked.
+The single-player/single-enemy bounded probe rejects repeated KO capture or
+resume; this is diagnostic scope, not a campaign party-size restriction.
+
+Before an observed first KO, current native HP/status/original PP are copied
+into the diagnostic input. The existing combat API then awards exactly 69 XP
+for the L5 Charmander (yield 65, trainer multiplier), giving L7/XP304 and stat
+experience `[39,52,43,65,50]`. Canonical current stats become
+`[24,13,13,12,15]` with DVs `0x8889`; surviving current HP increases by 2.
+The source checks the award/stat-experience delta rather than accepting only
+a level change. Synthetic mode separately counts its forced KO/+1 Attack
+stage injection; natural mode requires zero such injections.
+
+Learning snapshots record the freshly published original/live native records.
+Each held frame rereads them and rejects drift before resume, without
+correction. Harness evidence checks fresh resident/native/combat equality,
+unchanged XP/KO/logic/presentation and increasing render-pause count across
+60 frames. One resume accepts Leech Seed 73 into slot 3 with PP/max PP 10,
+captures immediate original/live publication and requires unchanged stages,
+canonical stats plus status modifiers, and unrelated party fields.
+
+After `rl_start_battle` returns, persistent native result and resident mons
+are captured before any cold commit. Original parties belong to resident
+`D_800AE540`, not the released BATL/RLBT live pool. A mismatch in species,
+level/XP/DVs, HP/faint/status, stat experience/current stats or moves/PP/max PP
+sets explicit error 2 and refuses commit; observation/learning drift uses
+error 1. Result base-stat display order/nickname conversion are recorded but
+not mistaken for the authoritative story fields or included in this native
+persistence comparison. No freed live pointer survives the return.
+
+Explicit proposed phases are `ko_synthetic` -> fresh-process `ko_reload` in
+one isolated output, then independently granted `ko_natural` -> `ko_reload`
+in another. Natural mode makes no HP/PP/status/stage writes or forced-KO
+request. Both persist learning/held/terminal state, native, progression,
+result/memory JSON and terminal save before assertions; completed reload
+directly decodes named party fields/CRC, requiring no replay or storage write.
+Host tests cover canonical deltas, duplicate/resume counting, fresh-native
+learning drift, terminal PP/status mismatch and refusal before save, plus
+helper ABI/stage/learned PP/XP and terminal-carry rejection.
+
+The source-stage progression diagnostic is 416 bytes, with the first mon at
+offset 76; the existing bridge diagnostic remains 736 and mailbox 212.
+Pool start is `0x8011E3F0`, 2,576 bytes above accepted `959513af`; cold RAM
+remains 173,872. Target tick frame is 104 bytes (previously 112) and poll stays
+128. These are static footprints only: additional resident code/data require
+fresh strict allocation/resource/map/pool/written-stack checks, with no
+headroom waiver or assumption based on earlier bounded tests.
+
+All phases require source review and explicit grants; none has run for this
+delta. Stop on the first observation, ABI, resource, allocation, map/pool,
+written-stack, KO/learning, terminal-carry or save mismatch, preserve evidence
+and release the slot. Prior bounded proofs are not natural KO, terminal carry,
+six-party/Transform or full-gate acceptance.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

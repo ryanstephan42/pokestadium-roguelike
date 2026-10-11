@@ -8,6 +8,7 @@ static int native_result = 1;
 static int launch_outcome = RL_BATTLE_WIN;
 static int fail_initialization;
 static int bridge_case;
+static int progress_case;
 static unsigned char saved[SC_SAVE_SIZE];
 static RlBattleSide sides[2];
 static unk_D_800AE540_0004 teams[2];
@@ -168,6 +169,21 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
     check(rl_battle_stage(live, 0) == 8);
     base = resident.party[0].current_stats[1];
     check(live->unk_38 == base && live->unk_2A == base * 150 / 100);
+    if (progress_case == 1) {
+        rl_battle_packed_pp(live, 0) = 35;
+        check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
+              failed && gScProgressProbe.error == 1 && gScProgressProbe.resumes == 0 &&
+              gScBridgeProbe.current_live.pp[0] == 35 &&
+              gScBridgeProbe.initial_live.pp[0] != 35);
+        return -1;
+    }
+    if (progress_case == 3) {
+        gScProgressProbe.resumes = 1; gScProbe.resume = 1;
+        check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
+              failed && gScProgressProbe.error == 1 && resident.phase == SC_LEARNING &&
+              resident.party[0].moves[3] == 0 && resident.party[0].exp == 304);
+        return -1;
+    }
     xp = resident.party[0].exp;
     for (i = 0; i < 10; i++) {
         check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal));
@@ -199,7 +215,25 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
     check(publish_live(&sides[0]) == SC_OK && live->unk_2A == base * 66 / 100);
     live->unk_5C[0] = 0;
     check(publish_live(&sides[0]) == SC_INVALID);
+    check(gScProgressProbe.ko_captures == 1 && gScProgressProbe.resumes == 1 &&
+          gScProgressProbe.after_ko.exp == gScProgressProbe.before_ko.exp + gScProgressProbe.award &&
+          gScProgressProbe.award == 69 && gScProgressProbe.after_ko.exp == 304 &&
+          gScProgressProbe.after_ko.stat_exp[0] == 39 &&
+          gScProgressProbe.after_ko.stat_exp[1] == 52 &&
+          gScProgressProbe.after_ko.stat_exp[2] == 43 &&
+          gScProgressProbe.after_ko.stat_exp[3] == 65 &&
+          gScProgressProbe.after_ko.stat_exp[4] == 50 &&
+          gScProgressProbe.after_ko.current_stats[0] == 24 &&
+          gScProgressProbe.after_ko.current_stats[1] == 13 &&
+          gScProgressProbe.after_ko.current_stats[2] == 13 &&
+          gScProgressProbe.after_ko.current_stats[3] == 12 &&
+          gScProgressProbe.after_ko.current_stats[4] == 15 &&
+          gScProgressProbe.ko_stages[0] == 8 && gScProgressProbe.resume_stages[0] == 8 &&
+          gScProgressProbe.after_resume.moves[3] == gScProgressProbe.learn_move);
     memset(result, 0, sizeof(*result)); result->outcome = launch_outcome;
+    result->player_count = 1; result->player_index[0] = 0;
+    result->player[0] = resident.party[0];
+    if (progress_case == 2) result->player[0].pp[0]++;
     return launch_outcome;
 }
 
@@ -278,12 +312,27 @@ int main(void) {
         check(resident.party[0].moves[i] == checkpoint.moves[i] &&
               resident.party[0].pp[i] == checkpoint.pp[i] &&
               resident.party[0].max_pp[i] == checkpoint.max_pp[i]);
-    fail_initialization = 0;
+    fail_initialization = 0; launch_outcome = RL_BATTLE_WIN;
+    for (progress_case = 1; progress_case <= 3; progress_case++) {
+        writes = 0; gScProbe.command = 3;
+        check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
+              writes == 1 && !gScProbeActive && !gScProbe.active &&
+              gScProgressProbe.error == (progress_case == 2 ? 2U : 1U));
+        check(sc_save_decode(&snapshot, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK &&
+              snapshot.interrupted && snapshot.state.party[0].level == 6);
+    }
+    progress_case = 0;
     for (bridge_case = 1; bridge_case <= 10; bridge_case++) {
         writes = 0; gScProbe.command = 6;
         check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
               writes == 1 && !gScProbeActive && !gScProbe.active);
     }
+    checkpoint = resident.party[0];
+    check(terminal_matches(&checkpoint, &resident.party[0]));
+    checkpoint.pp[0]++;
+    check(!terminal_matches(&checkpoint, &resident.party[0]));
+    checkpoint = resident.party[0]; checkpoint.status ^= 8;
+    check(!terminal_matches(&checkpoint, &resident.party[0]));
     puts("Story runtime host scheduling/stat/pause/codec scaffold: OK (not emulator proof)");
     return 0;
 }

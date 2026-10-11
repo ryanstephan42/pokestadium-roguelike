@@ -30,6 +30,12 @@ typedef struct ScBridgeProbe {
     ScBridgeView current_party, current_live;
 } ScBridgeProbe;
 extern volatile ScBridgeProbe gScBridgeProbe;
+typedef struct ScProgressProbe {
+    RlU32 ko_captures, resumes, terminal, error, injected, award, learn_move;
+    RlU32 ko_stages[6], resume_stages[6];
+    RlMon before_ko, after_ko, after_resume, terminal_resident, terminal_native;
+} ScProgressProbe;
+extern ScProgressProbe gScProgressProbe;
 extern int gScProbeActive;
 int sc_runtime_probe_poll(void);
 int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy);

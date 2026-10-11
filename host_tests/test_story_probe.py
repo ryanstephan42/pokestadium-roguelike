@@ -20,11 +20,67 @@ from tools.rltest.story_probe import (
     BRIDGE_VIEW_FIELDS,
     read_bridge,
     require_bridge,
+    require_ko_progress,
+    read_progress,
+    require_resume_native,
 )
 from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_ko_progression_and_terminal_carry_rejections(self):
+        before = dict(species=1, level=6, exp=235, dvs=0x8889, hp=20, max_hp=22,
+                      status=0, fainted=0, moves=[33, 45, 0, 0], pp=[34, 40, 0, 0],
+                      max_pp=[35, 40, 0, 0], stat_exp=[0] * 5,
+                      current_stats=[22, 11, 11, 11, 13])
+        after = {**before, "level": 7, "exp": 304, "hp": 22, "max_hp": 24,
+                 "stat_exp": [39, 52, 43, 65, 50], "current_stats": [24, 13, 13, 12, 15]}
+        resumed = {**after, "moves": [33, 45, 0, 73], "pp": [34, 40, 0, 10],
+                   "max_pp": [35, 40, 0, 10]}
+        evidence = dict(error=0, ko_captures=1, injected=1, award=69, learn_move=73,
+                        resumes=1, terminal=1, ko_stages=[8, 7, 7, 7, 7, 7],
+                        resume_stages=[8, 7, 7, 7, 7, 7], before_ko=before,
+                        after_ko=after, after_resume=resumed,
+                        terminal_native=copy.deepcopy(resumed), terminal_resident=resumed)
+        require_ko_progress(evidence, True, terminal=True)
+        native = dict(carry_party={}, carry_live={})
+        for kind, view in native.items():
+            view.update({key: resumed[key] for key in
+                         ("species", "level", "exp", "dvs", "hp", "max_hp", "status")})
+            view.update({f"stats{i}": stat for i, stat in enumerate(resumed["current_stats"])})
+            view.update({f"moves{i}": move for i, move in enumerate(resumed["moves"])})
+            view.update({f"pp{i}": pp for i, pp in enumerate(resumed["pp"])})
+            if kind == "carry_live":
+                view["stats1"] = 19
+                view.update({f"base{i}": stat for i, stat in enumerate([13, 13, 12, 15])})
+                view.update({f"stage{i}": stage for i, stage in enumerate(evidence["resume_stages"])})
+        require_resume_native(evidence, native)
+        wrong_native = copy.deepcopy(native)
+        wrong_native["carry_live"]["pp3"] = 0
+        with self.assertRaisesRegex(HarnessError, "live moves"):
+            require_resume_native(evidence, wrong_native)
+        for key, value in (("injected", 0), ("ko_captures", 2), ("resumes", 2), ("award", 68)):
+            wrong = copy.deepcopy(evidence)
+            wrong[key] = value
+            with self.assertRaises(HarnessError):
+                require_ko_progress(wrong, True, terminal=True)
+        for field in ("pp", "stat_exp", "current_stats"):
+            wrong = copy.deepcopy(evidence)
+            wrong["terminal_native"][field][0] += 1
+            with self.assertRaisesRegex(HarnessError, "Terminal native"):
+                require_ko_progress(wrong, True, terminal=True)
+        evidence["injected"] = 0
+        require_ko_progress(evidence, False, terminal=True)
+        emu = Mock()
+        offset = 19 * 4
+        size = offset + 5 * ctypes.sizeof(Mon)
+        emu.read_u32.side_effect = [size, offset]
+        emu.read.return_value = bytes(size)
+        self.assertEqual(read_progress(emu)["after_ko"]["exp"], 0)
+        emu.read_u32.side_effect = [size - 4]
+        with self.assertRaisesRegex(HarnessError, "progression ABI mismatch"):
+            read_progress(emu)
+
     def test_bridge_snapshot_abi_and_rejections(self):
         mon = dict(species=1, level=6, exp=235, dvs=0x8889, hp=17, max_hp=22,
                    fainted=0, status=0x40, moves=[33, 45, 0, 0], pp=[7, 40, 0, 0],
