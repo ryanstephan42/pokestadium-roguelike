@@ -22,9 +22,18 @@ gcc "${flags[@]}" host_tests/test_play_ui.c \
     src/roguelike/rl_content.c src/roguelike/rl_enemy.c \
     src/roguelike/rl_party.c src/roguelike/rl_relics.c \
     src/roguelike/rl_core.c src/roguelike/rl_map.c \
-    src/roguelike/rl_rewards.c src/roguelike/rl_meta.c \
+    src/roguelike/rl_rewards.c src/roguelike/rl_meta.c src/roguelike/rl_meta_content.c \
     src/roguelike/rl_save_format.c src/roguelike/rl_ui_model.c \
     -DROGUELIKE -Wl,--gc-sections -o build/host_tests/play-ui-adapter
 build/host_tests/play-ui-adapter
+gcc "${flags[@]}" -Werror=declaration-after-statement -fsanitize=address,undefined \
+    -fno-omit-frame-pointer -g host_tests/test_play_ui.c \
+    src/roguelike/rl_content.c src/roguelike/rl_enemy.c \
+    src/roguelike/rl_party.c src/roguelike/rl_relics.c \
+    src/roguelike/rl_core.c src/roguelike/rl_map.c \
+    src/roguelike/rl_rewards.c src/roguelike/rl_meta.c src/roguelike/rl_meta_content.c \
+    src/roguelike/rl_save_format.c src/roguelike/rl_ui_model.c \
+    -DROGUELIKE -Wl,--gc-sections -o build/host_tests/play-ui-adapter-san
+ASAN_OPTIONS=detect_leaks=1 build/host_tests/play-ui-adapter-san
 python3 -m unittest host_tests.test_battle_layout
 echo "Play UI/ordered-slot adapter: OK"

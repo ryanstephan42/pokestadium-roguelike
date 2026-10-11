@@ -30,19 +30,30 @@ enum {
     RL_PLAY_BATTLE,
     RL_PLAY_NODE,
     RL_PLAY_PROFILE,
-    RL_PLAY_SETTINGS
+    RL_PLAY_SETTINGS,
+    RL_PLAY_META,
+    RL_PLAY_REGISTER
 };
 
 static const Color_RGBA8 sPlayWhite = { 255, 255, 255, 255 };
 static const Color_RGBA8 sPlayGold = { 255, 224, 96, 255 };
 static const Color_RGBA8 sPlayMuted = { 160, 176, 192, 255 };
 static RlUiList sPlayList;
-static RlUiItem sPlayItems[9];
-static char sPlayLabels[9][36];
+static RlUiItem sPlayItems[153];
+static char sPlayLabels[153][36];
+static unsigned char sPlayMetaIds[153];
+static RlMetaRentalLoadout sPlayCatalog[RL_PLAY_POOL_SIZE];
+static RlMetaMoveVariant sPlayVariants[RL_PLAY_POOL_SIZE];
+static RlU8 sPlaySpecies[RL_PLAY_POOL_SIZE];
+static RlU16 sPlayBst[RL_PLAY_POOL_SIZE];
+static RlU8 sPlayThemed[RL_PLAY_POOL_SIZE];
+static unsigned char sPlayVariantIndex[RL_PLAY_DRAFT_SIZE];
+static int sPlayNewAfterRegistration;
 static RlMon sPlayPool[RL_PLAY_POOL_SIZE];
 static RlPool sPlayRewardPool;
 static RlPool sPlayNodePool;
-static RlMon sPlayDraft[RL_PLAY_DRAFT_SIZE];
+RlMon gRlPlayDraft[RL_PLAY_DRAFT_SIZE];
+#define sPlayDraft gRlPlayDraft
 static unsigned char sPlayDraftSelected[RL_PLAY_DRAFT_SIZE];
 static unsigned char sPlayDraftOldSpecies[RL_PLAY_DRAFT_SIZE];
 static RlReward sPlayRewards[RL_PLAY_REWARD_SIZE];
@@ -73,6 +84,7 @@ static RunState sPlayLoadedRun;
 #define sPlayUnsaved gRlPlayProfile.unsaved
 static RlSaveStatus sPlayProfileStatus;
 static RlU8 sPlayMetaBytes[2][RL_META_MAX_SIZE];
+static RlU8 sPlayRecordBytes[2][RL_SAVE_MAX_SIZE];
 
 static unsigned rl_play_active_selected(unsigned slot);
 static void rl_play_make_summary(void);
@@ -80,6 +92,8 @@ static RlSaveStatus rl_play_store(int include_run);
 static void rl_play_settings(void);
 static int rl_play_begin_new(void);
 static void rl_play_preview_lane(void);
+static void rl_play_meta_menu(void);
+static void rl_play_registration(void);
 
 static int rl_play_meta_equal(const RlMeta* a, const RlMeta* b) {
     unsigned first;
@@ -198,12 +212,14 @@ static void rl_play_build_root(void) {
     sPlayItems[2].disabled = 0;
     sPlayItems[3].text = "Starter pool / Ascension";
     sPlayItems[3].disabled = 0;
+    sPlayItems[4].text = "Permanent shop / registration";
+    sPlayItems[4].disabled = 0;
     if (sPlaySummaryPrepared && !sPlaySummarySaved && rl_run_is_over(&gRlRun)) {
-        sPlayItems[4].text = "Retry unsaved run results";
-        sPlayItems[4].disabled = 0;
-        rl_play_init_list("ROGUELIKE RUN", 5, 5);
+        sPlayItems[5].text = "Retry unsaved run results";
+        sPlayItems[5].disabled = 0;
+        rl_play_init_list("ROGUELIKE RUN", 6, 6);
     } else {
-        rl_play_init_list("ROGUELIKE RUN", 4, 4);
+        rl_play_init_list("ROGUELIKE RUN", 5, 5);
     }
 }
 
@@ -218,14 +234,217 @@ static void rl_play_settings(void) {
     rl_play_number(sPlayLabels[3] + 10, sPlayAscension, 2);
     sPlayItems[3].text = sPlayLabels[3];
     sPlayItems[3].disabled = 0;
-    sPlayItems[4].text = "Back";
+    sPlayItems[4].text = gRlPlayProfile.theme == RL_NO_SLOT ? "Theme: All registered" :
+        rl_meta_theme_name(gRlPlayProfile.theme);
     sPlayItems[4].disabled = 0;
-    rl_play_init_list("Pools: A select; Ascension: A cycle", 5, 5);
+    sPlayItems[5].text = gRlPlayProfile.kit == RL_META_KIT_DEFAULT ?
+        "Kit: 300 coins" : "Kit: 100 coins + 1 Potion";
+    sPlayItems[5].disabled = 0;
+    sPlayItems[6].text = "Back";
+    sPlayItems[6].disabled = 0;
+    rl_play_init_list("A: select / cycle settings", 7, 7);
     rl_play_set_scene(RL_PLAY_SETTINGS);
+}
+
+static int rl_play_record_equal(const RlMeta* a, const RunState* ar,
+                                 const RlMeta* b, const RunState* br) {
+    unsigned first, second;
+    if (rl_save_encode(a, ar, sPlayRecordBytes[0], RL_SAVE_MAX_SIZE, &first) != RL_OK ||
+        rl_save_encode(b, br, sPlayRecordBytes[1], RL_SAVE_MAX_SIZE, &second) != RL_OK)
+        return 0;
+    return first == second && bcmp(sPlayRecordBytes[0], sPlayRecordBytes[1], first) == 0;
+}
+
+/* Keep the exact candidate after an uncertain write, especially for skip. */
+static RlSaveStatus rl_play_commit_edit(void) {
+    RlPlayProfile* profile;
+    RlU8 has_run;
+    RlSaveStatus status;
+    const RunState* saved_run;
+    profile = &gRlPlayProfile;
+    if (!profile->edit_pending) return RL_SAVE_INVALID;
+    saved_run = profile->edit_has_run ? &profile->edit_run : NULL;
+    status = rl_save_load(0, &sPlayLoadedMeta, &sPlayLoadedRun, &has_run);
+    if (status != RL_SAVE_OK) return status;
+    if (rl_play_record_equal(&sPlayLoadedMeta, has_run ? &sPlayLoadedRun : NULL,
+                             &profile->edit_candidate, saved_run)) {
+        sPlayMeta = profile->edit_candidate;
+        profile->edit_pending = 0;
+        return RL_SAVE_OK;
+    }
+    if (!rl_play_record_equal(&sPlayLoadedMeta, has_run ? &sPlayLoadedRun : NULL,
+                              &profile->edit_base, saved_run))
+        return RL_SAVE_DEVICE_CHANGED;
+    status = rl_save_store(0, &profile->edit_candidate, saved_run, 0);
+    if (status == RL_SAVE_OK) {
+        sPlayMeta = profile->edit_candidate;
+        profile->edit_pending = 0;
+    }
+    return status;
+}
+
+static RlSaveStatus rl_play_edit(unsigned action, unsigned id) {
+    RlPlayProfile* profile;
+    RlSaveStatus status;
+    int result;
+    profile = &gRlPlayProfile;
+    if (profile->edit_pending) return rl_play_commit_edit();
+    status = rl_save_load(0, &profile->edit_base, &profile->edit_run,
+                           &profile->edit_has_run);
+    if (status != RL_SAVE_OK) return status;
+    if (!rl_play_meta_equal(&profile->edit_base, &sPlayMeta))
+        return RL_SAVE_DEVICE_CHANGED;
+    profile->edit_candidate = profile->edit_base;
+    if (action == 0) result = rl_meta_purchase_option(&profile->edit_candidate, id);
+    else if (action == 1) result = rl_meta_register_species(&profile->edit_candidate, id);
+    else result = rl_meta_skip_species_registration(&profile->edit_candidate);
+    if (result != RL_OK) return RL_SAVE_INVALID;
+    profile->edit_pending = 1;
+    return rl_play_commit_edit();
+}
+
+static void rl_play_meta_menu(void) {
+    unsigned i, count;
+    count = 0;
+    if (gRlPlayProfile.edit_pending) {
+        sPlayItems[0].text = "Retry pending profile save";
+        sPlayItems[0].disabled = 0;
+        sPlayMetaIds[0] = RL_NO_SLOT;
+        count = 1;
+    } else {
+        sPlayItems[count].text = "Register earned species / skip";
+        sPlayItems[count].disabled = !sPlayMeta.pending_registration_count;
+        sPlayMetaIds[count++] = RL_NO_SLOT;
+        for (i = 0; i < RL_META_OPTION_COUNT; i++) {
+            unsigned length;
+            if (!rl_meta_option_available(i)) continue;
+            rl_play_copy_text(sPlayLabels[count], rl_meta_option_name(i));
+            for (length = 0; sPlayLabels[count][length]; length++) {}
+            sPlayLabels[count][length++] = ' ';
+            if (rl_meta_option_unlocked(&sPlayMeta, i))
+                rl_play_copy_text(sPlayLabels[count] + length, "(owned)");
+            else {
+                rl_play_number(sPlayLabels[count] + length, rl_meta_option_cost(i), 2);
+                sPlayLabels[count][length + 2] = '\0';
+            }
+            sPlayItems[count].text = sPlayLabels[count];
+            sPlayItems[count].disabled = rl_meta_option_unlocked(&sPlayMeta, i) ||
+                sPlayMeta.currency < rl_meta_option_cost(i);
+            sPlayMetaIds[count++] = (unsigned char)i;
+        }
+    }
+    sPlayItems[count].text = "Back";
+    sPlayItems[count].disabled = 0;
+    rl_play_init_list("Permanent options - not run coins", count + 1, 7);
+    rl_play_set_scene(RL_PLAY_META);
+}
+
+static void rl_play_registration(void) {
+    unsigned species, count;
+    count = 0;
+    if (gRlPlayProfile.edit_pending) {
+        rl_play_meta_menu();
+        return;
+    }
+    for (species = 1; species <= 151; species++) {
+        if (!(sPlayMeta.pending_species[(species - 1) >> 3] &
+              (1U << ((species - 1) & 7)))) continue;
+        sPlayMetaIds[count] = (unsigned char)species;
+        rl_play_copy_text(sPlayLabels[count], rl_ui_species_name(species));
+        sPlayItems[count].text = sPlayLabels[count];
+        sPlayItems[count++].disabled = 0;
+    }
+    sPlayMetaIds[count] = 0;
+    sPlayItems[count].text = "Skip one earned choice";
+    sPlayItems[count++].disabled = !sPlayMeta.pending_registration_count;
+    sPlayItems[count].text = "Back";
+    sPlayItems[count].disabled = 0;
+    rl_play_init_list("Register one species per earned receipt", count + 1, 7);
+    rl_play_set_scene(RL_PLAY_REGISTER);
+}
+
+static int rl_play_load_species(void) {
+    static const unsigned sets[] = {
+        RL_RENTAL_SET_POKE, RL_RENTAL_SET_PRIME, RL_RENTAL_SET_PETIT
+    };
+    unsigned i, j, bst;
+    int themed_count;
+    sPlayPoolCount = rl_load_rental_pool(sets[sPlayStarterPool], sPlayPool,
+                                         RL_PLAY_POOL_SIZE);
+    if (sPlayPoolCount < 1) return 0;
+    for (i = 0; i < (unsigned)sPlayPoolCount; i++) {
+        sPlaySpecies[i] = sPlayPool[i].species;
+        bst = 0;
+        for (j = 0; j < 5; j++) bst += sPlayPool[i].base_stats[j];
+        sPlayBst[i] = (RlU16)bst;
+    }
+    if (gRlPlayProfile.theme != RL_NO_SLOT) {
+        themed_count = rl_meta_theme_species(&sPlayMeta, gRlPlayProfile.theme,
+            sPlaySpecies, sPlayPoolCount, sPlayThemed, RL_PLAY_POOL_SIZE);
+        if (themed_count < 1) return 0;
+        for (i = 0; i < (unsigned)sPlayPoolCount; i++) {
+            for (j = 0; j < (unsigned)themed_count; j++)
+                if (sPlaySpecies[i] == sPlayThemed[j]) break;
+            if (j == (unsigned)themed_count) sPlaySpecies[i] = 0;
+        }
+    }
+    return 1;
+}
+
+static int rl_play_clean_starter(RlMon* mon) {
+    unsigned i;
+    mon->level = 30;
+    mon->dvs = 0x9999;
+    mon->status = 0;
+    mon->fainted = 0;
+    mon->held_relic = RL_NO_SLOT;
+    mon->exp = 0;
+    for (i = 0; i < 5; i++) mon->stat_exp[i] = 0;
+    for (i = 0; i < 4; i++) {
+        mon->max_pp[i] = mon->moves[i] ?
+            D_80072B00[mon->moves[i] - 1].unk_05 : 0;
+        mon->pp[i] = mon->max_pp[i];
+    }
+    return rl_prepare_mon(mon, 1) == 0;
+}
+
+static int rl_play_cycle_variant(unsigned slot) {
+    unsigned option, i, count;
+    int loaded, found;
+    RlMon candidate;
+    count = 0;
+    /* Index zero always restores the canonical starter loadout. */
+    for (i = 0; i < (unsigned)sPlayPoolCount; i++)
+        if (sPlayPool[i].species == sPlayDraft[slot].species) break;
+    if (i == (unsigned)sPlayPoolCount) return 0;
+    candidate = sPlayPool[i];
+    for (option = RL_META_MOVESET_1; option <= RL_META_MOVESET_4; option++) {
+        if (!rl_meta_option_unlocked(&sPlayMeta, option)) continue;
+        loaded = rl_load_meta_rental_catalog(option, sPlayCatalog, RL_PLAY_POOL_SIZE);
+        if (loaded < 1) return 0;
+        found = rl_meta_list_move_variants(&sPlayMeta, option, candidate.species,
+            candidate.moves, sPlayCatalog, loaded, sPlayVariants + count,
+            RL_PLAY_POOL_SIZE - count);
+        if (found == RL_EMPTY) continue;
+        if (found < 0) return 0;
+        count += found;
+    }
+    sPlayVariantIndex[slot] = (unsigned char)((sPlayVariantIndex[slot] + 1) % (count + 1));
+    if (sPlayVariantIndex[slot])
+        for (i = 0; i < 4; i++)
+            candidate.moves[i] = sPlayVariants[sPlayVariantIndex[slot] - 1].moves[i];
+    if (!rl_play_clean_starter(&candidate)) return 0;
+    sPlayDraft[slot] = candidate;
+    return 1;
 }
 
 static void rl_play_request_new(void) {
     RlU8 has_run;
+    if (gRlPlayProfile.edit_pending) {
+        rl_play_meta_menu();
+        sPlayMessage = "Resolve the pending profile save first";
+        return;
+    }
     if (sPlaySummaryPrepared && !sPlaySummarySaved) {
         sPlayMessage = "Retry unsaved results before starting another run";
         return;
@@ -233,6 +452,11 @@ static void rl_play_request_new(void) {
     sPlayProfileStatus = rl_save_load(0, &sPlayMeta, &sPlayLoadedRun, &has_run);
     if (sPlayProfileStatus == RL_SAVE_OK) {
         sPlayUnsaved = 0;
+        if (sPlayMeta.pending_registration_count) {
+            sPlayNewAfterRegistration = 1;
+            rl_play_registration();
+            return;
+        }
         rl_play_begin_new();
         return;
     }
@@ -280,7 +504,7 @@ static void rl_play_make_draft(void) {
     }
     available = (unsigned)sPlayPoolCount;
     for (i = 0; i < RL_PLAY_DRAFT_SIZE; i++) {
-        if (avoid_previous && available > RL_PLAY_DRAFT_SIZE) {
+        if (gRlPlayTestMode && avoid_previous && available > RL_PLAY_DRAFT_SIZE) {
             for (j = 0; j < available; ) {
                 unsigned k;
                 int old;
@@ -303,8 +527,39 @@ static void rl_play_make_draft(void) {
             gRlPlayScene = RL_PLAY_ERROR;
             return;
         }
-        pick = rl_random_bounded(&gRlRun.rng, available);
+        if (!gRlPlayTestMode) {
+            RlU8 species[RL_PLAY_POOL_SIZE], chosen;
+            RlU16 bst[RL_PLAY_POOL_SIZE];
+            unsigned count;
+            int result;
+            count = 0;
+            for (j = 0; j < available; j++) {
+                unsigned index;
+                index = indices[j];
+                if (!sPlaySpecies[index] ||
+                    !rl_meta_species_unlocked(&sPlayMeta, sPlaySpecies[index])) continue;
+                species[count] = sPlaySpecies[index];
+                bst[count++] = sPlayBst[index];
+            }
+            result = rl_meta_choose_species(&sPlayMeta, &gRlRun.rng, species, bst,
+                                             count, &chosen);
+            if (result != RL_OK) {
+                sPlayMessage = "Registered theme needs six distinct species";
+                gRlPlayScene = RL_PLAY_ERROR;
+                return;
+            }
+            for (pick = 0; pick < available; pick++)
+                if (sPlayPool[indices[pick]].species == chosen) break;
+        } else {
+            pick = rl_random_bounded(&gRlRun.rng, available);
+        }
         sPlayDraft[i] = sPlayPool[indices[pick]];
+        if (!gRlPlayTestMode && !rl_play_clean_starter(&sPlayDraft[i])) {
+            sPlayMessage = "Could not construct canonical starter";
+            gRlPlayScene = RL_PLAY_ERROR;
+            return;
+        }
+        sPlayVariantIndex[i] = 0;
         gRlPlayDraftSpecies[i] = sPlayDraft[i].species;
         indices[pick] = indices[available - 1];
         available--;
@@ -355,12 +610,23 @@ static int rl_play_begin_new(void) {
         return 0;
     }
     rl_run_new(&gRlRun, seed, ascension);
+    if (!gRlPlayTestMode &&
+        rl_meta_apply_kit(&sPlayMeta, &gRlRun, gRlPlayProfile.kit) != RL_OK) {
+        sPlayMessage = "Selected kit is unavailable";
+        gRlPlayScene = RL_PLAY_ERROR;
+        return 0;
+    }
     sPlaySummaryPrepared = 0;
     sPlaySummarySaved = 0;
     sPlayRerollUsed = 0;
     sPlayChosenLane = 0;
     sPlayPoolCount = rl_load_rental_pool(sets[sPlayStarterPool], sPlayPool,
                                          RL_PLAY_POOL_SIZE);
+    if (!gRlPlayTestMode && !rl_play_load_species()) {
+        sPlayMessage = "Selected theme has no legal registered starters";
+        gRlPlayScene = RL_PLAY_ERROR;
+        return 0;
+    }
     if (sPlayPoolCount < RL_PLAY_DRAFT_SIZE) {
         sPlayMessage = "Could not load the Poke Cup rental pool";
         gRlPlayScene = RL_PLAY_ERROR;
@@ -590,9 +856,11 @@ static void rl_play_make_summary(void) {
     RlSaveStatus status;
     sPlayItems[0].text = sPlaySummarySaved ? "Results saved" : "Save results (replaces Pak run)";
     sPlayItems[0].disabled = 0;
-    sPlayItems[1].text = sPlaySummarySaved ? "Return" : "Discard unsaved results";
+    sPlayItems[1].text = "Return (unsaved results retained)";
     sPlayItems[1].disabled = 0;
-    rl_play_init_list("Run summary", 2, 2);
+    sPlayItems[2].text = "Permanent shop / registration";
+    sPlayItems[2].disabled = !sPlaySummarySaved;
+    rl_play_init_list("Run summary", 3, 3);
     rl_play_set_scene(RL_PLAY_SUMMARY);
     if (!sPlaySummarySaved && !sPlayUnsaved &&
         gRlPlayTestMode != 2 &&
@@ -600,6 +868,7 @@ static void rl_play_make_summary(void) {
         status = rl_play_store(0);
         if (status == RL_SAVE_OK) {
             sPlayItems[0].text = "Results saved";
+            sPlayItems[2].disabled = 0;
             sPlayMessage = "Progression saved to Controller Pak";
         } else {
             sPlayMessage = rl_save_status_text(status);
@@ -863,22 +1132,42 @@ static void rl_play_update_root(u16 pressed) {
         gRlPlayScene = RL_PLAY_MENU;
         sPlayMessage = NULL;
         gRlPlayExit = 1;
-    } else if (result == 3) {
+    } else if (result == 3 || result == 4) {
         RlU8 has_run;
         RlSaveStatus status;
+        if (sPlaySummaryPrepared && !sPlaySummarySaved) {
+            sPlayMessage = "Retry unsaved results before editing progression";
+            return;
+        }
+        if (gRlPlayProfile.edit_pending) {
+            rl_play_meta_menu();
+            return;
+        }
         status = rl_save_load(0, &sPlayMeta, &sPlayLoadedRun, &has_run);
         if (status == RL_SAVE_OK) {
-            rl_play_settings();
+            if (result == 3) rl_play_settings();
+            else {
+                sPlayNewAfterRegistration = 0;
+                rl_play_meta_menu();
+            }
         } else {
             sPlayMessage = rl_save_status_text(status);
         }
-    } else if (result == 4 && sPlaySummaryPrepared && !sPlaySummarySaved) {
+    } else if (result == 5 && sPlaySummaryPrepared && !sPlaySummarySaved) {
         rl_play_make_summary();
     }
 }
 
 static void rl_play_update_draft(u16 pressed) {
     int result;
+    if (!gRlPlayTestMode && (pressed & (RL_UI_LEFT | RL_UI_RIGHT))) {
+        if (sPlayList.cursor < RL_PLAY_DRAFT_SIZE) {
+            if (!rl_play_cycle_variant(sPlayList.cursor))
+                sPlayMessage = "Compatible loadouts unavailable";
+            else sPlayMessage = "Canonical loadout selected; no stat or PP-Up bonuses";
+        }
+        pressed &= ~(RL_UI_LEFT | RL_UI_RIGHT);
+    }
     rl_play_refresh_draft();
     result = rl_ui_list(&sPlayList, pressed);
     if (result >= 0 && result < RL_PLAY_DRAFT_SIZE) {
@@ -1020,17 +1309,60 @@ static void rl_play_update_summary(u16 pressed) {
             sPlayMessage = rl_save_status_text(status);
         }
     } else if (result == 1 || result == RL_UI_CANCEL) {
-        if (result == 1 && !sPlaySummarySaved) {
-            sPlaySummaryPrepared = 0;
-        }
         rl_play_build_root();
         rl_play_set_scene(RL_PLAY_MENU);
+    } else if (result == 2 && sPlaySummarySaved) {
+        sPlayNewAfterRegistration = 0;
+        rl_play_meta_menu();
+    }
+}
+
+static void rl_play_update_meta(u16 pressed) {
+    int result;
+    RlSaveStatus status;
+    unsigned scene;
+    scene = gRlPlayScene;
+    result = rl_ui_list(&sPlayList, pressed);
+    if (result == RL_UI_CANCEL || result == sPlayList.count - 1) {
+        sPlayNewAfterRegistration = 0;
+        rl_play_build_root();
+        rl_play_set_scene(RL_PLAY_MENU);
+        return;
+    }
+    if (result < 0) return;
+    if (scene == RL_PLAY_META && !gRlPlayProfile.edit_pending && result == 0) {
+        rl_play_registration();
+        return;
+    }
+    if (gRlPlayProfile.edit_pending) status = rl_play_commit_edit();
+    else if (scene == RL_PLAY_REGISTER)
+        status = rl_play_edit(sPlayMetaIds[result] ? 1 : 2, sPlayMetaIds[result]);
+    else status = rl_play_edit(0, sPlayMetaIds[result]);
+    if (status != RL_SAVE_OK) {
+        rl_play_meta_menu();
+        sPlayMessage = rl_save_status_text(status);
+        return;
+    }
+    if (sPlayNewAfterRegistration && !sPlayMeta.pending_registration_count) {
+        sPlayNewAfterRegistration = 0;
+        rl_play_begin_new();
+    } else if (scene == RL_PLAY_REGISTER || sPlayNewAfterRegistration) {
+        rl_play_registration();
+        sPlayMessage = "Choice saved; remaining receipts are shown above";
+    } else {
+        rl_play_meta_menu();
+        sPlayMessage = "Profile saved; suspension preserved";
     }
 }
 
 s32 rl_play_init(void) {
     s32 result;
     gRlPlayExit = 0;
+    if (!gRlPlayProfile.options_initialized) {
+        gRlPlayProfile.theme = RL_NO_SLOT;
+        gRlPlayProfile.kit = RL_META_KIT_DEFAULT;
+        gRlPlayProfile.options_initialized = 1;
+    }
     sPlayMessage = NULL;
     result = rl_ui_init();
     if (result != RL_UI_NONE) {
@@ -1069,6 +1401,14 @@ s32 rl_play_init(void) {
         return RL_UI_NONE;
     }
     gRlPlayScene = RL_PLAY_MENU;
+    if (!gRlPlayProfile.edit_pending &&
+        !(sPlaySummaryPrepared && !sPlaySummarySaved)) {
+        RlU8 has_run;
+        RlSaveStatus status;
+        status = rl_save_load(0, &sPlayLoadedMeta, &sPlayLoadedRun, &has_run);
+        if (status == RL_SAVE_OK) sPlayMeta = sPlayLoadedMeta;
+        else sPlayMessage = rl_save_status_text(status);
+    }
     rl_play_build_root();
     return RL_UI_NONE;
 }
@@ -1107,6 +1447,10 @@ s32 rl_play_update(u16 pressed) {
         case RL_PLAY_SUMMARY:
             rl_play_update_summary(pressed);
             break;
+        case RL_PLAY_META:
+        case RL_PLAY_REGISTER:
+            rl_play_update_meta(pressed);
+            break;
         case RL_PLAY_NODE:
             {
                 int result;
@@ -1127,6 +1471,8 @@ s32 rl_play_update(u16 pressed) {
                     rl_meta_init(&sPlayMeta);
                     sPlayAscension = 0;
                     sPlayStarterPool = 0;
+                    gRlPlayProfile.theme = RL_NO_SLOT;
+                    gRlPlayProfile.kit = RL_META_KIT_DEFAULT;
                     sPlayUnsaved = result == 1;
                     if (!sPlayUnsaved) {
                         status = rl_save_store(0, &sPlayMeta, NULL, 1);
@@ -1159,7 +1505,30 @@ s32 rl_play_update(u16 pressed) {
                         sPlayAscension = selected;
                         rl_play_number(sPlayLabels[3] + 10, selected, 2);
                     }
-                } else if (result == 4 || result == RL_UI_CANCEL) {
+                } else if (result == 4) {
+                    unsigned attempt, theme, count, i;
+                    theme = gRlPlayProfile.theme;
+                    for (attempt = 0; attempt <= RL_META_THEME_COUNT; attempt++) {
+                        theme = theme == RL_NO_SLOT ? 0 :
+                            theme + 1 == RL_META_THEME_COUNT ? RL_NO_SLOT : theme + 1;
+                        if (theme == RL_NO_SLOT) break;
+                        if (!rl_meta_option_unlocked(&sPlayMeta, rl_meta_theme_option(theme)))
+                            continue;
+                        gRlPlayProfile.theme = (RlU8)theme;
+                        if (!rl_play_load_species()) continue;
+                        count = 0;
+                        for (i = 0; i < (unsigned)sPlayPoolCount; i++)
+                            if (sPlaySpecies[i]) count++;
+                        if (count >= RL_PLAY_DRAFT_SIZE) break;
+                    }
+                    gRlPlayProfile.theme = (RlU8)theme;
+                    rl_play_settings();
+                } else if (result == 5) {
+                    gRlPlayProfile.kit = gRlPlayProfile.kit == RL_META_KIT_DEFAULT &&
+                        rl_meta_option_unlocked(&sPlayMeta, RL_META_KIT_POTION) ?
+                        RL_META_KIT_POTION : RL_META_KIT_DEFAULT;
+                    rl_play_settings();
+                } else if (result == 6 || result == RL_UI_CANCEL) {
                     rl_play_build_root();
                     rl_play_set_scene(RL_PLAY_MENU);
                 }
@@ -1268,6 +1637,19 @@ static void rl_play_draw_status(void) {
     }
 }
 
+static void rl_play_draw_currency(s16 y) {
+    char label[36];
+    const RlMeta* meta;
+    meta = gRlPlayScene == RL_PLAY_SUMMARY && sPlaySummaryPrepared &&
+        !sPlaySummarySaved ? &sPlayNextMeta : &sPlayMeta;
+    rl_play_copy_text(label, "Permanent coins: 0000000000");
+    rl_play_number(label + 17, meta->currency, 10);
+    rl_ui_text(44, y, label, sPlayGold);
+    rl_play_copy_text(label, "Earned choices remaining: 000");
+    rl_play_number(label + 25, meta->pending_registration_count, 3);
+    rl_ui_text(44, y + 24, label, sPlayWhite);
+}
+
 void rl_play_draw(void) {
     unsigned row;
     unsigned i;
@@ -1277,12 +1659,42 @@ void rl_play_draw(void) {
         case RL_PLAY_MENU:
             rl_ui_text(44, 40, "Pokemon Stadium Roguelike", sPlayGold);
             rl_ui_list_draw(&sPlayList, 44, 84, 540);
-            rl_ui_text(44, 376, "New runs draft three real Poke Cup rentals.", sPlayMuted);
+            rl_play_draw_currency(342);
             break;
         case RL_PLAY_PROFILE:
         case RL_PLAY_SETTINGS:
             rl_ui_text(44, 40, "Persistent progression settings", sPlayGold);
             rl_ui_list_draw(&sPlayList, 44, 84, 540);
+            rl_ui_text_wrap(44, 350, 540, 2,
+                "Themes filter registered species. Prices and weights provisional.\n"
+                "Potion Cache exchanges 200 starting coins for 1 Potion.", sPlayMuted);
+            break;
+        case RL_PLAY_META:
+        case RL_PLAY_REGISTER:
+            rl_ui_text(44, 40, gRlPlayScene == RL_PLAY_META ?
+                "Permanent shop" : "Earned species registration", sPlayGold);
+            rl_ui_list_draw(&sPlayList, 44, 84, 360);
+            rl_play_draw_currency(324);
+            if (gRlPlayScene == RL_PLAY_REGISTER) {
+                rl_ui_text_wrap(414, 98, 190, 9,
+                    "At most one receipt per eligible finished run.\n"
+                    "Register one species or skip one receipt.\n"
+                    "Resolve all before New Run.", sPlayWhite);
+            } else if (!gRlPlayProfile.edit_pending && sPlayList.cursor > 0 &&
+                       sPlayList.cursor < sPlayList.count - 1) {
+                unsigned option;
+                option = sPlayMetaIds[sPlayList.cursor];
+                rl_ui_text_wrap(414, 98, 190, 9,
+                    option <= RL_META_MOVESET_4 ?
+                    "Matching species only.\nCanonical rental moves.\n"
+                    "Draft LEFT/RIGHT cycles compatible loadouts.\nNo stat or PP-Up bonuses." :
+                    option <= RL_META_THEME_4 ?
+                    "Filter registered starter species by theme.\n"
+                    "Choose in settings.\nNo permanent stats." :
+                    "Starting kit:\n100 coins + 1 Potion instead of 300 coins.\n"
+                    "Same 300-coin budget.\nChoose in settings.", sPlayWhite);
+            }
+            rl_ui_text_wrap(414, 304, 190, 3, "Prices / weights provisional.", sPlayMuted);
             break;
         case RL_PLAY_DRAFT:
             rl_ui_text(44, 40, "Starter draft - select 3 of 6", sPlayGold);
@@ -1294,6 +1706,7 @@ void rl_play_draw(void) {
             rl_play_number(sPlayLabels[8], rl_play_count_selected(), 1);
             sPlayLabels[8][1] = '\0';
             rl_ui_text(142, 374, sPlayLabels[8], sPlayWhite);
+            rl_ui_text(44, 350, "LEFT/RIGHT: cycle owned legal loadouts", sPlayMuted);
             break;
         case RL_PLAY_MAP:
             rl_ui_text(44, 40, "Act map - choose a connected node", sPlayGold);
@@ -1355,6 +1768,7 @@ void rl_play_draw(void) {
             rl_ui_text(44, 78, gRlPlayTestMode ? "Three-encounter regression route" :
                        "Three Acts and the Mewtwo finale", sPlayWhite);
             rl_ui_list_draw(&sPlayList, 44, 116, 540);
+            rl_play_draw_currency(266);
             rl_ui_text(44, 330, "Battles", sPlayWhite);
             rl_play_number(sPlayLabels[8], gRlRun.stats.battles, 3);
             sPlayLabels[8][3] = '\0';
