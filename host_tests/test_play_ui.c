@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
     assert(gRlPlayProfile.edit_pending && sPlayMeta.currency == 100 &&
            sWriteCount == 1);
     assert(!strcmp(sPlayMessage,
-                   "Pak changed: reinsert original Pak, then retry; changes retained"));
+                   "Reinsert original Pak; retry save"));
     sDiskMeta.currency--;
     rl_play_update_meta(RL_UI_A);
     assert(!gRlPlayProfile.edit_pending && sPlayMeta.currency == 70);
@@ -353,7 +353,7 @@ int main(int argc, char** argv) {
     rl_play_update_meta(RL_UI_A);
     assert(gRlPlayProfile.edit_pending &&
            !strcmp(sPlayMessage,
-                   "Pak changed: reinsert original Pak, then retry; changes retained"));
+                   "Reinsert original Pak; retry save"));
     assert(sWriteCount == (int)old_count + 1 &&
            gRlPlayProfile.edit_candidate.pending_registration_count == 1);
     sDiskRun.rng ^= 1;
@@ -390,7 +390,7 @@ int main(int argc, char** argv) {
     sDiskMeta.currency++;
     rl_play_make_summary();
     assert(!strcmp(sPlayMessage,
-                   "Pak changed: reinsert original Pak, then retry; changes retained"));
+                   "Reinsert original Pak; retry save"));
     rl_play_update_summary(RL_UI_A);
     assert(sPlaySummaryPrepared && !sPlaySummarySaved &&
            sWriteCount == (int)old_count + 1);

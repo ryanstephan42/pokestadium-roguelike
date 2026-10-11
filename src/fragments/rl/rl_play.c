@@ -97,7 +97,7 @@ static void rl_play_registration(void);
 
 static const char* rl_play_retry_status(RlSaveStatus status) {
     if (status == RL_SAVE_DEVICE_CHANGED)
-        return "Pak changed: reinsert original Pak, then retry; changes retained";
+        return "Reinsert original Pak; retry save";
     return rl_save_status_text(status);
 }
 
