@@ -105,9 +105,10 @@ static int native_open(void *context, unsigned company, RlU32 game,
                        const RlU8 requested_name[16], const RlU8 requested_extension[4],
                        unsigned size, int create) {
     ScNativePak *pak = context;
-    OSPfs pfs;
+    /* Owned by the synchronous, non-reentrant cold invocation. */
+    static OSPfs pfs;
     s32 note;
-    RlU8 zero[32], name[16], extension[4], original_id[32];
+    static RlU8 zero[32], name[16], extension[4], original_id[32];
     unsigned i;
     int status;
     if (company != SC_SAVE_COMPANY || game != SC_SAVE_GAME || size != SC_SAVE_NOTE_SIZE)

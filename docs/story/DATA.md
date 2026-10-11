@@ -579,6 +579,19 @@ Result/memory JSON is persisted before assertions reject a boundary. No
 failure is waived or threshold relaxed; another reviewed bounded attribution
 run is needed to distinguish optional probing from required resources.
 
+Before another create run, `native_open`'s OSPfs and fixed
+zero/name/extension/original-ID buffers move to probe-only cold BSS under the
+existing synchronous cold-call reentry guard. OSPfs is fully zeroed on each
+creation; all other buffers are overwritten before use. No callback or
+pointer survives the cold invocation. Pure/nonprobe code is unaffected.
+Target `native_open` frame falls from 280 to 88 bytes, reducing every nested
+create-allocation path by 192 bytes without changing underlying Pak frames.
+Cold RAM rises from 173,456 to 173,760 bytes; ROM plus relocations is 171,296
+bytes, so the caller-visible cold-load preflight grows to 173,840 bytes.
+The previous 3,600-byte inspected decode/validation chain is unchanged: it
+does not include native-open's separate create-allocation branch. Written
+high-water must be measured again, not inferred from the 192-byte reduction.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
