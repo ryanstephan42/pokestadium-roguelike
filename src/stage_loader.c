@@ -446,6 +446,12 @@ unk_func_80007444* func_800075F8(void) {
     return D_800A7464;
 }
 
+#ifdef STORY_NATIVE_UI
+void func_800075F8SetStory(unk_func_80007444* context) {
+    D_800A7464 = context;
+}
+#endif
+
 s32 func_80007604(void) {
     return D_800A7464->unk_11;
 }

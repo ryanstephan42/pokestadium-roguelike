@@ -50,6 +50,24 @@ void main_pool_set_func(void *, s32, AllocateFunc);
 void func_8001E7C0(s32, s32);
 void func_8001E7D4(s32, s32);
 typedef struct Color_RGBA8 { u8 r, g, b, a; } Color_RGBA8;
+typedef struct Vp { unsigned unused[4]; } Vp;
+typedef struct Mtx { unsigned unused[16]; } Mtx;
+typedef struct unk_D_800A7440 { s16 x1, y1, x2, y2; } unk_D_800A7440;
+typedef struct unk_D_80068BB0 {
+    u16 fmt, size, width, height;
+    u8 *img_p;
+    struct unk_D_80068BB0 *depth_p;
+} unk_D_80068BB0;
+typedef struct unk_func_80007444 {
+    s16 unk_00, unk_02, unk_04, unk_06, unk_08, unk_0A;
+    s8 unk_0C, unk_0D, unk_0E, unk_0F, unk_10;
+    u8 unk_11, unk_12, unk_13;
+    u16 unk_14;
+    s8 unk_16;
+    u8 pad17;
+    unk_D_80068BB0 *unk_18[3];
+} unk_func_80007444;
+void func_8000771C(void);
 #define PFS_ERR_NOPACK 1
 #define PFS_ERR_NEW_PACK 2
 #define PFS_DATA_FULL 3

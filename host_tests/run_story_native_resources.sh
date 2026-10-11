@@ -9,6 +9,7 @@ sources=(
     src/story/sc_pak_probe.c
     src/story/sc_native_font.c src/story/sc_native_resources.c
     src/story/sc_native_icons.c
+    src/story/sc_native_loop.c
     src/story/sc_ui_driver.c src/story/sc_ui.c src/story/sc_core.c src/story/sc_combat.c
     src/story/sc_make.c src/story/sc_graph.c src/story/sc_progression.c src/story/sc_save.c
     src/story/sc_crc.c src/story/sc_storage.c src/story/sc_bridge.c
@@ -34,10 +35,13 @@ target_flags=(-c -G 0 -non_shared -Xcpluscomm -nostdinc -Wab,-r4300_mul
     -fullwarn -woff 624,649,838,712,516,513,596,564,594
     -mips2 -EB -D_MIPS_SZLONG=32 -DNDEBUG -D_FINALROM -DN_MICRO -DF3DEX_GBI_2
     -DBUILD_VERSION=VERSION_I_P -DLANGUAGE_C -D_LANGUAGE_C -O2)
-for unit in sc_native_pak sc_native_ui sc_native_font sc_native_resources sc_native_icons sc_pak_probe; do
+for unit in sc_native_pak sc_native_ui sc_native_font sc_native_resources sc_native_icons sc_native_loop sc_native_display sc_pak_probe; do
     tools/ido/linux/7.1/cc "${target_flags[@]}" "src/story/$unit.c" -o "$output/$unit.o"
 done
 tools/ido/linux/7.1/cc "${target_flags[@]}" src/2E110.c -o "$output/2E110.o"
+tools/ido/linux/7.1/cc "${target_flags[@]}" src/6A40.c -o "$output/6A40.o"
+tools/ido/linux/7.1/cc "${target_flags[@]}" src/6BC0.c -o "$output/6BC0.o"
+tools/ido/linux/7.1/cc "${target_flags[@]}" src/stage_loader.c -o "$output/stage_loader.o"
 tools/ido/linux/7.1/cc "${target_flags[@]}" src/fragments/rl/rl_ui.c -o "$output/rl_ui.o"
 tools/ido/linux/7.1/cc "${target_flags[@]}" host_tests/story_native_sizes.c -o "$output/sizes.o"
 mips-linux-gnu-objdump -d "$output/sizes.o" > "$output/sizes.txt"

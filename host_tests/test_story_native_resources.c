@@ -5,6 +5,7 @@
 #include "../src/story/sc_native_ui.h"
 #include "../src/story/sc_native_resources.h"
 #include "../src/story/sc_native_icons.h"
+#include "../src/story/sc_native_loop.h"
 #include "../src/controller.h"
 
 int sc_pak_probe_load(unsigned, const ScCatalog *, ScSnapshot *);
@@ -437,6 +438,172 @@ static void child_learning(void) {
     puts("Child-scope learning: actual progression fixture, cached icons, no allocations/Pak I/O, ancestry and drain guards; OK");
 }
 
+static ScNativeLoop loop;
+static ScNativeCampaignEvent loop_event;
+static ScNativeDisplay display;
+static int begin_status, end_status, poll_status, release_status, validate_status;
+static ScNativeCampaignEvent pending_event;
+static int submit_status, resume_status, child_on_submit;
+static unsigned submissions, resumes;
+static ScState resumed_state;
+static ScCombat resumed_combat;
+static unsigned learned_move;
+static unsigned begins, ends, fences;
+static int poll_event(void *p, const ScNativeCampaignBacking *b, ScNativeCampaignEvent *out) {
+    (void)p; assert(b->event == out);
+    if (poll_status != SC_OK) { out->kind = SC_NATIVE_EVENT_DRAINED; return poll_status; }
+    *out = pending_event; pending_event.kind = SC_NATIVE_EVENT_NONE;
+    if (out->kind == SC_NATIVE_EVENT_DRAINED) main_pool_pop_state(0);
+    return SC_OK;
+}
+static int resume_event(void *p, const ScNativeCampaignBacking *b, RlU32 operation,
+                         RlU32 generation, const ScState *state, const ScCombat *combat) {
+    (void)p;
+    assert(b->ui == &ui && state == &ui.state && combat == &request.progression);
+    assert(operation == request.operation_id && generation == 1 && state->phase == SC_BATTLE);
+    assert(!state->learn_mask && !pak.session);
+    assert(state->party[0].moves[0] == learned_move && state->party[0].pp[0]);
+    if (!resumes) { resumed_state = *state; resumed_combat = *combat; }
+    else {
+        assert(!memcmp(&resumed_state, state, sizeof(*state)));
+        assert(!memcmp(&resumed_combat, combat, sizeof(*combat)));
+    }
+    resumes++;
+    return resume_status;
+}
+int sc_native_display_acquire(ScNativeDisplay *d) {
+    main_pool_push_state(0); d->scope = pool.mainState; d->acquired = 1; return SC_OK;
+}
+int sc_native_display_begin(ScNativeDisplay *d) { (void)d; begins++; return begin_status; }
+int sc_native_display_end(ScNativeDisplay *d) { (void)d; ends++; return end_status; }
+int sc_native_display_release(ScNativeDisplay *d) {
+    assert(d->scope == pool.mainState); main_pool_pop_state(0); d->acquired = 0; return SC_OK;
+}
+void func_8000771C(void) { fences++; }
+static int acquire_backing(void *p, ScNativeCampaignBacking *b) {
+    (void)p;
+    memset(&ui, 0, sizeof(ui)); memset(&driver, 0, sizeof(driver));
+    b->ui = &ui; b->driver = &driver; b->request = &request; b->native_ui = &native;
+    b->pak = &pak; b->event = &loop_event; b->catalog = &sc_catalog; b->seed = 123; b->lease_id = 1;
+    return SC_OK;
+}
+static int validate_backing(void *p, const ScNativeCampaignBacking *b) {
+    (void)p;
+    if (validate_status != SC_OK) return validate_status;
+    return b->lease_id == 1 && b->ui == &ui && b->pak == &pak && b->event == &loop_event ? SC_OK : SC_INVALID;
+}
+static int submit_request(void *p, const ScNativeCampaignBacking *b, const ScUiBattleRequest *r) {
+    assert(!pak.session && b->request == r); (void)p; submissions++;
+    if (submit_status == SC_OK && child_on_submit) main_pool_push_state(0);
+    return submit_status;
+}
+static int release_backing(void *p, const ScNativeCampaignBacking *b) {
+    (void)p; assert(!native.acquired && !display.acquired && b->lease_id == 1); return release_status;
+}
+static void presentation_loop(void) {
+    ScNativeCampaignOwner calls;
+    fixture();
+    calls.context = NULL; calls.submit = submit_request; calls.poll = poll_event; calls.resume = resume_event;
+    calls.acquire = acquire_backing; calls.validate = validate_backing; calls.release = release_backing;
+    assert(sc_native_loop_open(&loop, &display, &calls) == SC_OK);
+    assert(sc_native_loop_close(&loop) == SC_PENDING && !fences);
+    poll_status = SC_UNAVAILABLE;
+    assert(sc_native_loop_step(&loop) == SC_UNAVAILABLE && !begins && !ends);
+    poll_status = SC_OK; begin_status = SC_UNAVAILABLE;
+    assert(sc_native_loop_step(&loop) == SC_UNAVAILABLE && begins == 1 && !ends);
+    begin_status = SC_OK; controller.buttonPressed = 0; end_status = SC_UNAVAILABLE;
+    assert(sc_native_loop_step(&loop) == SC_UNAVAILABLE && ends == 1 && loop.acquired);
+    end_status = SC_OK; controller.buttonPressed = RL_UI_DOWN;
+    assert(sc_native_loop_step(&loop) == SC_OK && ui.list.cursor == 1);
+    assert(sc_native_loop_step(&loop) == SC_OK && ui.list.cursor == 2);
+    controller.buttonPressed = RL_UI_A;
+    assert(sc_native_loop_step(&loop) == SC_OK && loop.exited && driver.exit_requested);
+    release_status = SC_PENDING;
+    assert(sc_native_loop_close(&loop) == SC_PENDING && loop.acquired && !native.acquired);
+    validate_status = SC_UNAVAILABLE;
+    assert(sc_native_loop_close(&loop) == SC_UNAVAILABLE && loop.acquired);
+    assert(sc_native_loop_open(NULL, &display, &calls) == SC_INVALID);
+    validate_status = SC_OK;
+    release_status = SC_OK;
+    assert(sc_native_loop_close(&loop) == SC_OK && !native.acquired);
+    assert(sc_native_loop_close(&loop) == SC_INVALID);
+    puts("Presentation loop: actual native adapter/input, callback refusal, explicit exit and fence; HOST only; OK");
+}
+
+static int loop_choose(unsigned id) {
+    unsigned i;
+    for (i = 0; i < (unsigned)ui.list.count; i++) if (ui.ids[i] == id) break;
+    assert(i < (unsigned)ui.list.count);
+    while (ui.list.cursor != (int)i) {
+        controller.buttonPressed = ui.list.cursor < (int)i ? RL_UI_DOWN : RL_UI_UP;
+        assert(sc_native_loop_step(&loop) == SC_OK);
+    }
+    controller.buttonPressed = RL_UI_A;
+    return sc_native_loop_step(&loop);
+}
+
+static void loop_battle(void) {
+    ScNativeCampaignOwner calls;
+    ScTemplate starter;
+    unsigned i, region = 0, encounter, before;
+    fixture(); memset(&loop, 0, sizeof(loop)); memset(&display, 0, sizeof(display));
+    calls.context = NULL; calls.submit = submit_request; calls.poll = poll_event;
+    calls.resume = resume_event; calls.acquire = acquire_backing;
+    calls.validate = validate_backing; calls.release = release_backing;
+    assert(sc_native_loop_open(&loop, &display, &calls) == SC_OK);
+    assert(loop_choose(1) == SC_OK && loop_choose(3) == SC_OK &&
+           loop_choose(5) == SC_OK && loop_choose(1) == SC_OK);
+    memset(&starter, 0, sizeof(starter)); starter.species = 1; starter.level = 6;
+    assert(sc_make_mon(&sc_catalog, &starter, 0x8889, &ui.state.party[0]) == SC_OK);
+    ui.state.party[0].exp = sc_xp(7, ui.state.party[0].growth) - 1;
+    for (i = 0; i < (unsigned)ui.list.count; i++)
+        if (!strcmp(ui.labels[i], "OaksLab")) region = ui.ids[i];
+    for (encounter = 0; encounter < sc_catalog.count; encounter++)
+        if (!strcmp(sc_catalog.encounters[encounter].id, "OaksLab/rival-lab")) break;
+    assert(loop_choose(region) == SC_OK && loop_choose(encounter) == SC_OK);
+    submit_status = SC_PENDING;
+    assert(loop_choose(1) == SC_PENDING && driver.launch_pending && !driver.launched);
+    submit_status = SC_OK; child_on_submit = 1;
+    assert(sc_native_loop_step(&loop) == SC_OK && driver.launched);
+    controller.buttonPressed = 0; before = frames;
+    poll_status = SC_PENDING;
+    assert(sc_native_loop_step(&loop) == SC_PENDING && frames == before);
+    poll_status = SC_OK;
+    loop.event_operation = request.operation_id; loop.event_serial = ~(RlU32)0;
+    assert(sc_native_loop_step(&loop) == SC_UNAVAILABLE && loop.acquired && driver.launched);
+    loop.event_serial = 0;
+    memset(&pending_event, 0, sizeof(pending_event));
+    pending_event.kind = SC_NATIVE_EVENT_LEARNING;
+    pending_event.operation_id = request.operation_id; pending_event.generation = 1;
+    pending_event.party[0].hp = ui.state.party[0].cur_hp;
+    for (i = 0; i < 4; i++) pending_event.party[0].pp[i] = ui.state.party[0].pp[i];
+    controller.buttonPressed = RL_UI_A;
+    before = frames;
+    assert(sc_native_loop_step(&loop) == SC_OK && ui.screen == SC_UI_LEARN);
+    assert(frames == before + 1 && !resumes && loop.held_presented);
+    learned_move = ui.state.learn_moves[0];
+    assert(loop_choose(0) == SC_OK && ui.screen == SC_UI_CONFIRM);
+    resume_status = SC_PENDING;
+    assert(loop_choose(1) == SC_PENDING && loop.held_operation && resumes == 1);
+    resume_status = SC_OK; controller.buttonPressed = 0;
+    assert(sc_native_loop_step(&loop) == SC_OK && !loop.held_operation && resumes == 2);
+    pending_event.kind = SC_NATIVE_EVENT_OBSERVE;
+    pending_event.operation_id = request.operation_id; pending_event.generation = 1;
+    assert(sc_native_loop_step(&loop) == SC_INVALID);
+    pending_event.kind = SC_NATIVE_EVENT_DRAINED;
+    pending_event.operation_id = request.operation_id; pending_event.generation = 2;
+    pending_event.outcome = SC_WIN;
+    fail_at = (int)(reads + writes + 1); error = 99;
+    assert(sc_native_loop_step(&loop) == SC_OK && ui.screen == SC_UI_SAVE_ERROR);
+    assert(!driver.launched && !loop.drained_operation && ui.pending_save);
+    fail_at = error = 0;
+    assert(loop_choose(0) == SC_OK && ui.screen == SC_UI_REWARD);
+    assert(loop_choose(2) == SC_OK && loop_choose(1) == SC_OK);
+    assert(loop_choose(3) == SC_OK && loop_choose(2) == SC_OK);
+    assert(sc_native_loop_close(&loop) == SC_OK);
+    puts("Owner-bound loop: post-Pak submit retry, held event presentation, learning/resume serial, drained finish; fixtures; OK");
+}
+
 int main(void) {
     ScUiDriverCalls calls;
     backend();
@@ -496,6 +663,8 @@ int main(void) {
     assert(sc_native_pak_release(&pak) == SC_SAVE_OK);
     assert(locks == unlocks && frames == 3 && logs);
     child_learning();
+    presentation_loop();
+    loop_battle();
     puts("Story native resource adapter: real backend with synthetic OS/Pak/font outcomes; OK");
     return 0;
 }

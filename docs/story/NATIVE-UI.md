@@ -105,3 +105,70 @@ after their temporary allocations retire. Default RL/vanilla paths are unchanged
 Arena/backing/async launch/pause/observe/drain scheduling still
 belong to the parent. No dispatcher/build/KO changes, emulator run, full gate
 or visible-campaign acceptance are included.
+
+## Coordinated presentation loop and checked display
+
+`sc_native_loop.[ch]` consumes the owner ABI imported from exact `08766a8` and
+`5869a454`. The caller supplies zeroed external loop/display control; `open`
+acquires the exact arena-issued backing tuple, validates it, then acquires
+display, Pak binding, retained UI resources and the existing operation-ID driver.
+`step` and `close` return `ScStatus`. A failed open retains the lease until a
+validated close can retire only acquisitions made by that loop.
+
+The driver queues copied battle values during input, but actual owner submission
+occurs only after the Pak session and display frame have ended. PENDING/refusal
+owns no service work and restores the driver's A-retry state. A failed frame
+also cancels an unsubmitted queue without losing the checkpoint. Accepted
+running battles are pumped only by owner polling; the loop does not overwrite
+their display with menu frames or process campaign input.
+
+Events use the exact caller-admitted `backing.event`. PENDING/refusal/NONE
+payloads are ignored. Nonzero operation IDs must match driver, request and UI;
+event kinds, observation bounds, outcomes and strictly increasing per-operation
+serials are checked before dispatch. Exhaustion refuses without wrapping or
+retiring the lease. Held LEARNING observations go through real driver/core
+observe and must establish `SC_LEARNING`. The first held frame presents without
+input; subsequent frames settle actual learning. Resume uses the same held
+serial and copies settled state/combat only in `SC_BATTLE` with no learn mask.
+PENDING retries the exact values without polling or accepting further input.
+
+DRAINED must come from the owner's worker/service/permit retirement and BATL pop.
+It dispatches finish; unavailable Pak acquisition retains the drained operation
+without polling a successor. Once finish starts a journal transaction, save
+retry belongs solely to the UI and never replays that event/reward. Close
+requires campaign exit and no queued/held/drained work, completes real task
+fences, retires graphics before owner backing, and retains the lease on owner
+release PENDING. Owner validate refusal never authorizes cleanup.
+
+`sc_native_display.[ch]` checks actual workspace/context/framebuffer allocations.
+The story-only workspace helper captures and restores borrowed workspace/head;
+per-frame activation preserves the retained next-frame command prefix and
+restores the paused native workspace. Guarded raw stage/image helpers restore
+the captured stage pointer, framebuffer pointer and clipping rectangle without
+emitting commands or copying fade/frame state into a borrowed context. Each
+submitted UI frame is fenced before resume; stage-close submissions are fenced
+again before scope retirement. Ordinary stage/workspace/framebuffer functions,
+signatures and default code paths remain unchanged.
+
+IDO layout facts: loop 128 bytes, display 136 bytes, event 80 bytes. Own frames
+are loop open/step/close 72/64/32 bytes, private poll 64, private finish 32;
+display acquire/begin/end/release 56/32/32/32; checked workspace acquisition 40.
+These exclude callees, owner callbacks, interrupt/OS/task stacks and full peak.
+Display requests two 65,536-byte workspaces, a 76-byte restoration record,
+a 36-byte stage context and two 614,480-byte framebuffer records
+(640 * 480 * 2 pixels + 16-byte header + 64 alignment allowance).
+Requested total is 1,360,144 bytes; the tracked pool's 16-byte rounding/headers
+and 32-byte scope record bring display scope consumption to 1,360,288 bytes.
+Fonts/icons/text, UI arena backing, BATL and owner storage are additional.
+This is not combined candidate fit approval.
+
+`bash host_tests/run_story_native_display.sh` exercises actual acquisition and
+tracked workspace/context/framebuffer/restore function slices against synthetic
+pool/OS/command outcomes: seven finite scope/allocation failures, borrowed
+globals, preserved child context, open-frame/top-scope refusal and retirement
+fences. The resource runner also compiles full display and guarded native helper
+TUs with IDO. Its owner-bound loop fixtures cover post-Pak submission retry,
+ignored pending payload, serial exhaustion/staleness, held KO presentation,
+learning and resume retry, drained finish/save retry, validate refusal and
+release PENDING. Normal and ASan/UBSan results are HOST evidence, not native
+visible execution or allocator/service authority.
