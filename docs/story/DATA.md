@@ -1263,6 +1263,35 @@ pending resume, early loss/error/injection refusal, and no hidden finish
 steps or gameplay inputs. This budget approval is not an emulator grant;
 exact delta review and separate execution authorization remain required.
 
+The separately granted exact `f90d18a` `ko_ember_e2e` run passed its
+assertions once and released the emulator process. Frozen evidence at
+`.local/rltest/story-ember-e2e-f90d18a/` includes recursive hashes,
+provenance, raw entry/learning/held/terminal boundaries, histories and budgets.
+The natural target KO occurred at15336,13066 combat frames after entry2270.
+The explicit60-frame hold ended15396. Native terminal/commit completed16478:
+14148 charged combat frames plus60 excluded hold,3852 combat frames left.
+The postresume allowance was the remaining4934, not a reset to18000.
+
+Natural KO capture1/injected0 awarded99 XP:338/L8 to437/L9, canonical
+statEXP169/148/160/188/110 and stats26/16/13/17/14. Actual pre-KO HP14
+became16 after level-up; PP/status were preserved. The fresh60-frame hold
+kept state/native/progress/logic/presentation and durable save identical.
+One resume published Ember52/PP25, preserving stages. Native WIN/RESULT,
+precommit native/resident carry, target completion, SC_REWARD, isolated
+SC01 commit and post-pool state assertions passed. Terminal party retained
+HP16, Scratch/Growl/Ember and PP30/35/0/25. Prebattle/learning/held saves
+share `fe28483c...17525`; terminal save SHA256 is
+`8c8b2b3c868b7cf593e03b0bb2c54c6fbc704dc2b2caea42fbb37a6f60ce7822`.
+
+Passive histories contain13067 prelearning rows2270..15336 and1083
+postresume rows15396..16478. Required allocation checks pass100/0 at
+entry/learning/held and109/0 at terminal; cold map/pool cleanup passes,
+written margin remains1340/new bottom writes0. This is not exhaustive SP
+safety. No tuning, gameplay input, injection, retry or hidden cleanup step
+ran. Independent evidence review is pending; these results do not establish
+completed reload, defeat, six-party, Transform or full-gate acceptance.
+Both earlier6000-frame failures remain immutable failed evidence.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
