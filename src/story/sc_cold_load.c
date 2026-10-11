@@ -2,6 +2,7 @@
 #include "sc_cold.h"
 #include "src/3FB0.h"
 #include "src/memory.h"
+#include "src/memmap.h"
 #include "sc_runtime_probe.h"
 
 extern u8 fragmentSC_ROM_START[], fragmentSC_relocs_ROM_END[];
@@ -32,8 +33,12 @@ static int cold_invoke(ScColdRequest *request, u8 *rom_start, u8 *rom_end, unsig
     gScProbe.cold_calls++;
     gScProbe.cold_before = main_pool_get_available();
     gScProbe.cold_size = ram_size;
+    gScProbe.map_before = Memmap_GetFragmentBaseVaddr(0xe9);
+    gScProbe.map_before_size = Memmap_GetFragmentSize(0xe9);
     main_pool_push_state(0x53434c44);
     entry = (FragmentEntry)func_80004454(0xe9, rom_start, rom_end);
+    gScProbe.map_loaded = Memmap_GetFragmentBaseVaddr(0xe9);
+    gScProbe.map_loaded_size = Memmap_GetFragmentSize(0xe9);
     gScProbe.cold_address = (unsigned)entry;
     if (!entry) {
         osSyncPrintf("story probe: cold overlay load failed\n");
@@ -43,6 +48,8 @@ static int cold_invoke(ScColdRequest *request, u8 *rom_start, u8 *rom_end, unsig
     }
     /* No cold code frame or pointer survives this pool pop. */
     main_pool_pop_state(0x53434c44);
+    gScProbe.map_after = Memmap_GetFragmentBaseVaddr(0xe9);
+    gScProbe.map_after_size = Memmap_GetFragmentSize(0xe9);
     gScProbe.cold_address = 0;
     gScProbe.cold_busy = 0;
     gScProbe.cold_after = main_pool_get_available();

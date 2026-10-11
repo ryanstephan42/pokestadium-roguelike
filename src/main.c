@@ -20,6 +20,9 @@ LEODiskID D_800818E0;
  * Initialize hardware, start main thread, then idle.
  */
 void Idle_ThreadEntry(UNUSED void* unused) {
+#ifdef STORY_NATIVE_PROBE
+    unsigned stack_byte;
+#endif
     osCreateViManager(OS_PRIORITY_VIMGR);
     func_80001474(0, 1);
     osViBlack(TRUE);
@@ -29,6 +32,12 @@ void Idle_ThreadEntry(UNUSED void* unused) {
     func_8000D564();
     func_800019C8();
     SoftReset_CreateThread();
+#ifdef STORY_NATIVE_PROBE
+    /* Paint only the not-yet-created Game thread's stack. */
+    for (stack_byte = 0; stack_byte < sizeof(D_80080000); stack_byte++) {
+        D_80080000[stack_byte] = 0xA5;
+    }
+#endif
     osCreateThread(&pThreads, 6, &Game_Thread, 0, &D_800818E0, 20);
     osStartThread(&pThreads);
     osSetThreadPri(NULL, 0);

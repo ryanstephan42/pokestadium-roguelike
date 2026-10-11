@@ -167,6 +167,11 @@ void Memmap_SetFragmentMap(u32 id, uintptr_t vaddr, size_t size) {
 uintptr_t Memmap_GetFragmentBaseVaddr(u32 id) {
     return gFragments[id].vaddr;
 }
+#ifdef STORY_NATIVE_PROBE
+size_t Memmap_GetFragmentSize(u32 id) {
+    return gFragments[id].size;
+}
+#endif
 
 /*
  * Return the current virtual address of a given offset into a fragment. This is

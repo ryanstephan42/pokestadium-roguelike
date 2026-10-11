@@ -3,9 +3,13 @@
 
 static unsigned available, pushes, pops, loads, depth, failures;
 static int load_failure, entry_failure, recurse;
+static uintptr_t map_address;
+static size_t map_size;
 static u8 rom[256];
 volatile ScProbeMailbox gScProbe;
 int gScProbeActive;
+uintptr_t Memmap_GetFragmentBaseVaddr(u32 id) { (void)id; return map_address; }
+size_t Memmap_GetFragmentSize(u32 id) { (void)id; return map_size; }
 
 #define check(value) do { if (!(value)) { failures = __LINE__; return -1; } } while (0)
 
@@ -17,6 +21,7 @@ u32 main_pool_push_state(u32 tag) {
 }
 u32 main_pool_pop_state(u32 tag) {
     (void)tag; pops++; depth--;
+    map_address = map_size = 0;
     return available;
 }
 
@@ -31,6 +36,7 @@ ret_func_80004454 func_80004454(s32 id, u8 *start, u8 *end) {
     (void)start; (void)end;
     loads++;
     if (id != 0xe9) failures = __LINE__;
+    if (!load_failure) { map_address = (uintptr_t)entry; map_size = 128; }
     return load_failure ? NULL : (ret_func_80004454)entry;
 }
 
@@ -56,6 +62,9 @@ int main(void) {
     check(pushes == pops && !depth && !calling && !failures);
     check(!gScProbe.cold_busy && !gScProbe.cold_address &&
           gScProbe.cold_before == gScProbe.cold_after);
+    check(!gScProbe.map_before && !gScProbe.map_before_size &&
+          gScProbe.map_loaded && gScProbe.map_loaded_size == 128 &&
+          !gScProbe.map_after && !gScProbe.map_after_size);
     gScProbeActive = 1;
     check(cold_invoke(&request, rom, rom + 256, 128) == 0x100 + SC_INVALID);
     check(!calling && !depth);

@@ -124,7 +124,7 @@ int main(void) {
     ScSnapshot snapshot;
     RlU32 before;
     RlU32 generation;
-    check(sizeof(ScProbeMailbox) == 47 * 4);
+    check(sizeof(ScProbeMailbox) == 53 * 4);
     gScProbe.command = 3; gScProbe.seed = 42; gScProbe.create = 1;
     if (!sc_runtime_probe_poll() || failure || gScProbe.status != SC_SAVE_OK) {
         printf("story runtime host failure: line %u, status %u\n", failure, gScProbe.status);

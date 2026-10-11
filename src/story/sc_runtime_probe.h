@@ -17,6 +17,7 @@ typedef struct ScProbeMailbox {
     RlU32 pool_free, arena_archive, arena_count, arena_index, arena_required;
     RlU32 cold_before, cold_after, cold_address, cold_size, cold_busy, cold_calls;
     RlU32 combat_address, combat_size, combat_crc;
+    RlU32 map_before, map_before_size, map_loaded, map_loaded_size, map_after, map_after_size;
 } ScProbeMailbox;
 extern volatile ScProbeMailbox gScProbe;
 extern int gScProbeActive;

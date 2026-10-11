@@ -3,6 +3,12 @@
 #include "memory.h"
 
 static struct MainPool sMemPool;
+#ifdef STORY_NATIVE_PROBE
+u32 gScPoolMinimum = 0xFFFFFFFF;
+u32 gScPoolAllocations;
+u32 gScPoolFailures;
+u32 gScPoolLargest;
+#endif
 
 /**
  * Initialize the main memory pool. This pool is conceptually a pair of stacks
@@ -68,6 +74,12 @@ void* main_pool_alloc_from_pool(u32 size, u32 side) {
             addr = ((u8*)newListHead + sizeof(MainPoolBlock));
         }
     }
+#ifdef STORY_NATIVE_PROBE
+    if (sMemPool.available < gScPoolMinimum) gScPoolMinimum = sMemPool.available;
+    gScPoolAllocations++;
+    if (!addr) gScPoolFailures++;
+    if (size > gScPoolLargest) gScPoolLargest = size;
+#endif
     return addr;
 }
 

@@ -9,17 +9,41 @@ from pathlib import Path
 from tools.rltest.frontend import HarnessError
 from tools.rltest.story_probe import (
     FIELDS, finish_command, foreign_note, map_value, probe_deadline, story_owned_changes,
+    stack_written_margin,
+    memory_evidence,
 )
 
 
 class StoryHarnessTests(unittest.TestCase):
     def test_mailbox_and_execution_hold(self):
-        self.assertEqual(len(FIELDS), 47)
+        self.assertEqual(len(FIELDS), 53)
         self.assertEqual(len(set(FIELDS)), len(FIELDS))
         result = subprocess.run([sys.executable, "tools/rltest/story_probe.py"],
                                 capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("No emulator launched: --execute is required", result.stderr)
+
+    def test_stack_written_margin(self):
+        self.assertEqual(stack_written_margin(b"\xA5" * 64 + b"\x01\xA5"), 64)
+        self.assertEqual(stack_written_margin(b"\xA5" * 64), 64)
+        self.assertEqual(stack_written_margin(b"\0" + b"\xA5" * 64), 0)
+
+    def test_actual_fragment_map_and_allocation_diagnostics(self):
+        emu = Mock()
+        emu.symbols.address.side_effect = {
+            "D_80080000": 0x80080000, "D_800818E0": 0x800818E0,
+            "gFragments": 0x80090000,
+        }.__getitem__
+        emu.read.side_effect = [b"\xA5" * 80 + b"\0" * (0x18E0 - 80), b"\0" * 8]
+        emu.read_u32.side_effect = [320, 4, 0, 128]
+        result = dict(map_before=0, map_before_size=0, map_loaded=0x80200000,
+                      map_loaded_size=173456, cold_size=173456, map_after=0, map_after_size=0)
+        self.assertEqual(memory_evidence(emu, result)["stack_written_margin"], 80)
+        emu.read.side_effect = [b"\xA5" * 80 + b"\0" * (0x18E0 - 80),
+                               struct.pack(">II", 0, 173456)]
+        emu.read_u32.side_effect = [320, 4, 0, 128]
+        with self.assertRaisesRegex(HarnessError, "fragment map survived"):
+            memory_evidence(emu, result)
 
     def test_layout_symbols(self):
         with tempfile.TemporaryDirectory() as temporary:

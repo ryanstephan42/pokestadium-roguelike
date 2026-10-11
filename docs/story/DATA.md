@@ -376,8 +376,10 @@ It seeds independent RL01 and unrelated notes and restricts writes to SC01
 pages/directory/inode ownership. Outputs are ignored, and no savestates are
 used. Its helpers and opt-in execution hold have host-only tests.
 The native scheduling harness was first executed only after the exclusive
-slot was granted, following master `1bc06e2`. It is **blocked before the first
-battle tick**; no merge or full story UI activation is authorized.
+slot was granted, following master `1bc06e2`. That original resident-catalog
+stage was **blocked before the first battle tick**. The later bounded hot/cold
+evidence below supersedes that refusal, not the remaining proof requirements;
+no merge or full story UI activation is authorized.
 
 #### Bounded native investigation
 
@@ -502,6 +504,42 @@ retains automatic buffers. Target scan/load/store frames fall from
 760/1,536/3,056 bytes to 88/48/64 bytes. Cold RAM grows to 173,456 bytes
 (ROM plus relocations 170,960); hot residency is unchanged. Full target
 call-stack/high-water and cold allocation peaks remain runtime proof tasks.
+
+#### Accepted bounded live interruption and next diagnostics
+
+Exact `a4f20fa3e555d703eff1f4e10b5f90ba342b4416` passed the explicitly
+authorized sequential cap-4 `create`, `interrupt`, and fresh-process
+`interrupted_reload` phases. Frozen ROM SHA256 is
+`78dc9c6cb827ac772262a474a2efcb3eb78983bbef30e24c434de4a3738618d6`.
+Ignored result/provenance files remain in
+`.local/rltest/story-live-a4f20fa/`, separately from `777e7b6`.
+The live callback observed two ticks, one logic and presentation step, zero
+KOs, level 6/XP 235, HP/native maximum 22 and DVs `0x8889`. Cold-load pool
+availability was 2,953,056 bytes both before and after unload; the sampled
+live accessor value was 187,936 bytes. Fresh-process SC01 load restored the
+interrupted ROUTE checkpoint with the same completed CRC and no storage write.
+This proves interruption after real battle entry, not KO/learning or worst-case
+memory. The slot was released without remaining emulator processes.
+
+The next probe-only instrumentation records actual fragment `0xe9` vaddr and
+size before load, after relocation and after SCLD pop. The harness independently
+reads both words of `gFragments[0xe9]` at the native callback/reload boundary.
+Main-pool diagnostics record minimum **raw** availability after every
+allocation attempt, attempt/failure counts and largest aligned request including
+its block header. Counters reset at each command, so transient loader/native
+setup peaks are included rather than inferred from frame-boundary samples.
+These counters include other threads' main-pool allocations during the interval.
+
+The idle thread paints the Game stack with `0xA5` before creating/starting that
+thread, never overwriting active frames. Main-thread harness reads report the
+untouched bottom margin and written high-water since thread creation, covering
+returned cold calls and live callbacks. The bottom 64-byte sentinel must remain
+untouched. This measures stack **writes**, not the deepest unwritten reserved
+SP or an exhaustive whole-program bound; combine it with the independently
+inspected 3,600-byte journal-chain subtotal and further native cases.
+Diagnostics do not change allocation decisions, pool ends, team data or
+gameplay. Their source/host build is not native acceptance; another explicit
+slot grant is required before rerunning the bounded sequence.
 
 ## Verification scope and remaining review
 

@@ -29,8 +29,46 @@ FIELDS = (
     "logic_steps presentation_steps native_max_hp native_dvs live_dvs stage "
     "pool_free arena_archive arena_count arena_index arena_required "
     "cold_before cold_after cold_address cold_size cold_busy cold_calls "
-    "combat_address combat_size combat_crc"
+    "combat_address combat_size combat_crc "
+    "map_before map_before_size map_loaded map_loaded_size map_after map_after_size"
 ).split()
+
+POOL_COUNTERS = ("gScPoolMinimum", "gScPoolAllocations", "gScPoolFailures", "gScPoolLargest")
+
+
+def stack_written_margin(data):
+    for offset, value in enumerate(data):
+        if value != 0xA5:
+            return offset
+    return len(data)
+
+
+def memory_evidence(emu, result):
+    base = emu.symbols.address("D_80080000")
+    top = emu.symbols.address("D_800818E0")
+    require(top - base == 0x18E0, "Game stack boundary changed")
+    stack = emu.read(base, top - base)
+    margin = stack_written_margin(stack)
+    counters = {name: emu.read_u32(name) for name in POOL_COUNTERS}
+    fragment = struct.unpack(">II", emu.read(emu.symbols.address("gFragments") + 0xE9 * 8, 8))
+    evidence = {
+        "stack_base": base, "stack_size": len(stack), "stack_written_margin": margin,
+        "stack_written_high_water": len(stack) - margin,
+        "stack_scope": "since Game thread creation; writes, not exhaustive reserved-SP bound",
+        "fragment_vaddr": fragment[0], "fragment_size": fragment[1],
+        "pool_scope": "raw availability after every main-pool allocation attempt since command",
+        **counters,
+    }
+    require(margin >= 64, f"Game stack bottom sentinel exhausted: {evidence}")
+    require(fragment == (0, 0), f"Cold fragment map survived pool pop: {evidence}")
+    require(not result["map_before"] and not result["map_before_size"] and
+            result["map_loaded"] and result["map_loaded_size"] == result["cold_size"] and
+            not result["map_after"] and not result["map_after_size"],
+            f"Cold map load/pop ownership mismatch: {result}")
+    require(counters["gScPoolAllocations"] > 0 and counters["gScPoolFailures"] == 0 and
+            counters["gScPoolMinimum"] != 0xFFFFFFFF,
+            f"Allocation diagnostics failed: {evidence}")
+    return evidence
 
 
 def read_probe(emu):
@@ -43,6 +81,8 @@ def set_field(emu, name, value):
 
 
 def start_command(emu, command, create=0):
+    for name in POOL_COUNTERS:
+        emu.write_u32(emu.symbols.address(name), 0xFFFFFFFF if name == "gScPoolMinimum" else 0)
     values = dict.fromkeys(FIELDS, 0)
     values.update(status=0xFFFFFFFF, create=create, seed=42)
     emu.write(emu.symbols.address("gScProbe"),
@@ -224,6 +264,10 @@ def phase(args):
             result = read_probe(emu)
             require(result["phase"] == 1 and result["level"] == 6,
                     f"Battle already advanced before interruption fixture: {result}")
+            require(result["hp"] == result["live_hp"] == result["live_max_hp"] ==
+                    result["native_max_hp"] == 22 and
+                    result["dvs"] == result["native_dvs"] == result["live_dvs"] == 0x8889,
+                    f"Canonical first-tick record mismatch: {result}")
             require(not result["cold_busy"] and not result["cold_address"] and
                     result["cold_calls"] == 1 and result["cold_before"] == result["cold_after"],
                     f"Cold preparation is still owned during battle: {result}")
@@ -303,6 +347,9 @@ def phase(args):
                 story_owned_changes(fixture, after, base)
                 require(native_command(emu, 1)[4] == 42, "SC01 changed RL01 meta")
                 (directory / "save-ram.bin").write_bytes(save_ram(emu)[1])
+        if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload"):
+            evidence = memory_evidence(emu, result)
+            (directory / f"{args.phase}-memory.json").write_text(json.dumps(evidence, indent=2) + "\n")
         (directory / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n")
         print(f"story native {args.phase}: OK")
 
