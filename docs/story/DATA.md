@@ -150,6 +150,12 @@ named action that sets `EVENT_GOT_HM01`, not an implicit result of the rival win
 Ship departure additionally requires explicit dock destination warp 1; neither
 the rival win alone nor a missing/wrong warp retires optional ship encounters.
 Receiving HM01 does not require Misty's badge; using Cut does.
+The candidate orders the five Nugget Bridge trainers before the Rocket and
+the Route 25 branch, using source object positions and the documented bridge
+sequence. Fossil variant 0 is explicitly Helix/Omanyte and variant 1
+Dome/Kabuto; revival cannot independently switch that branch. Per-encounter
+tests check all static/gift permission clauses and deny premature access
+(Scope, Flute, Surf, Strength, Dojo/Silph clearance, fossils and postgame).
 
 **Those tests prove candidate-graph invariants, not canonical overworld
 reachability.** They do not prove that all 361 IDs can actually be fought on one

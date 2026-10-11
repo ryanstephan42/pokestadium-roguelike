@@ -254,6 +254,10 @@ class CanonicalInventoryTests(unittest.TestCase):
                         self.assertIn(entry["teams"][variant][-1]["species"],
                                       ((7, 8, 9), (1, 2, 3), (4, 5, 6))[branch])
                     self.assertEqual(graph["nodes"]["travel:fossil"]["variant"], fossil)
+                    species = graph["encounters"][graph["fossil_offer"]]["teams"][fossil][0]["species"]
+                    self.assertEqual(species, (138, 140)[fossil])
+                    self.assertEqual(graph["nodes"]["travel:fossil"]["item"],
+                                     ("HELIX_FOSSIL", "DOME_FOSSIL")[fossil])
                     self.assertEqual(graph["nodes"][graph["fossil_offer"]]["variant"], fossil)
                     self.assertLess(order.index("travel:scope"),
                                     order.index("PokemonTower6F/ghost"))
@@ -336,6 +340,41 @@ class CanonicalInventoryTests(unittest.TestCase):
         self.assertFalse(available(graph, completed, retired,
                                    "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
         self.assertNotIn("SSAnne2F/rival-ship", retired)
+
+    def test_finite_static_and_gift_permission_clauses(self):
+        graph = candidate(self.data, "red")
+        for entry in graph["encounters"].values():
+            if entry["kind"] not in ("static", "ghost", "gift"):
+                continue
+            clauses = graph["nodes"][entry["id"]]["clauses"]
+            for clause in clauses:
+                self.assertTrue(available(graph, set(clause), set(), entry["id"]))
+            if entry["area"] == "PowerPlant":
+                self.assertEqual(clauses, [["field:surf"]])
+            elif entry["area"] == "SeafoamIslandsB4F":
+                self.assertEqual(clauses, [["field:surf", "field:strength"]])
+            elif entry["area"] == "CeruleanCaveB1F":
+                self.assertEqual(clauses, [["ChampionsRoom/rival-champion", "field:surf"]])
+            elif entry["kind"] == "ghost":
+                self.assertTrue(all("travel:scope" in clause for clause in clauses))
+            elif entry["id"].endswith("/snorlax"):
+                self.assertTrue(all("travel:flute" in clause for clause in clauses))
+            elif entry["id"].endswith("/gift-dojo"):
+                self.assertTrue(all("FightingDojo/TEXT_FIGHTINGDOJO_KARATE_MASTER"
+                                    in clause for clause in clauses))
+            elif entry["id"].endswith("/gift-lapras"):
+                self.assertTrue(all("SilphCo7F/rival-silph" in clause for clause in clauses))
+            elif entry["id"].endswith("/gift-fossil"):
+                self.assertTrue(all("travel:fossil" in clause for clause in clauses))
+            elif entry["id"].endswith("/gift-amber"):
+                self.assertTrue(all("travel:amber" in clause for clause in clauses))
+            self.assertFalse(available(graph, set(), set(), entry["id"]))
+        bridge1 = "Route24/TEXT_ROUTE24_YOUNGSTER2"
+        bridge2 = "Route24/TEXT_ROUTE24_COOLTRAINER_F2"
+        self.assertFalse(available(graph, {"CeruleanCity/rival-bridge"}, set(), bridge2))
+        self.assertTrue(available(graph, {"CeruleanCity/rival-bridge", bridge1}, set(), bridge2))
+        self.assertFalse(available(graph, {"CeruleanCity/rival-bridge"}, set(),
+                                   "Route25/TEXT_ROUTE25_HIKER1"))
 
     def test_healing_identity_access_and_retirement(self):
         self.assertEqual(self.data["healing_fact_audit"]["red"],

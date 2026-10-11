@@ -93,7 +93,12 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
     bridge = tuple("Route24/TEXT_ROUTE24_" + suffix for suffix in
                    ("YOUNGSTER2", "COOLTRAINER_F2", "YOUNGSTER1",
                     "COOLTRAINER_F1", "COOLTRAINER_M3"))
+    for previous, following in zip(bridge, bridge[1:]):
+        extra(following, previous)
     extra("Route24/TEXT_ROUTE24_COOLTRAINER_M1", *bridge)
+    for identifier in nodes:
+        if identifier.startswith("Route25/") or identifier == "Route24/TEXT_ROUTE24_COOLTRAINER_M2":
+            extra(identifier, "Route24/TEXT_ROUTE24_COOLTRAINER_M1")
     action("travel:bill", ("Route24/TEXT_ROUTE24_COOLTRAINER_M1",))
     action("event:hm01-received", ("SSAnne2F/rival-ship",))
     nodes["event:hm01-received"]["source_action"] = "SSAnneCaptainsRoom/HM01"
@@ -139,6 +144,7 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
     extra("FightingDojo/gift-dojo", "FightingDojo/TEXT_FIGHTINGDOJO_KARATE_MASTER")
     extra("CinnabarLabFossilRoom/gift-fossil", "travel:fossil")
     nodes["travel:fossil"]["variant"] = fossil_choice
+    nodes["travel:fossil"]["item"] = ("HELIX_FOSSIL", "DOME_FOSSIL")[fossil_choice]
     nodes["CinnabarLabFossilRoom/gift-fossil"]["variant"] = fossil_choice
     extra("CinnabarLabFossilRoom/gift-amber", "travel:amber")
     nodes["Route22/rival-late"]["clauses"] = [list(bosses.values())]
