@@ -6,6 +6,43 @@ US ROM headlessly. It prefers RetroArch's user core directory and then
 software renderer; the frontend requests Angrylion and explicitly rejects a
 core that asks for a hardware video context.
 
+## Concurrent emulator slots
+
+On the shared 4-core/8-thread test host, reserve at most **two headless
+processes**, each with `RLTEST_ANGRYLION_THREADS=4`. Coordinate slot ownership
+before starting; visible play and full integration gates remain exclusive.
+Do not extend test deadlines to compensate for competing workloads.
+
+```sh
+RLTEST_ANGRYLION_THREADS=4 RLTEST_OUTPUT=.local/rltest/slot-a \
+  python3 -m tools.rltest.run smoke
+# In a second reserved slot, use a distinct output/save/log directory:
+RLTEST_ANGRYLION_THREADS=4 RLTEST_OUTPUT=.local/rltest/slot-b \
+  python3 -m tools.rltest.run smoke
+```
+
+The environment variable sets the process-local Mupen64Plus-Next core option
+`mupen64plus-angrylion-multithread`. It accepts only decimal strings `1` through
+`64`; empty, malformed, out-of-range or core-unsupported values raise
+`HarnessError`. It overrides the same key in `Frontend(options=...)`.
+When unset, renderer selection and all core defaults remain unchanged,
+including Angrylion's `all threads` default. No global RetroArch settings are
+read or written. Other cores without this option require the variable unset.
+
+Each process must receive a distinct `Frontend(output=...)` directory (the CLI
+uses `RLTEST_OUTPUT` or `--output`), plus distinct explicit screenshot,
+savestate and log paths. This isolates core system/assets/save directories;
+the thread cap does not allocate slots or rename scenario artifact paths.
+Scenarios that hardcode output paths must not run concurrently without
+isolating those paths.
+
+Compare exact frame/RAM/screenshot evidence only with the same thread count,
+ROM, core and input sequence. Changing the cap can change rendered animation
+phase; savestate metadata already includes the effective options and rejects
+cross-option loads. Prior capped-four measurements found roughly 160-172
+aggregate FPS for two processes versus about 108 FPS solo, but external host
+load makes these throughput measurements noisy, not a timing guarantee.
+
 ## Requirements and quick checks
 
 The worktree must contain the local, ignored ROM and normal build map. Setup a
@@ -14,6 +51,7 @@ new worktree with `scripts/rl-worktree-setup.sh`, then run:
 ```sh
 tools/rltest/run_smoke.sh
 python3 -m unittest tools.rltest.tests.test_helpers
+python3 -m unittest tools.rltest.tests.test_frontend_options
 python3 -m tools.rltest.run battle-fixture
 python3 -m tools.rltest.test_play_run
 ```
