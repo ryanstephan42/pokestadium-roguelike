@@ -16,9 +16,9 @@ import zlib
 from tools.rltest.frontend import Frontend
 from tools.rltest.run import default_core
 from tools.rltest.save_roundtrip import boot, find_pak, native_command, save_ram
-from tools.rltest.test_permanent_progression import select
+from tools.rltest.test_permanent_progression import defined_bytes, select
 from tools.rltest.test_play_run import (
-    enter_roguelike_from_menu, read_run, require, start_new_run, wait_scene,
+    enter_roguelike_from_menu, read_run, require, start_new_run, wait_scene, Run,
 )
 
 
@@ -94,7 +94,8 @@ def phase(directory, part):
         enter_roguelike_from_menu(emu)
         select(emu, 1)
         wait_scene(emu, 2)
-        require(bytes(read_run(emu)) == (directory / "suspended-run.bin").read_bytes(),
+        require(defined_bytes(Run, bytes(read_run(emu))) ==
+                defined_bytes(Run, (directory / "suspended-run.bin").read_bytes()),
                 "migration changed active run/RNG/map/HP/PP/status")
         select(emu, read_run(emu).map.lanes[0])
         emu.wait_state(4, frames=600)
