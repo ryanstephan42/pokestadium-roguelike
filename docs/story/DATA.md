@@ -1031,6 +1031,46 @@ not retroactively establish synthetic terminal carry. This exact passive
 delta requires independent source review and a separate coordinator-granted
 natural-only execution; no emulator/full-gate grant is implied.
 
+The independently cleared `84113bc` candidate received a separate natural-only
+grant. The first invocation failed before Frontend construction because the
+configured user core path did not exist; evidence is preserved in
+`.local/rltest/story-ko-natural-84113bc/`. No core or native frame ran.
+A separately granted fresh attempt used the established installed core
+`/usr/lib/libretro/mupen64plus_next_libretro.so`, SHA256
+`1e5674de118b8cb3621a16402ecdd3d509591700c35e98943e8bb32906342263`.
+
+That attempt exhausted the unchanged prelearning 6,000-frame budget.
+`.local/rltest/story-ko-natural-84113bc-systemcore/` preserves 6,001 contiguous
+history rows (frames2246..8246), failure raw state/party/save/native/progress/
+machine/memory/provenance and a frozen recursive `evidence.sha256` manifest.
+Ordinary CPU rounds spent PP and changed HP; player live/original HP first
+reached0 with native exhaustion state12 at8120, while the opponent retained3
+HP. At8246, native result remained0 and story ownership remained BATTLE:
+KO/injected/resume/terminal/error counts were all0, XP235/L6, diagnostic
+gate6002 and logic/presentation3001 each. No enemy KO, learning, completed
+defeat, RESULT, terminal carry, commit or reload is accepted.
+
+This is a strict timeout failure, **not evidence of a blocked result path**.
+First faint left only126 frontend frames; mode2/action1 started8174, leaving72.
+A prior ordinary action1-to-action2 transition took104 frames (6910..7014).
+Source `func_84322640` step1 calls `func_84322600`, whose camera predicate
+`func_8431D118` advances action2 when ready. The observed final state is
+compatible with budget expiration during ordinary presentation; that
+predicate's return and executing PC were not observed. Learning/resume/error
+remained0 throughout, and native logic/presentation continued. No production
+fix, singleton-AI hang diagnosis or timeout waiver is justified by this run.
+
+Independent read-only review accepted only natural CPU HP/PP advancement and
+player exhaustion state12. Strict captured memory validation passes:
+100 allocation attempts/0 failures, cold pool2956416 before/after, cleared
+direct cold map, written stack margin1340/new bottom writes0. These are
+resource/cleanup evidence, not terminal acceptance or exhaustive SP safety.
+Prebattle, entry and failure saves independently share SHA256
+`d23490dabf525dadf4db99fb724086b26c7f40e8cb379dc3f2f56d3b9ea845cc`;
+the immutable seed/copy remain `ca483ab3...726d2`. Both attempts stopped at
+their first failure and released the slot process-free. No retry, retuning,
+deadline increase, defeat-completion probe or full-gate grant remains active.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
