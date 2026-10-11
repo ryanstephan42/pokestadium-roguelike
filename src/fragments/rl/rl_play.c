@@ -45,7 +45,8 @@ static RlPool sPlayNodePool;
 static RlMon sPlayDraft[RL_PLAY_DRAFT_SIZE];
 static unsigned char sPlayDraftSelected[RL_PLAY_DRAFT_SIZE];
 static unsigned char sPlayDraftOldSpecies[RL_PLAY_DRAFT_SIZE];
-static RlReward sPlayRewards[RL_PLAY_REWARD_SIZE];
+RlReward gRlPlayRewards[RL_PLAY_REWARD_SIZE];
+#define sPlayRewards gRlPlayRewards
 static RlUiOrder sPlayActiveOrder;
 #define sPlayActiveSlots sPlayActiveOrder.slots
 #define sPlayActiveCount sPlayActiveOrder.count
@@ -60,7 +61,8 @@ static const char* sPlayPreviewError;
 static unsigned char sPlayChosenLane;
 static unsigned char sPlayRerollUsed;
 static int sPlayPoolCount;
-static int sPlayRewardCount;
+int gRlPlayRewardCount;
+#define sPlayRewardCount gRlPlayRewardCount
 static const char* sPlayMessage;
 #define sPlayMeta gRlPlayProfile.meta
 #define sPlayNextMeta gRlPlayProfile.next_meta
@@ -1343,7 +1345,8 @@ void rl_play_draw(void) {
         case RL_PLAY_NODE:
             rl_scene_nodes_draw();
             rl_ui_text(44, 416, "START: suspend to Controller Pak", sPlayMuted);
-            rl_play_draw_status();
+            if (sPlayMessage != NULL)
+                rl_ui_text_wrap(42, 438, 556, 1, sPlayMessage, sPlayGold);
             return;
         case RL_PLAY_ERROR:
             rl_ui_text(44, 40, "Roguelike action unavailable", sPlayGold);

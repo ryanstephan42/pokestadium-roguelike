@@ -93,10 +93,10 @@ def capture_choices(emu, count, label):
 
 
 def capture_reward_details(emu, battle_index):
-    count = emu.read_u32("sPlayRewardCount")
+    count = emu.read_u32("gRlPlayRewardCount")
     require(1 <= count <= 4, "invalid native reward count")
     rewards = (Reward * count).from_buffer_copy(
-        emu.read("sPlayRewards", ctypes.sizeof(Reward) * count))
+        emu.read("gRlPlayRewards", ctypes.sizeof(Reward) * count))
     capture_choices(emu, count, f"reward-details-battle-{battle_index}")
     evidence = [
         {"choice": i + 1, "species": reward.mon.species,

@@ -15,6 +15,7 @@ static s16 detail_y[8];
 static unsigned detail_count;
 static char mon_text[16][128];
 static unsigned mon_count;
+static s16 controls_y;
 static RlMon mons[4];
 static RlPool pool;
 static RlMeta profile;
@@ -82,7 +83,8 @@ void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
         assert(y >= 50 && y <= 270 && mon_count < 16);
         strcpy(mon_text[mon_count++], text);
     }
-    if (x == 30 && (y == 314 || y == 360)) {
+    if (x == 30 && !strncmp(text, "D-pad:", 6)) controls_y = y;
+    if (x == 30 && (y == 314 || y == 340)) {
         strcpy(message_text, text);
         message = message_text;
     }
@@ -122,6 +124,7 @@ static void draw(void) {
     message = NULL;
     detail_count = 0;
     mon_count = 0;
+    controls_y = 0;
     rl_scene_nodes_draw();
     assert(shown != NULL);
 }
@@ -138,6 +141,7 @@ static void assert_mon_detail(const RlMon* mon) {
     char text[48];
     unsigned i;
     assert(mon_count == 11);
+    assert(controls_y == 394);
     assert(!strcmp(mon_text[0], rl_ui_species_name(mon->species)));
     sprintf(text, "Level %03u", mon->level);
     assert(!strcmp(mon_text[1], text));

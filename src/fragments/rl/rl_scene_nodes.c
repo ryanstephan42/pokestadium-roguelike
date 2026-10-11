@@ -697,10 +697,10 @@ void rl_scene_nodes_draw(void) {
                         rl_scene_relic_status(sRun, value), sGold);
     }
     if (sMessage) {
-        if (mon_page) rl_ui_text_wrap(30, 360, 570, 2, sMessage, sRed);
+        if (mon_page) rl_ui_text_wrap(30, 340, 570, 2, sMessage, sRed);
         else rl_ui_text(30, 314, sMessage, sRed);
     }
-    rl_ui_text(30, mon_page ? 420 : (relic_shop ? 394 : 354),
+    rl_ui_text(30, mon_page || relic_shop ? 394 : 354,
                (sPage == NODE_ROOT &&
                 (sMode == RL_SCENE_BAG || sMode == RL_SCENE_PARTY)) ?
                "D-pad: select   A: confirm   B: back   R: relics" :

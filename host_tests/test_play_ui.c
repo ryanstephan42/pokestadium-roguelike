@@ -18,6 +18,7 @@ static unsigned sSpeciesSeen[152];
 static char sSpeciesNames[152][16];
 static char sDetailText[16][128];
 static unsigned sDetailCount;
+static unsigned sSuspendDrawn, sNodeStatusDrawn;
 
 void osSyncPrintf(const char* format, ...) {}
 int rl_battle_apply_pp_pouch(RunState* run) {
@@ -53,6 +54,10 @@ const char* rl_ui_species_name(unsigned species) {
     return sSpeciesNames[species];
 }
 void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
+    if (!strcmp(text, "START: suspend to Controller Pak")) {
+        if (y != 416) __builtin_trap();
+        sSuspendDrawn++;
+    }
     if (!strcmp(text, "THUNDERBOLT")) sMoveNamesDrawn++;
     if (!strncmp(text, "PP ", 3)) sPpDrawn++;
     if (!strncmp(text, "SPECIES", 7)) sRosterNamesDrawn++;
@@ -62,6 +67,10 @@ void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
 }
 void rl_ui_text_wrap(s16 x, s16 y, s16 width, unsigned lines,
                      const char* text, Color_RGBA8 color) {
+    if (!strcmp(text, "Node save status")) {
+        if (x != 42 || y != 438 || width != 556 || lines != 1) __builtin_trap();
+        sNodeStatusDrawn++;
+    }
     if (x == 410) {
         if (width != 200 || (lines != 1 && lines != 2)) __builtin_trap();
         rl_ui_text(x, y, text, color);
@@ -227,5 +236,9 @@ int main(int argc, char** argv) {
         }
     }
     assert(recruits > 0);
+    gRlPlayScene = RL_PLAY_NODE;
+    sPlayMessage = "Node save status";
+    rl_play_draw();
+    assert(sSuspendDrawn == 1 && sNodeStatusDrawn == 1);
     return 0;
 }
