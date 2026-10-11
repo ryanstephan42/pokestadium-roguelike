@@ -214,6 +214,17 @@ def choose_active_and_battle(emu, battle_index):
     after_first_move = emu.battle_mons()
     require(after_first_move[0]["pp"][0] < live[0]["pp"][0],
             f"native move command was not accepted: {live[0]} -> {after_first_move[0]}")
+    if battle_index == 1:
+        # The native opponent may choose status moves first. Keep using the
+        # fixture's Growl until real damage exists before sweeping with Psychic.
+        for _ in range(12):
+            if after_first_move[0]["hp"] < queued.cur_hp:
+                break
+            submit_first_move(emu)
+            emu.step(1200)
+            after_first_move = emu.battle_mons()
+        require(after_first_move[0]["hp"] < queued.cur_hp,
+                "native opponent never damaged the Growl fixture lead")
     for _ in range(24):
         if emu.read_u32("gRlBattleActive") == 0:
             break
@@ -231,7 +242,8 @@ def choose_active_and_battle(emu, battle_index):
         require(scene(emu) == SCENE_REWARD,
                 f"test battle {battle_index} did not win into the reward scene: {scene(emu)}")
         require(after.party[2].cur_hp < queued.cur_hp,
-                "native battle did not damage the selected lead")
+                f"native battle did not damage lead species={queued.species}: "
+                f"queued HP={queued.cur_hp}, result HP={after.party[2].cur_hp}")
         if battle_index == 1:
             require(after.party[2].cur_hp > 0,
                     "first-battle carry lead fainted before the next battle")
