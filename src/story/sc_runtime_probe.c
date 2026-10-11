@@ -5,6 +5,7 @@
 #include "src/29BA0.h"
 
 volatile ScProbeMailbox gScProbe;
+const RlU32 gScProbeCompiledSize = sizeof(gScProbe);
 int gScProbeActive;
 static ScState resident;
 static ScBridge bridge;

@@ -72,6 +72,9 @@ def memory_evidence(emu, result):
 
 
 def verify_mailbox_abi(emu):
+    compiled = emu.read_u32("gScProbeCompiledSize")
+    require(compiled == len(FIELDS) * 4,
+            f"Stale compiled mailbox ABI: {compiled} bytes, expected {len(FIELDS) * 4}")
     base = emu.symbols.address("gScProbe")
     active = emu.symbols.address("gScProbeActive")
     require(active - base == len(FIELDS) * 4,

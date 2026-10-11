@@ -550,7 +550,10 @@ That failed run is not accepted evidence, despite successful SC01 status and
 direct post-pop map zeroes. Story objects now depend on all story headers;
 the fragment-62 mailbox user has an explicit dependency too. Before any probe
 write, the harness checks the exact ELF symbol spacing against its field
-count and rejects the old ABI. Frozen failed artifacts/evidence are retained.
+count and rejects the old ABI. It also reads the resident compiled
+`sizeof(gScProbe)` constant, so neighboring-symbol alignment cannot hide a
+wrong object size; a regression rejects wrong size even with matching spacing.
+Frozen failed artifacts/evidence are retained.
 
 ## Verification scope and remaining review
 
