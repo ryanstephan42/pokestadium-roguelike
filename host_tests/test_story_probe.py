@@ -35,10 +35,11 @@ class StoryHarnessTests(unittest.TestCase):
         emu.symbols.address.side_effect = [0x80110000, 0x80110000 + 47 * 4]
         with self.assertRaisesRegex(HarnessError, "Stale target mailbox ABI"):
             verify_mailbox_abi(emu)
-            emu.read_u32.return_value = 47 * 4
-            emu.symbols.address.side_effect = [0x80110000, 0x80110000 + len(FIELDS) * 4]
-            with self.assertRaisesRegex(HarnessError, "Stale compiled mailbox ABI"):
-                verify_mailbox_abi(emu)
+        emu.read_u32.return_value = 47 * 4
+        emu.symbols.address.side_effect = [0x80110000, 0x80110000 + len(FIELDS) * 4]
+        with self.assertRaisesRegex(HarnessError, "Stale compiled mailbox ABI"):
+            verify_mailbox_abi(emu)
+        emu.read_u32.return_value = len(FIELDS) * 4
         emu.symbols.address.side_effect = [0x80110000, 0x80110000 + len(FIELDS) * 4]
         verify_mailbox_abi(emu)
 
