@@ -29,7 +29,8 @@ typedef struct MainPoolState { struct MainPoolState *prev; } MainPoolState;
 typedef struct MainPool { MainPoolState *mainState; } MainPool;
 typedef struct MainPoolBlock { int unused; } MainPoolBlock;
 typedef void (*AllocateFunc)(MainPoolBlock *, u32);
-typedef struct BinArchive { s32 num_files; unsigned kind, unk_00; } BinArchive;
+typedef struct BinArchive { u16 num_files; unsigned kind, unk_00, alignment; } BinArchive;
+typedef struct BinArchiveFile { unsigned offset, size; void *unk_08; } BinArchiveFile;
 typedef struct ret_func_8000484C { u8 bytes[0x90]; s32 unk_90; } ret_func_8000484C;
 typedef struct unk_D_800AC870_sub { s16 unk_00, unk_02; u8 *unk_04, *unk_08; } unk_D_800AC870_sub;
 typedef struct unk_D_800AC870 {

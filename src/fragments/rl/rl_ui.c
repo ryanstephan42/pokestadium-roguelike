@@ -9,6 +9,7 @@
 #include "src/stage_loader.h"
 #ifdef STORY_NATIVE_UI
 #include "src/story/sc_native_resources.h"
+#include "src/story/sc_native_icons.h"
 #endif
 
 extern u8 pokemon_icons_ROM_START[];
@@ -50,6 +51,16 @@ s32 rl_ui_init(void) {
     return RL_UI_NONE;
 #endif
 }
+
+#ifdef STORY_NATIVE_UI
+int rl_ui_story_icon_cached(unsigned species) {
+    return sc_native_icon_cached(sIconArchive, species);
+}
+
+int rl_ui_story_icon_prefetch(unsigned species) {
+    return sc_native_icon_prefetch(sIconArchive, species);
+}
+#endif
 
 const char* rl_ui_move_name(unsigned move) {
     if (!move) return "--";
@@ -214,7 +225,11 @@ s32 rl_ui_mon_icon(s32 species, s16 x, s16 y) {
         rl_ui_text(x, y, rl_text[RL_TEXT_ICON_ERROR], sDisabled);
         return RL_UI_INVALID;
     }
+#ifdef STORY_NATIVE_UI
+    pixels = file->unk_08;
+#else
     pixels = func_8000484C(sIconArchive, species - 1);
+#endif
     if (pixels == NULL) {
         rl_ui_text(x, y, rl_text[RL_TEXT_ICON_ERROR], sDisabled);
         return RL_UI_INVALID;

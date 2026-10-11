@@ -16,8 +16,8 @@ backing. Actual IDO `sizeof` constants additionally measure `ScNativeUi` at
 24 bytes and retained `ScNativePak` at 1,484 bytes; the runner emits target
 driver/controller/request size constants too. These are layout facts, not
 full arena, stack or display-resource fit clearance.
-The resource scope must be the top scope while drawing/input/result
-calls occur; per-battle scopes must drain/pop before result delivery. No root,
+The resource scope must be the top scope for acquisition, icon prefetch and final
+result/release calls; per-battle scopes must drain/pop before result delivery. No root,
 BATL generation or native image pointer is placed in UI request values.
 
 Only one graphics binding is active. Preparation is once per acquisition, and
@@ -70,6 +70,27 @@ nested resource lifetime and explicit task-retirement refusal.
 The actual checked resource helper also refuses all 13 allocation failures,
 missing/short font/icon/text archives and all five required glyph/name files,
 and restores a borrowed font descriptor on scope retirement.
+
+## Learning under a live battle child scope
+
+Parent-scope input/drawing prefetch current party/offer icons before launch.
+The story icon renderer consumes only validated cached pixels; it never lazily
+allocates during drawing. A missing cache explicitly refuses presentation,
+including under a child scope. Ordinary non-story RL lazy loading is unchanged.
+
+The native adapter checks the actual pool-state ancestor chain for its captured
+graphics parent. Descendant input/drawing also require the retained driver/UI/Pak
+identity and an accepted live battle in `SC_LEARNING` or `SC_BATTLE`. These
+calls perform no icon acquisition or Pak session/I/O; controller learning is
+the existing in-memory transaction. Final finish and release still require the
+parent to be top, after owner worker drain/pop. No new service permit is created.
+
+The child-learning fixture launches a value request, feeds a synthetic KO into
+real observe/progression, chooses decline through real input while a pool child
+is live, and returns to battle. Allocation and raw Pak I/O counters stay
+unchanged. Missing cached pixels and an unrelated ancestor chain refuse; finish
+and release refuse until child retirement. This is host fixture evidence, not
+native task execution, DMA or battle-scope authority.
 
 Font/pool/display/OS calls are host fixtures, not native execution. Resource
 budgets and full stack/allocator fit are not established by these tests.

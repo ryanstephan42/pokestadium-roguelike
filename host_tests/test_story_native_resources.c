@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "../src/story/sc_native_ui.h"
 #include "../src/story/sc_native_resources.h"
+#include "../src/story/sc_native_icons.h"
 #include "../src/controller.h"
 
 int sc_pak_probe_load(unsigned, const ScCatalog *, ScSnapshot *);
@@ -26,6 +27,7 @@ typedef struct Allocation { void *data; AllocateFunc cleanup; u32 arg; unsigned 
 static Allocation allocations[64];
 static unsigned allocation_count, allocation_calls;
 static int fail_allocation, missing_archive, short_archive, missing_file;
+static int launch_status = SC_UNAVAILABLE;
 static BinArchive *icons;
 static char **moves, **species;
 unk_D_800AC870 *D_800AC870;
@@ -152,24 +154,42 @@ BinArchive *func_800044F4(u8 *start, u8 *end, s32 mode, s32 side) {
     BinArchive *archive;
     (void)end; (void)mode;
     if (missing_archive == (int)kind) return NULL;
-    archive = main_pool_alloc(sizeof(*archive), 0);
+    archive = main_pool_alloc(sizeof(*archive) + (kind == 2 ? 151 * sizeof(BinArchiveFile) : 0), 0);
     if (archive) {
         archive->kind = kind;
         archive->unk_00 = side ? 6 : 2;
         archive->num_files = short_archive == (int)kind ? 1 : kind == 1 ? 6 : kind == 2 ? 151 : 42;
+        if (kind == 2) {
+            unsigned i;
+            BinArchiveFile *files = (BinArchiveFile *)((u8 *)archive + sizeof(*archive));
+            for (i = 0; i < 151; i++) files[i].size = 3200;
+        }
     }
     return archive;
 }
 void *func_8000484C(BinArchive *archive, s32 file) {
+    void *data;
     assert(archive && file >= 0 && file < archive->num_files);
     if (missing_file == file) return NULL;
-    return main_pool_alloc(archive->kind == 1 ? sizeof(ret_func_8000484C) : 165 * sizeof(char *), 0);
+    data = main_pool_alloc(archive->kind == 1 ? sizeof(ret_func_8000484C) :
+                          archive->kind == 2 ? 3200 : 165 * sizeof(char *), 0);
+    if (archive->kind == 2) {
+        BinArchiveFile *files = (BinArchiveFile *)((u8 *)archive + sizeof(*archive));
+        files[file].unk_08 = data;
+    }
+    return data;
 }
 s32 rl_ui_init(void) {
     return ui_error || !sc_native_resources_acquire(&icons, &moves, &species) ? RL_UI_INVALID : RL_UI_NONE;
 }
 void sc_scene_draw(const ScUi *controller_ui) { assert(controller_ui == &ui); frames++; }
-static int launch(void *p, const ScUiBattleRequest *r) { (void)p; (void)r; return SC_UNAVAILABLE; }
+int rl_ui_story_icon_cached(unsigned mon) { return sc_native_icon_cached(icons, mon); }
+int rl_ui_story_icon_prefetch(unsigned mon) { return sc_native_icon_prefetch(icons, mon); }
+static int launch(void *p, const ScUiBattleRequest *r) {
+    (void)p; assert(r->operation_id);
+    assert(rl_ui_story_icon_cached(r->party[0].species));
+    return launch_status;
+}
 static void draw(void *p, const ScUi *u) { assert(sc_native_ui_draw(p, u) == SC_OK); }
 static void leave(void *p) { (void)p; }
 
@@ -339,6 +359,84 @@ static void graphics_failures(void) {
     D_800AC870 = NULL;
 }
 
+static int native_choose(unsigned id) {
+    unsigned i;
+    for (i = 0; i < (unsigned)ui.list.count; i++) if (ui.ids[i] == id) break;
+    assert(i < (unsigned)ui.list.count);
+    while (ui.list.cursor != (int)i) {
+        controller.buttonPressed = ui.list.cursor < (int)i ? RL_UI_DOWN : RL_UI_UP;
+        assert(sc_native_ui_input(&native, &driver) == SC_OK);
+    }
+    controller.buttonPressed = RL_UI_A;
+    return sc_native_ui_input(&native, &driver);
+}
+
+static void child_learning(void) {
+    ScUiDriverCalls calls;
+    ScTemplate starter;
+    ScBattleSnapshot party[6];
+    BinArchiveFile *files;
+    void *pixels;
+    unsigned region = 0, encounter, i, before_alloc, before_reads, before_writes;
+    MainPoolState unrelated_scope, *child;
+    fixture();
+    assert(sc_native_pak_bind(&pak, 0) == SC_SAVE_OK);
+    assert(sc_native_ui_acquire(&native, &pak) == SC_OK);
+    assert(sc_native_ui_prepare(&native, &ui, &sc_catalog, 123) == SC_OK);
+    memset(&driver, 0, sizeof(driver));
+    calls.context = &native; calls.launch = launch; calls.draw = draw; calls.leave = leave;
+    assert(sc_ui_driver_bind(&driver, &ui, &request, &calls) == SC_OK);
+    assert(native_choose(1) == SC_OK);
+    assert(native_choose(3) == SC_OK && native_choose(5) == SC_OK && native_choose(1) == SC_OK);
+    memset(&starter, 0, sizeof(starter)); starter.species = 1; starter.level = 6;
+    assert(sc_make_mon(&sc_catalog, &starter, 0x8889, &ui.state.party[0]) == SC_OK);
+    ui.state.party[0].exp = sc_xp(7, ui.state.party[0].growth) - 1;
+    for (i = 0; i < (unsigned)ui.list.count; i++)
+        if (!strcmp(ui.labels[i], "OaksLab")) region = ui.ids[i];
+    for (encounter = 0; encounter < sc_catalog.count; encounter++)
+        if (!strcmp(sc_catalog.encounters[encounter].id, "OaksLab/rival-lab")) break;
+    assert(region && native_choose(region) == SC_OK && native_choose(encounter) == SC_OK);
+    controller.buttonPressed = RL_UI_DOWN;
+    assert(sc_native_ui_input(&native, &driver) == SC_OK && ui.list.cursor == 1);
+    files = (BinArchiveFile *)((u8 *)icons + sizeof(*icons));
+    pixels = files[0].unk_08; files[0].unk_08 = NULL; missing_file = 0;
+    controller.buttonPressed = RL_UI_A;
+    assert(sc_native_ui_input(&native, &driver) == SC_UNAVAILABLE);
+    assert(!driver.launched && !ui.request_ready && ui.screen == SC_UI_CONFIRM);
+    files[0].unk_08 = pixels; missing_file = -1;
+    launch_status = SC_OK;
+    assert(native_choose(1) == SC_OK && driver.launched);
+    assert(rl_ui_story_icon_cached(1));
+    main_pool_push_state(0); child = pool.mainState;
+    before_alloc = allocation_calls; before_reads = reads; before_writes = writes;
+    memset(party, 0, sizeof(party)); party[0].hp = ui.state.party[0].cur_hp;
+    for (i = 0; i < 4; i++) party[0].pp[i] = ui.state.party[0].pp[i];
+    assert(sc_ui_driver_observe(&driver, request.operation_id, party, 0, 0, 0) == SC_OK);
+    assert(ui.screen == SC_UI_LEARN && sc_native_ui_draw(&native, &ui) == SC_OK);
+    files = (BinArchiveFile *)((u8 *)icons + sizeof(*icons));
+    pixels = files[0].unk_08; files[0].unk_08 = NULL;
+    assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE);
+    controller.buttonPressed = RL_UI_A;
+    assert(sc_native_ui_input(&native, &driver) == SC_UNAVAILABLE && ui.screen == SC_UI_LEARN);
+    files[0].unk_08 = pixels;
+    unrelated_scope.prev = NULL; pool.mainState = &unrelated_scope;
+    assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE);
+    assert(sc_native_ui_input(&native, &driver) == SC_UNAVAILABLE);
+    pool.mainState = child;
+    assert(sc_native_ui_finish(&native, &driver, request.operation_id, SC_WIN) == SC_UNAVAILABLE);
+    assert(sc_native_ui_release(&native, &driver, 1) == SC_INVALID);
+    assert(native_choose(4) == SC_OK && native_choose(1) == SC_OK && ui.state.phase == SC_BATTLE);
+    assert(sc_native_ui_draw(&native, &ui) == SC_OK);
+    assert(allocation_calls == before_alloc && reads == before_reads && writes == before_writes);
+    main_pool_pop_state(0);
+    assert(sc_native_ui_finish(&native, &driver, request.operation_id, SC_WIN) == SC_OK);
+    assert(native_choose(2) == SC_OK && native_choose(1) == SC_OK && ui.screen == SC_UI_REGIONS);
+    assert(native_choose(3) == SC_OK && native_choose(2) == SC_OK && driver.exit_requested);
+    assert(sc_native_ui_release(&native, &driver, 1) == SC_OK);
+    assert(sc_native_pak_release(&pak) == SC_SAVE_OK && !allocation_count);
+    puts("Child-scope learning: actual progression fixture, cached icons, no allocations/Pak I/O, ancestry and drain guards; OK");
+}
+
 int main(void) {
     ScUiDriverCalls calls;
     backend();
@@ -397,6 +495,7 @@ int main(void) {
     assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE);
     assert(sc_native_pak_release(&pak) == SC_SAVE_OK);
     assert(locks == unlocks && frames == 3 && logs);
+    child_learning();
     puts("Story native resource adapter: real backend with synthetic OS/Pak/font outcomes; OK");
     return 0;
 }

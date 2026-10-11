@@ -19,6 +19,27 @@ static int ready(const ScNativeUi *native) {
         main_pool_get_pool()->mainState == native->resource_scope;
 }
 
+static int descendant(const ScNativeUi *native) {
+    MainPoolState *scope;
+    if (!native || sResources != native || !native->acquired || !native->pak ||
+        !native->pak->bound || native->pak_binding_id != native->pak->binding_id) return 0;
+    for (scope = main_pool_get_pool()->mainState; scope; scope = scope->prev)
+        if (scope == native->resource_scope) return 1;
+    return 0;
+}
+
+static int icons_ready(const ScUi *ui, int prefetch) {
+    unsigned i, species;
+    if (ui->state.party_count > 6) return 0;
+    for (i = 0; i <= ui->state.party_count; i++) {
+        species = i == ui->state.party_count ? ui->state.offer.species : ui->state.party[i].species;
+        if (!species) continue;
+        if (prefetch ? !rl_ui_story_icon_prefetch(species) : !rl_ui_story_icon_cached(species))
+            return 0;
+    }
+    return 1;
+}
+
 int sc_native_ui_acquire(ScNativeUi *native, ScNativePak *bound_pak) {
     MainPoolState *before;
     if (!native || sResources || native->acquired || native->resource_scope || !bound_pak ||
@@ -61,20 +82,35 @@ int sc_native_ui_prepare(ScNativeUi *native, ScUi *backing, const ScCatalog *cat
 }
 
 int sc_native_ui_draw(ScNativeUi *native, const ScUi *ui) {
-    if (!ready(native) || !ui || ui != native->prepared || !rl_ui_list_valid(&ui->list))
+    if (!descendant(native) || !ui || ui != native->prepared || !rl_ui_list_valid(&ui->list) ||
+        !native->driver || !native->driver->bound || native->driver->ui != ui ||
+        ui->device != &native->pak->device ||
+        (!ready(native) && (!native->driver->launched ||
+         (ui->state.phase != SC_LEARNING && ui->state.phase != SC_BATTLE))))
         return report(NULL, SC_UNAVAILABLE, "Story native UI: drawing resources unavailable");
+    if (!icons_ready(ui, ready(native)))
+        return report(NULL, SC_UNAVAILABLE, "Story native UI: retained icon cache unavailable");
     sc_scene_draw(ui);
     return SC_OK;
 }
 
 int sc_native_ui_input(ScNativeUi *native, ScUiDriver *driver) {
     int status, ended;
-    if (!ready(native) || !driver || !driver->bound || !gPlayer1Controller ||
+    if (!descendant(native) || !driver || !driver->bound || !gPlayer1Controller ||
         (native->driver && native->driver != driver) ||
         driver->ui != native->prepared || driver->ui->device != &native->pak->device)
         return report(driver ? driver->ui : NULL, SC_UNAVAILABLE,
                       "Story native UI: input/backing/Pak binding unavailable");
     native->driver = driver;
+    if (!ready(native)) {
+        if (!driver->launched || driver->launch_pending || driver->ui->pending_save ||
+            (driver->ui->state.phase != SC_LEARNING && driver->ui->state.phase != SC_BATTLE) ||
+            !icons_ready(driver->ui, 0))
+            return report(driver->ui, SC_UNAVAILABLE, "Story native UI: child-scope learning resources unavailable");
+        return sc_ui_driver_step(driver, gPlayer1Controller->buttonPressed);
+    }
+    if (!icons_ready(driver->ui, 1))
+        return report(driver->ui, SC_UNAVAILABLE, "Story native UI: icon prefetch failed before submission");
     status = sc_native_pak_begin(native->pak);
     if (status != SC_SAVE_OK)
         return report(driver->ui, SC_UNAVAILABLE, "Story native UI: Pak session acquisition failed");
