@@ -138,6 +138,11 @@ at the unsigned 32-bit maximum rather than wrapping.
 
 ### Meta/unlock boundary
 
+The runtime profile shop, registration controls, ordinary weighted drafts and
+canonical option application are described in [PERMANENT-UI.md](PERMANENT-UI.md).
+Profile purchases preserve active suspension and use separate retry candidates;
+they never invoke terminal recording again.
+
 `rl_meta.h` operates on the current v4 `RlMeta` without touching storage or UI;
 the v4 codec migrates existing v3 profiles. Only initialize a profile with
 `rl_meta_init` after explicit new-profile creation, never as a fallback for a

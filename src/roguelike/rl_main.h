@@ -44,6 +44,10 @@ extern RunState gRlRun;
 typedef struct RlPlayProfile {
     RlMeta meta, next_meta;
     RlU8 summary_prepared, summary_saved, ascension, starter_pool, unsaved;
+    RlMeta edit_base, edit_candidate;
+    RunState edit_run;
+    RlU8 edit_pending, edit_has_run;
+    RlU8 theme, kit, options_initialized;
 } RlPlayProfile;
 extern RlPlayProfile gRlPlayProfile;
 extern RlPendingBattle gRlPendingBattle;

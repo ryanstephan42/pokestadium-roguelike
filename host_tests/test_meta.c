@@ -167,6 +167,9 @@ static void test_options_species_and_currency(void) {
     species[0] = 17;
     species[1] = 18;
     species[2] = 150;
+    meta.registered_species[(17 - 1) >> 3] |= 1U << ((17 - 1) & 7);
+    meta.registered_species[(18 - 1) >> 3] |= 1U << ((18 - 1) & 7);
+    meta.registered_species[(150 - 1) >> 3] |= 1U << ((150 - 1) & 7);
     bst[0] = 250;
     bst[1] = 500;
     bst[2] = 600;
@@ -184,13 +187,29 @@ static void test_options_species_and_currency(void) {
         else assert(0);
     }
     assert(low_bst_count > high_bst_count);
-    species[0] = 1;
+    species[0] = 151;
     rng = 99;
     before_rng = rng;
     selected = 77;
     assert(rl_meta_choose_species(&meta, &rng, species, bst, 1,
                                   &selected) == RL_EMPTY);
     assert(rng == before_rng && selected == 77);
+    species[0] = 1;
+    species[1] = 17;
+    species[2] = 151;
+    bst[0] = 300;
+    bst[1] = 600;
+    bst[2] = 1;
+    for (seed = 1; seed <= 3000; seed++) {
+        RlU32 repeat_rng;
+        RlU8 repeat_selected;
+        rng = repeat_rng = seed;
+        assert(rl_meta_choose_species(&meta, &rng, species, bst, 3, &selected) == RL_OK);
+        assert(selected == 1 || selected == 17);
+        assert(rl_meta_choose_species(&meta, &repeat_rng, species, bst, 3,
+                                      &repeat_selected) == RL_OK);
+        assert(selected == repeat_selected && rng == repeat_rng);
+    }
 
     prepare_terminal_run(&run, 0, RL_WON);
     run.party[0].species = 9;

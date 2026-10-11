@@ -27,25 +27,40 @@ def load_profile(emu, from_exit=False):
     return result, masks
 
 
-def phase(directory, reload_only):
+def phase(directory, reload_only, second_loss=False):
     with Frontend(default_core(), Path("build_rl/pokestadium-rl.z64"),
                   Path("build_rl/pokestadium-rl.map"), output=directory,
                   options={"mupen64plus-pak1": "memory"}, timeout=1800) as emu:
-        if reload_only:
+        if reload_only or second_loss:
             pointer, initial = save_ram(emu)
             data = (directory / "meta-save.bin").read_bytes()
             require(len(data) == len(initial), "save RAM changed size")
             ctypes.memmove(pointer, data, len(data))
-            boot(emu)
+            if second_loss:
+                boot(emu)
+                enter_roguelike_from_menu(emu)
+                from tools.rltest.test_permanent_progression import resolve_pending
+                resolve_pending(emu)
+                start_new_run(emu, 0x13579BDF, 3)
+                from tools.rltest.test_play_run import verify_native_loss
+                verify_native_loss(emu)
+                press(emu, "N64_B")
+                emu.wait_state(4, frames=600)
+            else:
+                boot(emu)
         else:
             run_native_loss_only(emu)
         result, masks = load_profile(emu, from_exit=not reload_only)
-        require(result[4:8] == (1, 0, 1, 0),
+        require(result[4:8] == (2 if second_loss else 1, 0, 1, 0),
                 f"terminal loss did not persist exactly once: {result}")
         require(masks == (1, 255, 255, 0),
                 f"new profile was reset or granted locked content: {masks}")
-        if reload_only:
+        if second_loss:
+            print("SECOND NATIVE LOSS PASSED: fresh process, runs=2, masks preserved")
+        elif reload_only:
             enter_roguelike_from_menu(emu)
+            from tools.rltest.test_permanent_progression import resolve_pending
+            resolve_pending(emu)
             start_new_run(emu, 99, 0)
             for _ in range(3):
                 press(emu, "DOWN")
@@ -79,16 +94,16 @@ def phase(directory, reload_only):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--phase", choices=("loss", "reload"))
+    parser.add_argument("--phase", choices=("loss", "reload", "second-loss"))
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.phase:
-        phase(args.output, args.phase == "reload")
+        phase(args.output, args.phase == "reload", args.phase == "second-loss")
         return
     root = Path(".local/rltest")
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="meta-runtime-", dir=root) as temporary:
-        for part in ("loss", "reload"):
+        for part in ("loss", "reload", "second-loss"):
             subprocess.run(
                 [sys.executable, "-m", "tools.rltest.test_meta_runtime",
                  "--phase", part, "--output", temporary], check=True)

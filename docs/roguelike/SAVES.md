@@ -181,6 +181,11 @@ Committed corrupted bytes are never overwritten, including with `create=1`.
 
 ## Verification and integration
 
+The runtime's separate permanent-profile edit transaction compares full encoded
+old/candidate records, including the retained suspension, before uncertain
+purchase/register/skip retries. See [PERMANENT-UI.md](PERMANENT-UI.md) for controls,
+ordinary draft effects and reproducible native migration/repeated-loss checks.
+
 `make -C host_tests save-test` runs strict C89 and ASan/UBSan memory fixtures:
 roundtrips, suspension, exact v3/v4 lengths, v3-to-v4 migration through the
 storage wrapper with active-run RNG/map/party/HP/PP/status preservation, all
