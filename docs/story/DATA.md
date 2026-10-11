@@ -1349,7 +1349,9 @@ Evidence is frozen at `.local/rltest/story-ember-reload-2d45de1/`, recursive
 manifest SHA256 `a4cddd52542fedf7e9b44c357538a426ceb7c63d56cd180aca18adad54768536`.
 The frozen88f ROM/map/ELF, installed core and accepted natural source evidence
 were unchanged; source hashes and the actual journal codec passed before
-Frontend startup. Independent completed-reload acceptance remains pending.
+Frontend startup. Independent review accepted completed LOAD preservation
+only after verifying the manifest, full state/named party/save identity, all
+history rows and zero replay accounting, codec/provenance and resources.
 
 Boot/native-query setup ended at frame2106; launch ended2118; LOAD completed
 2210: exactly12 launch frames plus92 load-wait frames,104 operation frames.
