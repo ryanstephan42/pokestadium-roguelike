@@ -38,6 +38,13 @@ void sc_scene_draw(const ScUi *ui) {
         return;
     }
     rl_ui_text(44, 40, "Red / Blue Story Campaign", sGold);
+    value[0] = 'M'; value[1] = 'o'; value[2] = 'o'; value[3] = 'n';
+    value[4] = ':'; value[5] = ' '; value[6] = (char)('0' + ui->state.moon_stones);
+    value[7] = ' '; value[8] = '/'; value[9] = ' ';
+    value[10] = (char)('0' + ui->state.moon_stones_spent);
+    value[11] = ' '; value[12] = 'u'; value[13] = 's'; value[14] = 'e';
+    value[15] = 'd'; value[16] = 0;
+    rl_ui_text(44, 64, value, sMuted);
     visible = ui->list;
     visible.count = ui->list.count - ui->list.scroll;
     if (visible.count > 7) visible.count = 7;
@@ -75,7 +82,7 @@ void sc_scene_draw(const ScUi *ui) {
             rl_ui_text(44, 344, "Learning:", sGold);
             rl_ui_text_wrap(44, 364, 350, 1, rl_ui_move_name(move), sWhite);
         } else if (ui->screen == SC_UI_EVOLVE)
-            rl_ui_text_wrap(44, 344, 350, 2, "Stone/trade authority awaits integration.", sMuted);
+            rl_ui_text_wrap(44, 344, 350, 2, "Moon Stones: finite. Shop stones / trade unavailable.", sMuted);
     } else if (ui->screen == SC_UI_CREATE) {
         static const char hex[] = "0123456789ABCDEF";
         for (i = 0; i < 8; i++) value[i] = hex[(ui->seed >> ((7 - i) * 4)) & 15];

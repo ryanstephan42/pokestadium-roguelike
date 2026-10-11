@@ -242,7 +242,7 @@ static void show(ScUi *ui, unsigned screen) {
                 text(label, "Evolve to No.000");
                 number(label + 13, evo->species);
                 trial = ui->state;
-                row(ui, label, i, sc_evolve(&trial, ui->catalog, ui->slot, i, 0, 0, 1) != SC_OK);
+                row(ui, label, i, sc_evolve_owned(&trial, ui->catalog, ui->slot, i, 1) != SC_OK);
             }
             if (!count) row(ui, "No evolution", 0, 1);
             break;
@@ -333,7 +333,7 @@ static int execute(ScUi *ui) {
                 ui->move < 4 ? ui->move : 0, ui->move < 4);
             break;
         case SC_UI_EVOLUTION:
-            status = sc_evolve(&ui->pending.state, ui->catalog, ui->slot, ui->evolution, 0, 0, 1);
+            status = sc_evolve_owned(&ui->pending.state, ui->catalog, ui->slot, ui->evolution, 1);
             break;
         case SC_UI_HEAL_SITE:
             status = sc_location_heal(&ui->pending.state, ui->catalog, ui->node);
@@ -427,6 +427,8 @@ int sc_ui_input(ScUi *ui, unsigned pressed) {
             ui->options = loaded.state.options;
             ui->active = 1;
             sync(ui);
+            if (loaded.wire_version == 1)
+                ui->message = "Legacy save loaded; next save upgrades format. Stone pickups remain unclaimed.";
             if (loaded.interrupted) ui->message = "Interrupted battle checkpoint: campaign ended";
             break;
         case SC_UI_CREATE:

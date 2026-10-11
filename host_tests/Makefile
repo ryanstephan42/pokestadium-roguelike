@@ -21,6 +21,42 @@ STORY_UI_SOURCES = test_story_ui.c ../src/story/sc_ui.c \
 	../src/roguelike/rl_ui_model.c ../src/story/sc_scene.c \
 	../src/fragments/rl/rl_ui_mon.c ../build/story/sc_data.c
 STORY_UI_FLAGS = -I.. -iquote ../include -Wno-endif-labels -include scene_nodes_stubs.h
+STORY_LOGIC_SOURCES = $(filter-out test_story_ui.c ../src/story/sc_scene.c \
+	../src/fragments/rl/rl_ui_mon.c ../build/story/sc_data.c,$(STORY_UI_SOURCES))
+
+.PHONY: story-stone-test story-core-test
+story-stone-test:
+	cd .. && python3 tools/story_data.py --moon-stones --out build/story/moon-data.json --c-out build/story/sc_moon_data.c
+	cd .. && bash host_tests/run_story_v1_fixture.sh
+	cd .. && python3 -m unittest host_tests.test_story_stones
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I.. test_story_stones.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_moon_data.c -o ../build/story/test_story_stones
+	../build/story/test_story_stones ../build/story/v1-fixture/original-v1.sc01
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -I.. test_story_stones.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_moon_data.c -o ../build/story/test_story_stones_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_stones_san ../build/story/v1-fixture/original-v1.sc01
+	@set -e; for source in sc_core sc_graph sc_save; do \
+		../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/$$source.c -o ../build/story/moon-$$source.o; \
+	done
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DSC_MOON_UI_FIXTURE $(STORY_UI_FLAGS) \
+		$(filter-out ../build/story/sc_data.c,$(STORY_UI_SOURCES)) ../build/story/sc_moon_data.c \
+		-o ../build/story/test_story_moon_ui
+	../build/story/test_story_moon_ui
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -DSC_MOON_UI_FIXTURE $(STORY_UI_FLAGS) \
+		$(filter-out ../build/story/sc_data.c,$(STORY_UI_SOURCES)) ../build/story/sc_moon_data.c \
+		-o ../build/story/test_story_moon_ui_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_moon_ui_san
+
+story-core-test:
+	cd .. && python3 tools/story_data.py
+	cd .. && python3 -m unittest host_tests.test_story_data
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I.. test_story.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_core
+	../build/story/test_story_core
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -I.. test_story.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_core_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_core_san
 
 .PHONY: story-ui-test
 story-ui-test:

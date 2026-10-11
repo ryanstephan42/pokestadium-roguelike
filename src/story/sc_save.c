@@ -114,6 +114,7 @@ int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
         (state->encounter != SC_NO_ENCOUNTER && state->encounter >= catalog->count) ||
         (state->fossil_choice != RL_NO_SLOT && state->fossil_choice > 1)) return 0;
     if (done(state, catalog->graph->fossil_action) != (state->fossil_choice < 2)) return 0;
+    if (!sc_stone_inventory_valid(state, catalog)) return 0;
     if (sc_new(&expected, catalog, &state->options, state->seed) != SC_OK ||
         expected.rival_branch != state->rival_branch ||
         (state->phase == SC_FINISHED && !done(state, catalog->graph->champion))) return 0;
@@ -179,14 +180,16 @@ int sc_save_encode(const ScSnapshot *snapshot, const ScCatalog *catalog,
         (snapshot->interrupted && snapshot->state.phase != SC_ROUTE)) return SC_SAVE_INVALID;
     for (i = 0; i < SC_SAVE_SIZE; i++) data[i] = 0;
     wire.write = data; wire.read = 0; wire.pos = 0;
-    field(&wire, SC_SAVE_MAGIC, 4); field(&wire, 1, 2); field(&wire, SC_SAVE_SIZE, 2);
+    field(&wire, SC_SAVE_MAGIC, 4); field(&wire, SC_SAVE_VERSION, 2); field(&wire, SC_SAVE_SIZE, 2);
     field(&wire, 0, 4); field(&wire, generation, 4);
     field(&wire, snapshot->interrupted, 1);
     for (i = 0; i < 64; i++) data[32 + i] = (RlU8)catalog->graph->review_identity[i];
     wire.pos = 96;
     state = snapshot->state;
     state_wire(&wire, &state);
-    if (wire.pos != 710) return SC_SAVE_INVALID;
+    if (wire.pos != SC_SAVE_INVENTORY_OFFSET) return SC_SAVE_INVALID;
+    field(&wire, state.moon_stones, 1);
+    field(&wire, state.moon_stones_spent, 1);
     wire.pos = 8; field(&wire, sc_save_crc(data, SC_SAVE_SIZE), 4);
     return SC_SAVE_OK;
 }
@@ -196,13 +199,15 @@ int sc_save_decode(ScSnapshot *snapshot, const ScCatalog *catalog,
     ScSnapshot next;
     ScWire wire;
     RlU32 crc, serial;
-    unsigned i;
+    unsigned i, version;
+    const char *identity;
     if (!snapshot || !generation || !data || size != SC_SAVE_SIZE ||
         !sc_catalog_valid(catalog) || !catalog->graph || !catalog->graph_reviewed)
         return SC_SAVE_INVALID;
     wire.read = data; wire.write = 0; wire.pos = 0;
     if (field(&wire, 0, 4) != SC_SAVE_MAGIC) return SC_SAVE_BAD_DATA;
-    if (field(&wire, 0, 2) != 1) return SC_SAVE_BAD_VERSION;
+    version = field(&wire, 0, 2);
+    if (version != 1 && version != SC_SAVE_VERSION) return SC_SAVE_BAD_VERSION;
     if (field(&wire, 0, 2) != SC_SAVE_SIZE) return SC_SAVE_BAD_DATA;
     crc = field(&wire, 0, 4);
     if (crc != sc_save_crc(data, size)) return SC_SAVE_BAD_CRC;
@@ -210,14 +215,26 @@ int sc_save_decode(ScSnapshot *snapshot, const ScCatalog *catalog,
     next.interrupted = (RlU8)field(&wire, 0, 1);
     if (next.interrupted > 1) return SC_SAVE_BAD_DATA;
     for (i = 17; i < 32; i++) if (data[i]) return SC_SAVE_BAD_DATA;
+    identity = version == 1 && catalog->graph->legacy_review_identity ?
+        catalog->graph->legacy_review_identity : catalog->graph->review_identity;
     for (i = 0; i < 64; i++)
-        if (data[32 + i] != (RlU8)catalog->graph->review_identity[i]) return SC_SAVE_BAD_VERSION;
+        if (data[32 + i] != (RlU8)identity[i]) return SC_SAVE_BAD_VERSION;
     for (i = 0; i < sizeof(next.state); i++) ((RlU8 *)&next.state)[i] = 0;
     wire.pos = 96;
     state_wire(&wire, &next.state);
+    if (wire.pos != SC_SAVE_INVENTORY_OFFSET) return SC_SAVE_BAD_DATA;
+    if (version == SC_SAVE_VERSION) {
+        next.state.moon_stones = (RlU8)field(&wire, 0, 1);
+        next.state.moon_stones_spent = (RlU8)field(&wire, 0, 1);
+    } else {
+        /* V1 never had pickup actions; do not manufacture or accept their history. */
+        for (i = 0; i < catalog->graph->pickup_count; i++)
+            if (done(&next.state, catalog->graph->pickups[i].node)) return SC_SAVE_BAD_DATA;
+    }
     for (i = wire.pos; i < size; i++) if (data[i]) return SC_SAVE_BAD_DATA;
     if (!sc_state_valid(&next.state, catalog) ||
         (next.interrupted && next.state.phase != SC_ROUTE)) return SC_SAVE_BAD_DATA;
+    next.wire_version = (RlU8)version;
     *snapshot = next;
     *generation = serial;
     return SC_SAVE_OK;

@@ -4,6 +4,8 @@
 #include "sc_core.h"
 
 #define SC_SAVE_SIZE 736
+#define SC_SAVE_VERSION 2
+#define SC_SAVE_INVENTORY_OFFSET 710
 #define SC_SAVE_SLOT_SIZE 768
 #define SC_SAVE_NOTE_SIZE (2 * SC_SAVE_SLOT_SIZE)
 #define SC_SAVE_COMPANY 0x524c
@@ -16,7 +18,7 @@ enum ScSaveStatus {
 };
 typedef struct ScSnapshot {
     ScState state;
-    RlU8 interrupted;
+    RlU8 interrupted, wire_version;
 } ScSnapshot;
 typedef struct ScSaveDevice {
     void *context;

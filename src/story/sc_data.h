@@ -57,12 +57,19 @@ typedef struct ScHealing {
     ScClause required;
     RlU16 retires_after;
 } ScHealing;
+typedef struct ScStonePickup {
+    RlU16 node;
+    RlU8 stone;
+} ScStonePickup;
 typedef struct ScGraph {
     const ScNode *nodes;
     const ScHealing *healing;
     const char *review_identity;
     RlU16 count, fossil_action, fossil_offer, champion, league[4];
     RlU8 healing_count;
+    const ScStonePickup *pickups;
+    RlU8 pickup_count;
+    const char *legacy_review_identity;
 } ScGraph;
 
 typedef struct ScCatalog {

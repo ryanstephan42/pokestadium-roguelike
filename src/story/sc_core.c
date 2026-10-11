@@ -478,3 +478,36 @@ int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,
     }
     return SC_OK;
 }
+
+int sc_evolve_owned(ScState *state, const ScCatalog *catalog, unsigned slot,
+                    unsigned evolution, int confirmed) {
+    const ScEvolution *evo;
+    ScState next;
+    int status;
+    unsigned mask = 0;
+    if (!state || !catalog || !catalog->species || state->phase != SC_ROUTE ||
+        (confirmed != 0 && confirmed != 1) || state->party_count > 6 ||
+        slot >= state->party_count || !state->party[slot].species ||
+        state->party[slot].species > 151 ||
+        catalog->species[state->party[slot].species].evolution_count > SC_EVOLUTION_CAPACITY ||
+        evolution >= catalog->species[state->party[slot].species].evolution_count)
+        return SC_INVALID;
+    if (!catalog->graph_reviewed) return SC_UNREVIEWED;
+    if (!sc_stone_inventory_valid(state, catalog)) return SC_INVALID;
+    evo = &catalog->species[state->party[slot].species].evolution[evolution];
+    if (evo->method == SC_TRADE_EVOLUTION) return SC_UNAVAILABLE;
+    if (evo->method == SC_STONE_EVOLUTION) {
+        if (evo->stone != SC_MOON_STONE || !state->moon_stones ||
+            state->moon_stones > 5 || state->moon_stones_spent >= 5) return SC_UNAVAILABLE;
+        mask = 1U << SC_MOON_STONE;
+    }
+    next = *state;
+    status = sc_evolve(&next, catalog, slot, evolution, mask, 0, confirmed);
+    if (status != SC_OK && status != SC_PENDING) return status;
+    if (status == SC_OK && evo->method == SC_STONE_EVOLUTION) {
+        next.moon_stones--;
+        next.moon_stones_spent++;
+    }
+    *state = next;
+    return status;
+}

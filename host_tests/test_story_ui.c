@@ -5,6 +5,18 @@
 #include "../src/story/sc_scene.h"
 #include "../src/fragments/rl/rl_ui.h"
 
+#ifdef SC_MOON_UI_FIXTURE
+static ScCatalog moon_ui_catalog;
+static void init_moon_fixture(void) {
+    moon_ui_catalog = sc_catalog;
+    if (!moon_ui_catalog.graph_reviewed) {
+        puts("Testing unreviewed Moon UI extension as an explicit host fixture");
+        moon_ui_catalog.graph_reviewed = 1;
+    }
+}
+#define sc_catalog moon_ui_catalog
+#endif
+
 /* All battle outcomes below are host fixtures, not native battle proof. */
 static ScUi ui, cold;
 static ScState before;
@@ -340,7 +352,7 @@ static void test_full_graph(unsigned version) {
         } else actions++;
         assert(ui.screen == SC_UI_REGIONS && sc_state_valid(&ui.state, &sc_catalog));
     }
-    assert(encounters > 330 && actions == 22 && ui.state.party_count == 6);
+    assert(encounters > 330 && actions == 22U + sc_catalog.graph->pickup_count && ui.state.party_count == 6);
     assert(ui.state.completed[sc_catalog.graph->champion / 8] &
         (1U << (sc_catalog.graph->champion % 8)));
     choose(4);
@@ -488,6 +500,9 @@ static void test_pending_learning_fixture(void) {
 }
 
 int main(void) {
+#ifdef SC_MOON_UI_FIXTURE
+    init_moon_fixture();
+#endif
     test_creation_bounds_and_saves();
     test_healing(SC_STANDARD);
     test_healing(SC_LIMITED);

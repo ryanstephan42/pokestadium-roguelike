@@ -26,6 +26,7 @@ typedef struct ScState {
     RlU16 encounter;
     RlU8 completed[SC_BITS], retired[SC_BITS];
     RlMon party[6], offer;
+    RlU8 moon_stones, moon_stones_spent;
 } ScState;
 
 int sc_catalog_valid(const ScCatalog *catalog);
@@ -55,6 +56,9 @@ int sc_learn(ScState *state, const ScCatalog *catalog, unsigned party_slot,
 int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,
               unsigned evolution, unsigned stone_mask, int trade_unlocked,
               int confirmed);
+int sc_pickup_stone(ScState *state, const ScCatalog *catalog, unsigned pickup);
+int sc_evolve_owned(ScState *state, const ScCatalog *catalog, unsigned slot,
+                    unsigned evolution, int confirmed);
 
 RlU32 sc_random(RlU32 *state);
 RlU32 sc_random_bounded(RlU32 *state, RlU32 bound);

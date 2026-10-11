@@ -120,6 +120,9 @@ class Source:
         self.blobs = {}
 
     def get(self, path):
+        return self.read(path).decode("utf-8")
+
+    def read(self, path):
         allowed = (path in {"constants/pokemon_constants.asm",
                            "constants/pokedex_constants.asm",
                            "constants/battle_constants.asm",
@@ -133,6 +136,9 @@ class Source:
                            "engine/battle/read_trainer_party.asm", "engine/battle/experience.asm"}
                    or path in {"engine/items/item_effects.asm", "engine/events/cinnabar_lab.asm",
                                "engine/menus/start_sub_menus.asm", "engine/battle/core.asm"}
+                   or path in {"data/events/hidden_events.asm", "engine/events/hidden_items.asm",
+                               "data/tilesets/cut_tree_blocks.asm", "constants/map_constants.asm",
+                               "maps/Route2.blk"}
                    or re.fullmatch(r"data/pokemon/base_stats/\w+\.asm", path)
                    or re.fullmatch(r"data/maps/objects/\w+\.asm", path)
                    or re.fullmatch(r"scripts/\w+\.asm", path))
@@ -152,7 +158,7 @@ class Source:
         blob = hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
         require(blob == self.blobs[path], f"Source hash mismatch: {path}")
         self.provenance[path] = hashlib.sha256(data).hexdigest()
-        return data.decode("utf-8")
+        return data
 
     def paths(self):
         self.blobs = {}
@@ -814,12 +820,16 @@ def c_array(values):
     return "{" + ", ".join(map(str, values)) + "}"
 
 
-def emit_c(data, path):
+def emit_c(data, path, moon=None):
     if __package__ in (None, ""):
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from tools.story_graph import reviewed_graph, REVIEWED_DIGEST
     graph = reviewed_graph(data)
+    identity, reviewed = REVIEWED_DIGEST, True
+    if moon is not None:
+        from tools.story_stones import extend_graph
+        graph, identity, reviewed = extend_graph(graph, moon)
     lines = ['#include "src/story/sc_data.h"', "",
              "const RlU8 sc_pp[166] = " + c_array(data["pp"]) + ";",
              "const ScSpecies sc_species[152] = {",
@@ -873,14 +883,24 @@ def emit_c(data, path):
         matches = [indices[e["id"]] for e in data["encounters"]["red"] if e["area"] == area]
         require(len(matches) == 1, "Ambiguous League lock ID")
         league.append(matches[0])
-    lines.extend(["};", "static const ScGraph sc_graph = {",
-                  '    sc_nodes, sc_healing, "%s",' % REVIEWED_DIGEST,
-                  "    %d, %d, %d, %d, %s, 15" % (
+    lines.append("};")
+    if moon is not None:
+        lines.append("static const ScStonePickup sc_pickups[] = {")
+        for pickup in moon["pickups"]:
+            lines.append("    {%d, 1}," % indices[pickup["id"]])
+        lines.append("};")
+    lines.extend(["static const ScGraph sc_graph = {",
+                  '    sc_nodes, sc_healing, "%s",' % identity,
+                  "    %d, %d, %d, %d, %s, 15," % (
                       len(identifiers), indices["travel:fossil"], indices[graph["fossil_offer"]],
                       indices["ChampionsRoom/rival-champion"], c_array(league)),
+                  '    %s, %d, "%s"' % (
+                      "sc_pickups" if moon is not None else "0",
+                      len(moon["pickups"]) if moon is not None else 0, REVIEWED_DIGEST),
                   "};", "", "const ScCatalog sc_catalog = {",
                   "    sc_species, sc_pp, sc_encounters,",
-                  "    sizeof(sc_encounters) / sizeof(sc_encounters[0]), 1, &sc_graph", "};", ""])
+                  "    sizeof(sc_encounters) / sizeof(sc_encounters[0]), %d, &sc_graph" % reviewed,
+                  "};", ""])
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text("\n".join(lines), encoding="ascii")
@@ -892,13 +912,24 @@ def main():
     parser.add_argument("--cache", default=".local/story-source")
     parser.add_argument("--out", default="build/story/data.json")
     parser.add_argument("--c-out", default="build/story/sc_data.c")
+    parser.add_argument("--moon-stones", action="store_true",
+                        help="Include the independently reviewed finite Moon Stone graph extension")
     args = parser.parse_args()
     try:
-        data = audit(Source(args.cache, args.fetch))
+        source = Source(args.cache, args.fetch)
+        data = audit(source)
+        moon = None
+        if args.moon_stones:
+            if __package__ in (None, ""):
+                import sys
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from tools.story_stones import moon_audit
+            moon = moon_audit(source)
         destination = Path(args.out)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        emit_c(data, args.c_out)
+        output = dict(data, moon_stones=moon) if moon is not None else data
+        destination.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
+        emit_c(data, args.c_out, moon)
     except (DataError, KeyError, ValueError, OSError) as error:
         parser.exit(1, f"Story data audit failed: {error}\n")
     for version, entries in data["encounters"].items():
@@ -906,7 +937,14 @@ def main():
                   for kind in ("trainer", "rival", "static", "gift", "ghost")}
         print(f"{version}: {len(entries)} encounter instances: {counts}")
     print(f"151 species; 391 stored parties; {len(data['unreferenced_parties'])} unreferenced parties")
-    print("Exact reviewed region graph installed; native/save/UI integration remains required.")
+    if moon is None:
+        print("Exact reviewed region graph installed; native/save/UI integration remains required.")
+    else:
+        from tools.story_stones import extend_graph
+        from tools.story_graph import reviewed_graph
+        _, identity, reviewed = extend_graph(reviewed_graph(data), moon)
+        print("Canonical base authenticated; Moon catalog admission follows its independent review.")
+        print(f"Moon Stone extension: {identity}; reviewed={int(reviewed)}")
 
 
 if __name__ == "__main__":

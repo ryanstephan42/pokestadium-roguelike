@@ -11,6 +11,14 @@ the exact accepted graph/provenance digest. Unreviewed catalogs still return
 `SC_UNREVIEWED`; changed facts or policy fail generation instead of inheriting
 review approval.
 
+The independent UI controller/renderer and finite Moon Stone source unit are
+documented in [UI.md](UI.md). The base 383-node graph/digest is preserved;
+`--moon-stones` appends five typed pickup actions under a separate review pin.
+Unreviewed extension catalogs refuse creation rather than inheriting base
+approval. Codec v2 adds the owned/spent ledger at bytes 710-711 while retaining
+the 736-byte record/Pak journal sizes, with explicit exact-identity v1 migration.
+No story runtime/native battle wiring or full-campaign acceptance is implied.
+
 ## Reproducing the source audit
 
 ```sh
