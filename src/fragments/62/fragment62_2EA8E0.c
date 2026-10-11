@@ -2,6 +2,9 @@
 #ifdef ROGUELIKE
 #include "include/rl_battle.h"
 #endif
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_runtime_probe.h"
+#endif
 #include "src/11BA0.h"
 #include "src/12D80.h"
 #include "src/19840.h"
@@ -331,15 +334,35 @@ void func_84300E80(void) {
 
 s32 func_84300E88(s32 arg0) {
     s32 sp1C;
+#ifdef STORY_NATIVE_PROBE
+    s32 story_gate;
+#endif
 
     func_80015348();
     func_80032570();
+#ifdef STORY_NATIVE_PROBE
+    story_gate = sc_runtime_probe_gate(D_84390010[0], D_84390010[1], &sp1C);
+    if (story_gate == 1) goto story_render;
+    if (story_gate == 2) goto story_after_logic;
+    if (gScProbeActive) gScProbe.presentation_steps++;
+#endif
     func_84307394(2, D_8438E798);
     func_84307A50(2, &D_8438E598, &D_8438E688);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.logic_steps++;
+#endif
     sp1C = func_8432AEE4(2, &D_8438E440);
+#ifdef STORY_NATIVE_PROBE
+    sp1C = sc_runtime_probe_after(D_84390010[0], D_84390010[1], sp1C);
+    if (sc_runtime_probe_paused()) goto story_render;
+story_after_logic:
+#endif
     func_8432D0D8(2, &D_8438E440);
     func_84300750(D_8438E788, D_8438E790);
     func_84300750(D_8438E78C, D_8438E794);
+#ifdef STORY_NATIVE_PROBE
+story_render:
+#endif
     func_800079C4();
     func_84300340();
     func_80015094(D_8438E784);

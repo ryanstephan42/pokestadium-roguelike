@@ -57,6 +57,12 @@ PYTHON ?= $(VENV)/$(VENV_BIN_DIR)/python3
 N64_EMULATOR ?=
 # Roguelike mod build (use `make rl`; never set this for the matching build)
 ROGUELIKE ?= 0
+STORY_PROBE ?= 0
+ifeq ($(STORY_PROBE),1)
+  ifneq ($(ROGUELIKE),1)
+    $(error STORY_PROBE=1 requires ROGUELIKE=1)
+  endif
+endif
 # Set prefix to mips binutils binaries (mips-linux-gnu-ld => 'mips-linux-gnu-') - Change at your own risk!
 # In nearly all cases, not having 'mips-linux-gnu-*' binaries on the PATH is indicative of missing dependencies
 MIPS_BINUTILS_PREFIX ?= mips-linux-gnu-
@@ -107,6 +113,9 @@ VANILLA_MAP       := $(VANILLA_BUILD_DIR)/$(TARGET)-$(VERSION).map
 
 ifeq ($(ROGUELIKE),1)
   BUILD_DIR := build_rl
+  ifeq ($(STORY_PROBE),1)
+    BUILD_DIR := build_story_probe
+  endif
   ROM       := $(BUILD_DIR)/$(TARGET)-rl.z64
 else
   BUILD_DIR := build
@@ -136,6 +145,9 @@ endif
 ifeq ($(ROGUELIKE),1)
   COMPARE  := 0
   BUILD_DEFINES   += -DROGUELIKE
+  ifeq ($(STORY_PROBE),1)
+    BUILD_DEFINES += -DSTORY_NATIVE_PROBE
+  endif
   ifneq ($(wildcard src/fragments/rl/rl_ui.c),)
     BUILD_DEFINES += -DRL_HAVE_UI_DEMO
   endif
@@ -417,6 +429,11 @@ RL_NON_MATCHING ?= 0
 rl:
 	$(V)$(MAKE) rom
 	$(V)$(MAKE) ROGUELIKE=1 NON_MATCHING=$(RL_NON_MATCHING) COMPARE=0 rlrom
+
+.PHONY: story-probe
+story-probe:
+	$(V)$(MAKE) rom
+	$(V)$(MAKE) ROGUELIKE=1 STORY_PROBE=1 NON_MATCHING=0 COMPARE=0 rlrom
 
 rlclean:
 	$(V)$(RM) -r build_rl

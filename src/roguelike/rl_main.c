@@ -110,6 +110,15 @@ void rl_main_state_roguelike(void) {
 
     gRlMain.magic = RL_MAIN_MAGIC;
     gRlMain.visits++;
+#ifdef STORY_NATIVE_PROBE
+    {
+        extern int sc_runtime_probe_poll(void);
+        if (sc_runtime_probe_poll()) {
+            gCurrentGameState = STATE_MENU_SELECT;
+            return;
+        }
+    }
+#endif
     if (gRlMain.returnState == 0) {
         gRlMain.returnState = STATE_MENU_SELECT;
     }

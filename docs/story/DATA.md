@@ -311,11 +311,64 @@ The pure bridge copies HP/status/PP snapshots, tracks participant flags per
 enemy, and delegates exactly-once XP to `sc_on_ko`. `SC_LEARNING` blocks further
 observations until the prompt resolves. No native pool pointer is retained.
 `STORY_NATIVE_PROBE` guards the expanded-record stat and snapshot feasibility
-adapter; it is excluded from both ROM builds. A real native caller must map
+adapter; it is excluded from both default ROM builds. A real native caller must map
 compacted living-team indices back to party slots, use original party PP for
 Transform, stop before next action/switch on learning, and refresh canonical
 stats/HP/learned moves after each KO. Fragment-62 scheduling, live-stage handling,
 resident storage and post-pool lifetime still need runtime proof before UI.
+
+### Guarded runtime probe stage (not runtime acceptance)
+
+`make story-probe` first checks vanilla, then produces the separate ignored
+`build_story_probe/pokestadium-rl.z64` with `ROGUELIKE=1 STORY_PROBE=1`.
+Neither `make` nor `make rl` enables it. There is no story menu/campaign UI.
+The harness drives `gScProbe` through the existing debug battle launcher.
+Commands are 1 load, 2 explicitly create/store a fresh isolated story,
+3 store an interrupted checkpoint and launch the fixed lab probe, and
+4 retry a failed completed-result write. Save results use `ScSaveStatus`;
+core/native precondition failures use `0x100 + ScStatus`. An invalid live
+observation logs an error and holds the battle instead of fabricating success.
+
+The fixture is deliberately **not a playable campaign**: it uses Bulbasaur
+level 6 with experience one point below level 7 and DVs `0x8889`, against the
+authentic lab rival team. Its canonical HP is 22 before and 24 after that KO;
+Stadium's reversed HP-DV weights would produce 23 and 25. The synthetic probe
+can set enemy HP to zero and a +1 Attack stage; a separate natural-KO run
+must pass without that injection before real KO timing is accepted.
+The first fixture has one living party member. Full six-member runtime
+participation, compacted switching and other campaign encounters are not
+proven by it; existing host tests cover the pure compacted mapping.
+
+The two guarded checkpoints in `func_84300E88` observe before presentation/
+battle logic and immediately after `func_8432AEE4`. Learning suppresses both
+advancement paths; the interrupted frame's post-logic presentation and result
+are resumed once after learning, without reexecuting its logic. Frame counters
+make this assertion observable. KO refresh writes
+the canonical original record and live HP/level/stats/moves while preserving
+stage indices, Stadium's stage rounding and burn/paralysis modifiers.
+Transform keeps its copied live stats/moves/PP while original party PP
+remains authoritative. These are source/host assertions, **not proof of every
+native stat recalculation, action ordering or Transform execution path**.
+
+The authenticated catalog remains exact, not a truncated probe catalog.
+Its 141-KiB native image cannot fit in the remaining retail ROM gap.
+Probe-only linker support places it at ROM `0x02040000` and reserves fixed
+resident RAM before the main heap; checked synchronous cartridge DMA loads
+and validates it before any story API. The linker rejects overlap with the
+existing late RL overlay. Story state/bridge/mailbox also remain in fixed
+main BSS, not fragment/BATL allocations. The harness compares catalog RAM
+with its linked ROM image and verifies it survives pool release; actual
+DMA, heap re-anchoring and residency still require runtime review.
+
+`tools/rltest/story_probe.py` requires explicit `--execute`; **do not run it
+until the exclusive emulator slot is granted**. It prepares separate-process
+SC01 creation, interrupted cold reload, synthetic and natural KO/learning/
+stage checks, completed cold reload, and missing/full/damaged-Pak checks.
+It seeds independent RL01 and unrelated notes and restricts writes to SC01
+pages/directory/inode ownership. Outputs are ignored, and no savestates are
+used. Its helpers and opt-in execution hold have host-only tests.
+The native scheduling harness has not yet been executed; no merge or full
+story UI activation is authorized by these build/host results.
 
 ## Verification scope and remaining review
 

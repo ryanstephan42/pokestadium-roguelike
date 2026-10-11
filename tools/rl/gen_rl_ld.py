@@ -208,6 +208,20 @@ def gen(args):
                         out.append("        . = ALIGN(8); /* rl_entry clears 8 bytes per iteration */")
         if idx == main_hi:
             in_main = False
+        if args.story_catalog and re.match(r"^\s*text_VRAM_END = \.;", l):
+            out.extend([
+                "    /* Probe-only fixed resident data; leaves retail ROM anchors intact. */",
+                "    sc_probe_catalog_ROM_START = 0x02040000;",
+                "    .sc_probe_catalog : AT(sc_probe_catalog_ROM_START) SUBALIGN(16)",
+                "    {",
+                "        sc_probe_catalog_VRAM = .;",
+                f"        {args.story_catalog}(.data);",
+                f"        {args.story_catalog}(.rodata);",
+                "        . = ALIGN(16);",
+                "        sc_probe_catalog_VRAM_END = .;",
+                "    }",
+                "    sc_probe_catalog_ROM_END = sc_probe_catalog_ROM_START + SIZEOF(.sc_probe_catalog);",
+            ])
 
         if re.match(r"^\s*__romPos = ALIGN\(__romPos, 0x7C0000\);", l):
             out.append(f'    __rl_assert_rom = ASSERT(__romPos <= 0x{GB_TOWER_ROM:X}, "rl ROM overflowed into gb_tower_roms at 0x7C0000");')
@@ -216,6 +230,8 @@ def gen(args):
 
         if re.match(r"^\s*/DISCARD/\s*:", l):
             out.extend(fragment_block(args.frag_header, [o for o in args.frag_objs if o], args.frag_relocs))
+            if args.story_catalog:
+                out.append('    __sc_assert_rom = ASSERT(fragmentRL_relocs_ROM_END <= sc_probe_catalog_ROM_START, "story catalog overlaps RL overlay ROM");')
         out.append(l)
 
     text = "\n".join(out)
@@ -270,6 +286,7 @@ def main():
     p.add_argument("--frag-header", required=True)
     p.add_argument("--frag-relocs", required=True)
     p.add_argument("--main-objs", nargs="*", default=[])
+    p.add_argument("--story-catalog", help="Opt-in probe catalog placed outside retail ROM range")
     p.add_argument("--frag-objs", nargs="*", default=[])
     p.add_argument("--sym-files", nargs="*", default=[])
     p.add_argument("--regen-fragments", nargs="*", type=int, default=[])

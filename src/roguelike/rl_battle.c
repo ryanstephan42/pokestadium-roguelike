@@ -5,6 +5,10 @@
 #include "src/2C1C0.h"
 #include "src/373A0.h"
 #include "src/memory.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_native_probe.h"
+extern int gScProbeActive;
+#endif
 
 RlLaunchResult gRlLastBattleResult;
 volatile unsigned int gRlBattleCount;
@@ -50,7 +54,7 @@ static int rl_valid_team(const RlMon* team, int count) {
     return 1;
 }
 
-static void rl_to_native(const RlMon* mon, unk_func_80026268_arg0* native, int use_state) {
+static int rl_to_native(const RlMon* mon, unk_func_80026268_arg0* native, int use_state) {
     int i;
     int ups;
     int base;
@@ -98,6 +102,13 @@ static void rl_to_native(const RlMon* mon, unk_func_80026268_arg0* native, int u
         native->unk_30[i] = 0;
     }
     func_800228B0(native);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive && sc_native_record(mon, native) != SC_OK) {
+        osSyncPrintf("story probe: canonical native record rejected\n");
+        return -1;
+    }
+#endif
+    return 0;
 }
 
 static void rl_from_native(const unk_func_80026268_arg0* native, RlMon* mon) {
@@ -154,7 +165,7 @@ int rl_prepare_mon(RlMon* mon, int full_heal) {
         osSyncPrintf("rl_prepare_mon: invalid Pokemon\n");
         return -1;
     }
-    rl_to_native(mon, &native, !full_heal);
+    if (rl_to_native(mon, &native, !full_heal) != 0) return -1;
     rl_from_native(&native, mon);
     switch (D_80070F84[mon->species].unk_13) {
         case 0: mon->growth = RL_MEDIUM_FAST; break;
@@ -209,12 +220,12 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
         }
         result->player_index[player->unk_002] = i;
         result->player[player->unk_002] = party[i];
-        rl_to_native(&party[i], &native, rules->use_state);
+        if (rl_to_native(&party[i], &native, rules->use_state) != 0) return -1;
         func_8002B888(player, &native);
     }
     for (i = 0; i < enemy_n; i++) {
         result->enemy[i] = enemy[i];
-        rl_to_native(&enemy[i], &native, 0);
+        if (rl_to_native(&enemy[i], &native, 0) != 0) return -1;
         func_8002B888(opponent, &native);
     }
     gRlBattleActive = 1;

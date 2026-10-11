@@ -23,6 +23,9 @@ RL_NATIVE_RELOCS0 := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_re
 
 # Optional per-workstream make fragments (e.g. generated tables) live next to the sources.
 -include $(wildcard $(RL_MAIN_DIR)/*.mk $(RL_FRAG_DIR)/*.mk)
+ifeq ($(STORY_PROBE),1)
+include src/story/sc_probe.mk
+endif
 
 $(shell mkdir -p $(RL_DIR))
 RL_NATIVE_CONFIG := $(RL_DIR)/regen_fragments.txt
@@ -39,6 +42,7 @@ $(LDSCRIPT) $(RL_SYM_OUT) &: linker_scripts/$(VERSION)/$(TARGET).ld $(VANILLA_MA
 		--out-ld $(LDSCRIPT) --out-sym-dir $(RL_DIR) --out-anchors $(RL_DIR)/anchors.txt \
 		--frag-header $(RL_HEADER_O) --frag-relocs $(RL_RELOCS_O) \
 		--main-objs $(RL_MAIN_O) --frag-objs $(RL_FRAG_O) --sym-files $(RL_SYM_PP) \
+		$(if $(SC_PROBE_CATALOG),--story-catalog $(SC_PROBE_CATALOG)) \
 		--regen-fragments $(RL_REGEN_FRAGMENTS)
 
 $(RL_DIR)/%.o: $(RL_DIR)/%.s
