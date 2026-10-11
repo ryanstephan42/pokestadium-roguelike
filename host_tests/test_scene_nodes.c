@@ -14,6 +14,7 @@ static char detail_text[8][128];
 static s16 detail_y[8];
 static unsigned detail_count;
 static char mon_text[16][128];
+static s16 mon_y[16];
 static unsigned mon_count;
 static s16 controls_y;
 static RlMon mons[4];
@@ -64,6 +65,13 @@ const char* rl_ui_species_name(unsigned species) {
 }
 
 const char* rl_ui_move_name(unsigned move) {
+    switch (move) {
+    case 48: return "SUPERSONIC";
+    case 79: return "SLEEP POWDER";
+    case 98: return "QUICK ATTACK";
+    case 86: return "THUNDER WAVE";
+    case 69: return "SEISMIC TOSS";
+    }
     assert(move == 0 || move == 1 || move == 33);
     return move == 33 ? "TACKLE" : move == 1 ? "POUND" : "--";
 }
@@ -80,7 +88,8 @@ s32 rl_ui_mon_icon(s32 species, s16 x, s16 y) {
 void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
     (void)color;
     if (x >= 400) {
-        assert(y >= 50 && y <= 270 && mon_count < 16);
+        assert(y >= 50 && y <= 300 && mon_count < 16);
+        mon_y[mon_count] = y;
         strcpy(mon_text[mon_count++], text);
     }
     if (x == 30 && !strncmp(text, "D-pad:", 6)) controls_y = y;
@@ -149,6 +158,10 @@ static void assert_mon_detail(const RlMon* mon) {
     assert(!strcmp(mon_text[2], text));
     for (i = 0; i < 4; i++) {
         assert(!strcmp(mon_text[3 + i * 2], rl_ui_move_name(mon->moves[i])));
+        assert((unsigned)mon_y[3 + i * 2] == 50 + 96 + i * 44);
+        assert(mon_y[4 + i * 2] == mon_y[3 + i * 2] + 22);
+        if (i < 3)
+            assert(mon_y[5 + i * 2] == mon_y[4 + i * 2] + 22);
         sprintf(text, "PP %02u/%02u", mon->pp[i], mon->max_pp[i]);
         assert(!strcmp(mon_text[4 + i * 2], text));
     }
@@ -406,6 +419,21 @@ static void test_recruit_presentation(void) {
     assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
     draw();
     assert_mon_detail(&mons[1]);
+    mons[1].moves[0] = 48;
+    mons[1].moves[1] = 79;
+    mons[1].moves[2] = 98;
+    mons[1].moves[3] = 86;
+    rl_scene_nodes_begin(&run, &pool, RL_RECRUIT);
+    assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
+    draw();
+    assert_mon_detail(&mons[1]);
+    mons[1].moves[3] = 69;
+    rl_scene_nodes_begin(&run, &pool, RL_RECRUIT);
+    assert(rl_scene_nodes_update(RL_UI_DOWN) == RL_SCENE_ONGOING);
+    draw();
+    assert_mon_detail(&mons[1]);
+    mons[1].moves[0] = 33;
+    mons[1].moves[1] = mons[1].moves[2] = mons[1].moves[3] = 0;
     pool.fixed_order = 0;
     mons[1].species = 2;
     mons[1].pp[0] = mons[1].max_pp[0];

@@ -1740,7 +1740,7 @@ void rl_play_draw(void) {
                 sPlayLabels[8][1] = ' ';
                 rl_play_copy_text(sPlayLabels[8] + 2,
                     rl_ui_species_name(gRlRun.party[sPlayActiveSlots[i]].species));
-                rl_ui_text(414, 328 + i * 22, sPlayLabels[8], i ? sPlayWhite : sPlayGold);
+                rl_ui_text(414, 354 + i * 20, sPlayLabels[8], i ? sPlayWhite : sPlayGold);
             }
             break;
         case RL_PLAY_REWARD:

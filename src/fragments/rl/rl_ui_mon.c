@@ -27,11 +27,11 @@ void rl_ui_mon_detail(const RlMon* mon, s16 x, s16 y) {
     rl_ui_text(x, y + 60, hp, white);
     rl_ui_hp_bar(x, y + 82, 190, mon->cur_hp, mon->max_hp);
     for (i = 0; i < 4; i++) {
-        rl_ui_text_wrap(x, y + 102 + i * 34, 200, 1,
+        rl_ui_text_wrap(x, y + 96 + i * 44, 200, 1,
                         rl_ui_move_name(mon->moves[i]), white);
         mon_number(pp + 3, mon->pp[i], 2);
         mon_number(pp + 6, mon->max_pp[i], 2);
-        rl_ui_text(x + 92, y + 118 + i * 34, pp, muted);
+        rl_ui_text(x + 92, y + 118 + i * 44, pp, muted);
     }
 }
 #endif

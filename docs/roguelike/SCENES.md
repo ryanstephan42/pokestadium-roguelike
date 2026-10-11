@@ -46,6 +46,9 @@ distinguish repeated species without changing their identities or action indices
 All use the shared `rl_ui_mon_detail` panel for the selected Pokemon's native
 name, level, HP and four moves with current/maximum PP. Names and moves wrap
 using native font widths; the detail column does not overlap the candidate list.
+Each move and its PP occupy separate 22-pixel text rows, clearing the native
+20-pixel glyph height even for long canonical move names. Ordered battle
+entrants sit below all four move/PP pairs and above the control footer.
 
 Silph Co. and Bill's PC show the incoming rental before confirmation. Selecting
 a replacement slot shows that slot's number/name alongside the incoming
