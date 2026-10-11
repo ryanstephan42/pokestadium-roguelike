@@ -7,11 +7,14 @@ injected meta, terminal outcomes or currency. Ordinary drafts never enable it.
 
 import argparse
 import ctypes
+import hashlib
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import struct
+import zlib
 
 from tools.rltest.frontend import Frontend
 from tools.rltest.run import default_core
@@ -43,6 +46,48 @@ class Meta(ctypes.BigEndianStructure):
 def read_meta(emu):
     return Meta.from_buffer_copy(emu.read("gRlPlayProfile", ctypes.sizeof(Meta)))
 
+def save_checkpoint(emu, path):
+    data = save_ram(emu)[1]
+    path.write_bytes(data)
+    path.with_suffix(".json").write_text(json.dumps({
+        "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+        "rom_sha256": hashlib.sha256(Path("build_rl/pokestadium-rl.z64").read_bytes()).hexdigest(),
+        "save_sha256": hashlib.sha256(data).hexdigest(),
+        "codec_version": 4,
+    }, indent=2))
+
+
+def restore_checkpoint(emu, path):
+    data = path.read_bytes()
+    manifest = json.loads(path.with_suffix(".json").read_text())
+    require(manifest["codec_version"] == 4 and
+            hashlib.sha256(data).hexdigest() == manifest["save_sha256"],
+            "funding checkpoint schema/image identity mismatch")
+    require(hashlib.sha256(Path("build_rl/pokestadium-rl.z64").read_bytes()).hexdigest() ==
+            manifest["rom_sha256"], "checkpoint was funded by a different ROM artifact")
+    print(f"checkpoint source HEAD={manifest['head']} ROM={manifest['rom_sha256']}", flush=True)
+    pointer, initial = save_ram(emu)
+    require(len(data) == len(initial), "aggregate save size changed")
+    ctypes.memmove(pointer, data, len(data))
+
+
+def committed_currency(emu):
+    from tools.rltest.test_save_migration import read_note
+    note = read_note(save_ram(emu)[1])
+    records = []
+    for start in (0, 1280):
+        header = note[start:start + 32]
+        if header[:4] != b"RLPK":
+            continue
+        require(zlib.crc32(header[:28]) == struct.unpack_from("<I", header, 28)[0],
+                "committed header CRC failed")
+        sequence, length, checksum = struct.unpack_from("<III", header, 8)
+        payload = note[start + 32:start + 32 + length]
+        require(zlib.crc32(payload) == checksum and payload[:5] == b"RLSV\x04",
+                "committed candidate payload invalid")
+        records.append((sequence, struct.unpack_from("<I", payload, 357)[0]))
+    require(records, "no committed permanent profile")
+    return max(records)[1]
 
 def select(emu, index):
     emu.step(30)
@@ -116,12 +161,9 @@ def phase(directory, part):
                   Path("build_rl/pokestadium-rl.map"), output=directory,
                   options={"mupen64plus-pak1": "memory"}, timeout=3600) as emu:
         if part != "earn":
-            pointer, initial = save_ram(emu)
             checkpoint = directory / "funding-save.bin"
             source = checkpoint if part == "shop" and checkpoint.exists() else directory / "permanent-save.bin"
-            data = source.read_bytes()
-            require(len(data) == len(initial), "aggregate save size changed")
-            ctypes.memmove(pointer, data, len(data))
+            restore_checkpoint(emu, source)
             boot(emu)
             enter_roguelike_from_menu(emu)
         if part == "earn":
@@ -130,8 +172,7 @@ def phase(directory, part):
             require(meta.runs == 1 and meta.currency == 5, "native loss payout wrong")
             require(meta.pending_registration_count == 1 and
                     any(meta.pending_species), "native final team earned no non-base choice")
-            _, data = save_ram(emu)
-            (directory / "permanent-save.bin").write_bytes(data)
+            save_checkpoint(emu, directory / "permanent-save.bin")
             print("ORDINARY NATIVE EARN PASSED: fossil recruit, confirmed releases, "
                   "unmodified native loss, pending Kabuto, five coins")
             return
@@ -154,7 +195,7 @@ def phase(directory, part):
                         read_meta(emu).currency == number * 5,
                         f"native run {number} paid or recorded twice")
                 print(f"native payout {number}/26", flush=True)
-                (directory / "funding-save.bin").write_bytes(save_ram(emu)[1])
+                save_checkpoint(emu, directory / "funding-save.bin")
             resolve_pending(emu)
             require(read_meta(emu).currency == 130, "earned balance not 130")
             # Retain a real active suspension while purchasing at profile root.
@@ -172,6 +213,14 @@ def phase(directory, part):
                 emu.wait(lambda runner: read_meta(runner).currency != before,
                          frames=1800, description="native permanent purchase save")
                 require(read_meta(emu).currency == before - cost, "purchase debit wrong")
+                require(committed_currency(emu) == before - cost,
+                        "local purchase did not commit its atomic debit")
+                select(emu, index)
+                require(read_meta(emu).currency == before - cost and
+                        committed_currency(emu) == before - cost,
+                        "already-owned purchase debited again")
+                for _ in range(index):
+                    press(emu, "UP")
                 require(bytes(read_run(emu)) == suspended, "profile edit mutated resident run")
             require(read_meta(emu).options & ((1 << 1) | (1 << 4) | (1 << 8)) ==
                     ((1 << 1) | (1 << 4) | (1 << 8)), "implemented options missing")
@@ -182,8 +231,7 @@ def phase(directory, part):
             require(bytes(read_run(emu)) == suspended, "purchase erased or changed suspension")
             select(emu, read_run(emu).map.lanes[0])
             emu.wait_state(4, frames=600)
-            _, data = save_ram(emu)
-            (directory / "permanent-save.bin").write_bytes(data)
+            save_checkpoint(emu, directory / "permanent-save.bin")
             print("NATIVE SHOP PASSED: 26 real losses funded loadout/theme/kit; suspend retained")
             return
         require(read_meta(emu).currency == 0 and read_meta(emu).options & 274 == 274,
