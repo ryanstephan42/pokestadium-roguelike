@@ -674,6 +674,9 @@ void func_84301430(unk_func_80007444* arg0) {
     func_84307A50(0, &D_8438E598, &D_8438E688);
     func_8432AEE4(0, &D_8438E440);
     func_8432D0D8(0, &D_8438E440);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive && gScProbe.stage == 13) return;
+#endif
 
     sp44 = func_80002D10(main_pool_get_available(), 0);
     D_8438E784 = process_geo_layout(sp44, D_84384364);

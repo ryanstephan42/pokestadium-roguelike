@@ -46,6 +46,7 @@ class StoryHarnessTests(unittest.TestCase):
 
     def test_actual_fragment_map_and_allocation_diagnostics(self):
         emu = Mock()
+        emu.story_stack_before = b"\xA5" * 96 + b"\0" * (0x18E0 - 96)
         emu.symbols.address.side_effect = {
             "D_80080000": 0x80080000, "D_800818E0": 0x800818E0,
             "gFragments": 0x80090000,
@@ -58,6 +59,8 @@ class StoryHarnessTests(unittest.TestCase):
                       map_loaded_size=173456, cold_size=173456, map_after=0, map_after_size=0)
         evidence = memory_evidence(emu, result)
         self.assertEqual(evidence["stack_written_margin"], 80)
+        self.assertEqual(evidence["stack_precommand_margin"], 96)
+        self.assertEqual(evidence["stack_new_bottom_writes"], 16)
         validate_memory(evidence, result)
         emu.read.side_effect = [b"\xA5" * 80 + b"\0" * (0x18E0 - 80),
                                struct.pack(">II", 0, 173456), bytes(40), bytes(40)]

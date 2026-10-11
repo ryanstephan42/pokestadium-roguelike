@@ -592,6 +592,23 @@ The previous 3,600-byte inspected decode/validation chain is unchanged: it
 does not include native-open's separate create-allocation branch. Written
 high-water must be measured again, not inferred from the 192-byte reduction.
 
+Exact `241ba0f` attribution retained a 260-byte full-run create stack margin;
+the reduced Pak frame does not identify the peak's phase. The harness now
+compares a read-only precommand stack snapshot with the boundary snapshot,
+retaining the full-run sentinel/watermark and reporting newly written bottom
+bytes. It never repaints an active stack.
+
+The failed 37,296-byte PRS destination is uniquely identified in the frozen
+local ROM at `0x8CC400`, archive `0x8CC000` entry 0 (offset `0x400`,
+compressed length `0x3E10`). The consumer chain is fragment-62
+`func_8432D0D8(0)` -> `func_8432D150` -> `func_8432D178` ->
+`func_8432C86C` -> `func_80019EA0(0)`. Its NULL result previously left all
+256 animation-table pointers empty via `func_8432C830(NULL)` yet continued
+to live entry. The probe now logs this required-resource failure, marks
+stage 13, and returns through the existing BATL/RLBT cleanup without ticking
+or committing. The vanilla/default-RL path retains its original behavior.
+This preserves failure semantics, not a residency fix.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

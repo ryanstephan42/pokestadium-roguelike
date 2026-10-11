@@ -15,6 +15,7 @@ O_FILES += $(SC_PROBE_O) $(SC_PROBE_CATALOG) $(SC_HEADER_O)
 
 $(SC_PROBE_O): $(wildcard src/story/*.h)
 $(BUILD_DIR)/src/fragments/62/fragment62_2EA8E0.o: src/story/sc_runtime_probe.h
+$(BUILD_DIR)/src/fragments/62/fragment62_315D50.o: src/story/sc_runtime_probe.h
 
 $(SC_RELOCS0_O:.o=.s): tools/rl/gen_rl_relocs.py
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py - $@ --section .fragmentSC

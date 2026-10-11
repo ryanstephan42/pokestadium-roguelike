@@ -59,6 +59,13 @@ def memory_evidence(emu, result):
         "pool_scope": "raw availability after every main-pool allocation attempt since command",
         **counters,
     }
+    before = emu.story_stack_before
+    require(len(before) == len(stack), "Missing precommand Game stack snapshot")
+    evidence["stack_precommand_margin"] = stack_written_margin(before)
+    evidence["stack_changed_bytes"] = sum(a != b for a, b in zip(before, stack))
+    evidence["stack_new_bottom_writes"] = sum(
+        before[i] == 0xA5 and stack[i] != 0xA5
+        for i in range(evidence["stack_precommand_margin"]))
     for label, symbol in (("first_zero", "gScPoolZero"), ("first_failure", "gScPoolFailure")):
         values = struct.unpack(">10I", emu.read(emu.symbols.address(symbol), 40))
         evidence[label] = dict(zip(
@@ -102,6 +109,9 @@ def set_field(emu, name, value):
 
 def start_command(emu, command, create=0):
     verify_mailbox_abi(emu)
+    base = emu.symbols.address("D_80080000")
+    top = emu.symbols.address("D_800818E0")
+    emu.story_stack_before = emu.read(base, top - base)
     for name in POOL_COUNTERS:
         emu.write_u32(emu.symbols.address(name), 0xFFFFFFFF if name == "gScPoolMinimum" else 0)
     for name in ("gScPoolZero", "gScPoolFailure"):

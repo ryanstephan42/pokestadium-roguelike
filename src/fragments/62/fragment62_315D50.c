@@ -10,6 +10,9 @@
 #include "src/4F410.h"
 #include "src/F420.h"
 #include "src/math_util.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_runtime_probe.h"
+#endif
 
 typedef struct unk_D_84392040 {
     /* 0x00 */ char unk00[0xC];
@@ -4838,12 +4841,25 @@ void func_8432C830(arg1_func_80019420* arg0) {
 
 void func_8432C86C(void) {
     s32 i;
+#ifdef STORY_NATIVE_PROBE
+    arg1_func_80019420* animation;
+#endif
 
     // clang-format off
     for (i = 0; i < 256; i++) { D_843920C0[i] = NULL; }
     // clang-format on
 
+#ifdef STORY_NATIVE_PROBE
+    animation = func_80019EA0(0);
+    if (gScProbeActive && animation == NULL) {
+        osSyncPrintf("story probe: required animation archive entry 0 unavailable\n");
+        gScProbe.stage = 13;
+        return;
+    }
+    func_8432C830(animation);
+#else
     func_8432C830(func_80019EA0(0));
+#endif
 }
 
 void func_8432C8BC(s16 arg0) {
