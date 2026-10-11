@@ -286,6 +286,8 @@ static void backend(void) {
     assert(open_note(1) == SC_SAVE_BAD_DATA && !writes && !allocated);
     assert(sc_native_pak_end(&pak) == SC_SAVE_OK);
     assert(sc_native_pak_release(&other) == SC_SAVE_OK);
+    other.binding_id = 0xFFFFFFFFU;
+    assert(sc_native_pak_bind(&other, 1) == SC_SAVE_INVALID && !other.bound);
 }
 
 static void graphics_failures(void) {
@@ -379,6 +381,9 @@ int main(void) {
     assert(sc_native_ui_finish(&native, &driver, 1, SC_WIN) == SC_INVALID);
     assert(sc_native_ui_release(&native, &driver, 0) == SC_PENDING && depth == 1);
     assert(sc_native_ui_release(&native, &driver, 1) == SC_PENDING && depth == 1);
+    assert(sc_native_pak_begin(&pak) == SC_SAVE_OK);
+    assert(sc_native_ui_release(&native, &driver, 1) == SC_INVALID && depth == 1);
+    assert(sc_native_pak_end(&pak) == SC_SAVE_OK);
     main_pool_push_state(0);
     assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE);
     assert(sc_native_ui_release(&native, &driver, 1) == SC_INVALID);
