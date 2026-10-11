@@ -86,6 +86,8 @@ int main(void) {
     before = ui.state;
     assert(sc_ui_driver_step(&driver, 0) == SC_OK && launches == 1);
     assert(sc_ui_driver_step(&driver, RL_UI_B | RL_UI_A) == SC_PENDING && launches == 1);
+    assert(sc_ui_driver_step(&driver, RL_UI_DOWN | RL_UI_A) == SC_OK && launches == 1);
+    assert(sc_ui_driver_step(&driver, RL_UI_RIGHT | RL_UI_A) == SC_OK && launches == 1);
     assert(!memcmp(&before, &ui.state, sizeof(before)));
     launch_status = SC_OK;
     assert(sc_ui_driver_step(&driver, RL_UI_A) == SC_OK && driver.launched && launches == 2);

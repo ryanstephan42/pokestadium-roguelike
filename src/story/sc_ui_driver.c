@@ -56,7 +56,9 @@ int sc_ui_driver_step(ScUiDriver *driver, unsigned pressed) {
     if (driver->launch_pending) {
         if (pressed & RL_UI_B)
             status = failure(driver, SC_PENDING, "Checkpointed launch remains pending; retry with A");
-        else if (pressed & RL_UI_A) status = launch(driver);
+        else if (!(pressed & (RL_UI_UP | RL_UI_DOWN | RL_UI_LEFT | RL_UI_RIGHT)) &&
+                 (pressed & RL_UI_A))
+            status = launch(driver);
     } else {
         result = sc_ui_input(driver->ui, pressed);
         if (result == SC_UI_EXIT) {
