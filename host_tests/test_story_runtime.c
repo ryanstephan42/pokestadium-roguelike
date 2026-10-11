@@ -6,6 +6,7 @@ static unsigned failure, writes;
 static int fail_final;
 static int native_result = 1;
 static int launch_outcome = RL_BATTLE_WIN;
+static int fail_initialization;
 static unsigned char saved[SC_SAVE_SIZE];
 static RlBattleSide sides[2];
 static unk_D_800AE540_0004 teams[2];
@@ -42,6 +43,7 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
     check(party->max_hp == 22 && party->dvs == 0x8889);
     check(sc_save_decode(&checkpoint, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK);
     check(checkpoint.interrupted && checkpoint.state.phase == SC_ROUTE);
+    if (fail_initialization) return -1;
     memset(sides, 0, sizeof(sides)); memset(teams, 0, sizeof(teams));
     for (i = 0; i < 2; i++) {
         const RlMon *mon = i ? enemy : party;
@@ -110,7 +112,7 @@ int main(void) {
     ScSnapshot snapshot;
     RlU32 before;
     RlU32 generation;
-    check(sizeof(ScProbeMailbox) == 32 * 4);
+    check(sizeof(ScProbeMailbox) == 38 * 4);
     gScProbe.command = 3; gScProbe.seed = 42; gScProbe.create = 1;
     if (!sc_runtime_probe_poll() || failure || gScProbe.status != SC_SAVE_OK) {
         printf("story runtime host failure: line %u, status %u\n", failure, gScProbe.status);
@@ -146,6 +148,12 @@ int main(void) {
     gScProbe.command = 1;
     check(sc_runtime_probe_poll() && gScProbe.status == SC_SAVE_OK &&
            resident.phase == SC_ROUTE && resident.party[0].level == 6 && gScProbe.interrupted);
+    writes = 0; fail_initialization = 1; gScProbe.command = 3;
+    check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
+           writes == 1 && !gScProbeActive && !gScProbe.active);
+    check(sc_save_decode(&snapshot, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK &&
+           snapshot.interrupted && snapshot.state.phase == SC_ROUTE &&
+           snapshot.state.party[0].level == 6);
     puts("Story runtime host scheduling/stat/pause/codec scaffold: OK (not emulator proof)");
     return 0;
 }

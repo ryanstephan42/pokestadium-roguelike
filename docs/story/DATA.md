@@ -373,8 +373,70 @@ stage checks, completed cold reload, and missing/full/damaged-Pak checks.
 It seeds independent RL01 and unrelated notes and restricts writes to SC01
 pages/directory/inode ownership. Outputs are ignored, and no savestates are
 used. Its helpers and opt-in execution hold have host-only tests.
-The native scheduling harness has not yet been executed; no merge or full
-story UI activation is authorized by these build/host results.
+The native scheduling harness was first executed only after the exclusive
+slot was granted, following master `1bc06e2`. It is **blocked before the first
+battle tick**; no merge or full story UI activation is authorized.
+
+#### Bounded native investigation
+
+The harness keeps the L menu trigger held until the command completes and
+uses the installed core discovery API. It records mailbox/launch/thread
+state on timeout and has a 180-second watchdog, canceled on success or error.
+Separate-process SC01 create/foreign-note preservation has passed. The
+`allocation` diagnostic phase is deliberately separate from the interrupted
+live-battle phase: it expects an explicit initialization failure, then saves
+the prebattle checkpoint for a fresh-process load. It does **not** prove any
+KO, learning pause or battle scheduling.
+
+The Game thread has a 6,368-byte stack. Initial checkpoint-store stalls
+preceded fragment entry. Target frames for poll/store/scan/decode/validation
+were 1,584/3,056/760/712/1,376 bytes, respectively. Moving poll snapshot/result
+and commit scratch to probe-only resident BSS reduces poll to 112 bytes and
+commit to 24 bytes and permits the checkpoint write. These workspaces belong
+to the single synchronous Game-thread command; frame callbacks never call
+poll/commit recursively. Full stack high-water/reentrancy proof is still
+outstanding.
+
+The next observed failure was a null stadium-model dispatch, not a KO issue.
+The selected arena-3 archive entry has 18,560 compressed and 39,536 resident
+bytes. `func_80003DC4` retains a 24-byte header and compressed block during
+decompression. With 16-byte alignment/block headers and the pool accessor's
+one-block adjustment, the required caller-visible space is 58,160 bytes.
+The instrumented build has only about 23 KiB available there. Story-only
+preflight checks the ROM entry bounds/header and required allocation before
+calling the retail loader; failure logs an error, unwinds BATL/RLBT and
+returns `0x100 + SC_INVALID`, without a result commit or native tick.
+
+The full exact catalog still occupies fixed RAM before `gPool`. Main BSS
+and catalog reservations reduce the retail 4-MiB pool; `Util_InitMainPools`
+does not automatically enlarge it on an 8-MiB emulator. No expansion-memory
+requirement, asset truncation, shared-pool catalog reuse or broad layout
+workaround has been introduced. This is a real residency blocker requiring
+a safe size/lifetime design before the remaining native cases can proceed.
+
+The integrated diagnostic layout adds 31,552 bytes of story text, 432 bytes
+of story data/rodata and 4,704 bytes of story BSS (4,720 including alignment)
+to the main segment. The exact catalog is 141,360 bytes: 82,308 encounter
+array bytes (361 reachable entries), 24,512 graph-node bytes, 6,232 species
+bytes, 166 PP bytes, 480 healer bytes, 52 descriptor bytes and remaining
+strings/alignment. Stored source records remain a separate inventory count.
+The pool start moves by 178,352 bytes versus the integrated default RL build.
+
+A default-RL exact-team comparison completed two 2-living/3-enemy battles.
+Whole-core-frame observations reached 13,264 raw free pool bytes; this is
+neither an intra-frame peak bound nor six-party proof. Removing only the
+catalog cannot be assumed sufficient. A proposed retail-memory design is to
+keep cold graph/catalog/codec/checkpoint logic in an owned, unloadable story
+overlay; materialize a pointer-independent combat view before releasing it;
+keep only hot native/XP/learning logic resident; reload and revalidate the
+exact catalog after BATL/RLBT return before reward/save commit. Species and
+PP for all 151 species consume only 6,398 bytes; a copied current encounter
+adds 228 bytes. Combat APIs would need explicit entry/view inputs instead
+of a sparse fake catalog. The existing pure full-catalog APIs and exact graph
+identity must remain behaviorally equivalent, with separate differential
+tests. This broader redesign is a **proposal, not an implemented or proven
+memory solution**; pointer lifetime, paused learning, error retries, code
+residency and six-party peaks all require another bounded review/proof.
 
 ## Verification scope and remaining review
 
@@ -400,7 +462,7 @@ change, pause before repeat observation, learned-move publication and canonical
 stat preservation. Assertions remain active despite the decomp headers'
 disabled `assert` macro.
 **There is no claim of native KO timing, physical Pak durability, campaign
-balance or emulator-proven residency yet.** No emulator runs were made during the coordinator's
-exclusive runtime slot. The full `scripts/rl-gate.sh` is still required before
+balance or emulator-proven residency yet.** No emulator runs were made while another owner
+held the exclusive runtime slot. The full `scripts/rl-gate.sh` is still required before
 the complete story feature can be declared finished; it must not be weakened
 or described as passed based on host-only tests.

@@ -158,7 +158,7 @@ int sc_runtime_probe_paused(void) {
 }
 
 static int commit_result(void) {
-    ScSnapshot next;
+    static ScSnapshot next;
     int status;
     if (pending_outcome > SC_WIN) return 0x100 + SC_INVALID;
     next.state = resident;
@@ -174,18 +174,20 @@ static int commit_result(void) {
 }
 
 int sc_runtime_probe_poll(void) {
-    ScSnapshot snapshot;
+    static ScSnapshot snapshot;
     ScOptions options = {0, SC_STANDARD, SC_STARTER_TRIO, 1};
-    RlBattleRules rules = {0,0,0x20,0,1,0,1,0};
-    RlLaunchResult result;
+    RlBattleRules rules = {3,0,0x20,0,1,0,1,0};
+    static RlLaunchResult result;
     unsigned command = gScProbe.command, i, lab = SC_NO_ENCOUNTER, count;
     int status;
     if (!command) return 0;
+    gScProbe.stage = 1;
     {
         extern int sc_runtime_catalog_load(void);
         status = sc_runtime_catalog_load();
         if (status != SC_OK) { status += 0x100; goto end; }
     }
+    gScProbe.stage = 2;
     if (command == 1) {
         status = sc_pak_probe_load(gScProbe.controller, &sc_catalog, &snapshot);
         if (status == SC_SAVE_OK || status == SC_SAVE_RECOVERED) {
@@ -196,6 +198,7 @@ int sc_runtime_probe_poll(void) {
     } else if (command == 2 || command == 3) {
         if (pending_outcome != 255) { status = 0x100 + SC_PENDING; goto end; }
         status = sc_new(&resident, &sc_catalog, &options, gScProbe.seed);
+        gScProbe.stage = 3;
         if (status != SC_OK) { status += 0x100; goto end; }
         if (command == 3) {
             resident.party[0].dvs = 0x8889;
@@ -204,7 +207,9 @@ int sc_runtime_probe_poll(void) {
             sc_recalculate(&resident.party[0], 0);
         }
         snapshot.state = resident; snapshot.interrupted = command == 3;
+        gScProbe.stage = 4;
         status = sc_pak_probe_store(gScProbe.controller, &sc_catalog, &snapshot, gScProbe.create);
+        gScProbe.stage = 5;
         if (status != SC_SAVE_OK || command == 2) goto end;
         for (i = 0; i < sc_catalog.count; i++) {
             const char *a = sc_encounters[i].id, *b = "OaksLab/rival-lab";
@@ -217,6 +222,7 @@ int sc_runtime_probe_poll(void) {
         }
         for (i = 0; i < 6; i++) { mapping[i] = (RlU8)i; bridge.participants[i] = 0; }
         bridge.enemy_count = count;
+        gScProbe.stage = 6;
         last_active = 255;
         deferred_result = deferred_frame = failed = 0;
         gScProbe.resume = gScProbe.force_ko = 0;
@@ -226,7 +232,7 @@ int sc_runtime_probe_poll(void) {
         status = rl_start_battle(resident.party, resident.party_count, opponents, count,
                                  &rules, STATE_MENU_SELECT, &result);
         gScProbeActive = 0; gScProbe.active = 0;
-        if (status < 0) goto end;
+        if (status < 0) { status = 0x100 + SC_INVALID; goto end; }
         if (result.outcome == RL_LAUNCH_DRAW) {
             pending_outcome = SC_DRAW;
             status = 0x100 + SC_PENDING;

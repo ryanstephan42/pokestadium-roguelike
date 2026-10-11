@@ -3,15 +3,18 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from tools.rltest.frontend import HarnessError
-from tools.rltest.story_probe import FIELDS, foreign_note, map_value, story_owned_changes
+from tools.rltest.story_probe import (
+    FIELDS, finish_command, foreign_note, map_value, probe_deadline, story_owned_changes,
+)
 
 
 class StoryHarnessTests(unittest.TestCase):
     def test_mailbox_and_execution_hold(self):
-        self.assertEqual(len(FIELDS), 32)
+        self.assertEqual(len(FIELDS), 38)
         self.assertEqual(len(set(FIELDS)), len(FIELDS))
         result = subprocess.run([sys.executable, "tools/rltest/story_probe.py"],
                                 capture_output=True, text=True)
@@ -27,6 +30,22 @@ class StoryHarnessTests(unittest.TestCase):
             self.assertEqual(map_value(path, "heap_BSS_START"), 0x80140200)
             with self.assertRaises(HarnessError):
                 map_value(path, "missing")
+
+    def test_trigger_held_until_command_finishes(self):
+        emu = Mock()
+        with patch("tools.rltest.story_probe.read_probe", return_value={"command": 0}):
+            self.assertEqual(finish_command(emu), {"command": 0})
+        calls = [call[0] for call in emu.mock_calls]
+        self.assertEqual(calls, ["wait", "release", "wait_state", "step"])
+        emu.release.assert_called_once_with("L")
+
+    def test_watchdog_cancelled_on_error(self):
+        with patch("tools.rltest.story_probe.threading.Timer") as timer:
+            with self.assertRaisesRegex(HarnessError, "expected"):
+                with probe_deadline(Mock(), Path(".")):
+                    raise HarnessError("expected")
+        timer.return_value.start.assert_called_once()
+        timer.return_value.cancel.assert_called_once()
 
     def test_note_ownership(self):
         before = bytearray(32768)

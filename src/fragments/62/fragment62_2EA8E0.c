@@ -537,6 +537,15 @@ void func_84301430(unk_func_80007444* arg0) {
     s16 sp32;
     unk_D_80068BB0* sp2C;
     unk_D_86002F30* sp28;
+#ifdef STORY_NATIVE_PROBE
+    BinArchive* story_archive;
+    BinArchiveFile* story_file;
+    u32 story_rom_size;
+    static union {
+        u64 alignment;
+        PERSSZP header;
+    } story_header;
+#endif
 
     func_84300184(0xFF, 0xFF, 0xFF);
     func_843001FC(1.0f);
@@ -580,8 +589,68 @@ void func_84301430(unk_func_80007444* arg0) {
         }
     }
 
+#ifdef STORY_NATIVE_PROBE
+    story_archive = ASSET_LOAD2(stadium_models, 1, 1);
+    gScProbe.arena_archive = (u32)story_archive;
+    gScProbe.arena_count = story_archive ? story_archive->num_files : 0;
+    gScProbe.arena_index = sp32;
+    gScProbe.pool_free = main_pool_get_available();
+    if (story_archive == NULL) {
+        osSyncPrintf("story probe: stadium archive allocation failed\n");
+        gScProbe.stage = 13;
+        return;
+    }
+    if (gScProbeActive) {
+        story_rom_size = stadium_models_ROM_END - stadium_models_ROM_START;
+        if (sp32 < 0 || sp32 >= story_archive->num_files) {
+            osSyncPrintf("story probe: invalid stadium model index\n");
+            gScProbe.stage = 13;
+            return;
+        }
+        story_file = (BinArchiveFile*)(story_archive + 1) + sp32;
+        if (story_file->size < sizeof(PERSSZP) || story_file->offset > story_rom_size ||
+            story_file->size > story_rom_size - story_file->offset) {
+            osSyncPrintf("story probe: invalid stadium model ROM bounds\n");
+            gScProbe.stage = 13;
+            return;
+        }
+        func_80003B30(&story_header, stadium_models_ROM_START + story_file->offset,
+                     stadium_models_ROM_START + story_file->offset + sizeof(PERSSZP), 0);
+        if (((u32*)story_header.header.magic)[0] != 'PERS' ||
+            ((u32*)story_header.header.magic)[1] != '-SZP' ||
+            story_header.header.decompressed_size2 > 0x400000) {
+            osSyncPrintf("story probe: unsupported stadium model header\n");
+            gScProbe.stage = 13;
+            return;
+        }
+        /* The loader retains header and compressed blocks during decompression. */
+        gScProbe.arena_required = ALIGN16(sizeof(PERSSZP)) + sizeof(MainPoolBlock) +
+            ALIGN16(story_file->size) + sizeof(MainPoolBlock) +
+            ALIGN16(story_header.header.decompressed_size2);
+        if (gScProbe.arena_required > gScProbe.pool_free) {
+            osSyncPrintf("story probe: stadium model requires %u bytes; pool free %u\n",
+                         gScProbe.arena_required, gScProbe.pool_free);
+            gScProbe.stage = 13;
+            return;
+        }
+    }
+    sp3C = func_8000484C(story_archive, sp32);
+#else
     sp3C = func_8000484C(ASSET_LOAD2(stadium_models, 1, 1), sp32);
+#endif
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 10;
+    if (sp3C == NULL) {
+        osSyncPrintf("story probe: stadium model %d allocation failed; pool free %u\n",
+                     sp32, gScProbe.pool_free);
+        gScProbe.stage = 13;
+        return;
+    }
+#endif
     D_8438E780 = sp3C(2, 0);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 11;
+#endif
 
     sp28 = func_80019D18(0x9A);
     func_8430128C();
@@ -599,6 +668,9 @@ void func_84301430(unk_func_80007444* arg0) {
     func_80011E68(&D_8438E440, 30.0f, 192.0f, 24576.0f);
     func_8001BB20();
     func_84307394(0, D_8438E798);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 12;
+#endif
     func_84307A50(0, &D_8438E598, &D_8438E688);
     func_8432AEE4(0, &D_8438E440);
     func_8432D0D8(0, &D_8438E440);
@@ -650,6 +722,9 @@ void func_84301A24(void) {
 
 s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     unk_func_80007444* sp24;
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 7;
+#endif
 
     D_8438E798 = D_800AE540.unk_1194;
     D_8438E7AC = -2;
@@ -658,7 +733,18 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
 
     func_80005E40(0x20000, 0);
     sp24 = func_80007444(0, 1, 3, 1, 2, 1);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 8;
+#endif
     func_84301430(sp24);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive && gScProbe.stage == 13) {
+        func_80005EAC();
+        main_pool_pop_state('BATL');
+        return -1;
+    }
+    if (gScProbeActive) gScProbe.stage = 9;
+#endif
     func_80007678(sp24);
     func_800077B4(1);
     func_800078D4(func_843010EC, 0x20, 0x10);

@@ -2,11 +2,16 @@
 
 import argparse
 import ctypes as ct
+from contextlib import contextmanager
+import hashlib
 import json
+import os
 import re
+import signal
 import struct
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +26,8 @@ FIELDS = (
     "command status controller create seed active ticks ko_count pause_ticks resume force_ko "
     "phase exp level hp max_hp dvs live_hp live_max_hp live_attack live_base_attack "
     "attack_stage state_address state_size completed_crc interrupted post_pool_crc "
-    "logic_steps presentation_steps native_max_hp native_dvs live_dvs"
+    "logic_steps presentation_steps native_max_hp native_dvs live_dvs stage "
+    "pool_free arena_archive arena_count arena_index arena_required"
 ).split()
 
 
@@ -43,13 +49,17 @@ def start_command(emu, command, create=0):
     emu.hold("L")
     emu.step(4)
     emu.press("N64_A", frames=4, after=4)
-    emu.release("L")
 
 
 def finish_command(emu):
-    emu.wait(lambda e: read_probe(e)["command"] == 0, frames=6000,
-             description="story probe native command")
+    try:
+        emu.wait(lambda e: read_probe(e)["command"] == 0, frames=6000,
+                 description="story probe native command")
+    except HarnessError as error:
+        raise HarnessError(f"{error}; state={emu.read_u32('gCurrentGameState')}; "
+                           f"probe={read_probe(emu)}") from error
     result = read_probe(emu)
+    emu.release("L")
     emu.wait_state(4, frames=900)
     emu.step(180)
     return result
@@ -66,7 +76,36 @@ def wait_probe(emu, predicate, frames, description):
                 (result["status"] == 0xFFFFFFFF or result["status"] < 0x100),
                 f"{description} failed before its boundary: {result}")
         return bool(predicate(result))
-    emu.wait(ready, frames=frames, description=description)
+    try:
+        emu.wait(ready, frames=frames, description=description)
+    except HarnessError as error:
+        thread = emu.symbols.address("pThreads")
+        raise HarnessError(f"{error}; probe={read_probe(emu)}; "
+                           f"launch_stage={emu.read_u32('gRlBattleLaunchStage')}; "
+                           f"game_thread_state={emu.read_u16(thread + 16)}; "
+                           f"pc={emu.read_u32(thread + 284):08x}; "
+                           f"ra={emu.read_u32(thread + 260):08x}; "
+                           f"sp={emu.read_u32(thread + 244):08x}; "
+                           f"cause={emu.read_u32(thread + 288):08x}; "
+                           f"badvaddr={emu.read_u32(thread + 292):08x}") from error
+
+def stalled_probe(emu, directory):
+    evidence = {"frame": emu.frame, "probe": read_probe(emu),
+                "game_state": emu.read_u32("gCurrentGameState"),
+                "launch_stage": emu.read_u32("gRlBattleLaunchStage")}
+    (directory / "stall.json").write_text(json.dumps(evidence, indent=2) + "\n")
+    print(f"Native probe watchdog: {evidence}", file=sys.stderr, flush=True)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+@contextmanager
+def probe_deadline(emu, directory):
+    watchdog = threading.Timer(180, stalled_probe, (emu, directory))
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        yield
+    finally:
+        watchdog.cancel()
 
 
 def require(condition, message):
@@ -130,12 +169,24 @@ def foreign_note(data, base, full=False):
 
 def phase(args):
     directory = Path(args.out)
+    provenance = {
+        "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "diff_sha256": hashlib.sha256(subprocess.check_output(
+            ["git", "diff", "HEAD", "--binary"], cwd=ROOT)).hexdigest(),
+        "command": sys.argv,
+        "rom_sha256": hashlib.sha256(Path(args.rom).read_bytes()).hexdigest(),
+        "map_sha256": hashlib.sha256(Path(args.map).read_bytes()).hexdigest(),
+        "core_sha256": hashlib.sha256(Path(args.core).read_bytes()).hexdigest(),
+    }
+    (directory / f"{args.phase}-provenance.json").write_text(
+        json.dumps(provenance, indent=2) + "\n")
     options = {"mupen64plus-pak1": "none" if args.phase == "missing" else "memory",
                "mupen64plus-angrylion-multithread": "4"}
     with Frontend(args.core, args.rom, args.map, directory / args.phase,
-                  options=options, timeout=900) as emu:
+                  options=options, timeout=900) as emu, probe_deadline(emu, directory):
         pointer, initial = save_ram(emu)
-        if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural"):
+        if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
+                          "allocation"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -155,6 +206,16 @@ def phase(args):
                     result["phase"] == (0 if interrupted else 3),
                     f"Fresh-process checkpoint did not reload: {result}")
             require(save_ram(emu)[1] == before, "Cold load modified storage")
+        elif args.phase == "allocation":
+            base = find_pak(before)
+            result = command(emu, 3)
+            require(result["status"] == 0x100 + 1 and result["stage"] == 13 and
+                    result["arena_required"] > result["pool_free"] and
+                    result["ticks"] == 0 and result["ko_count"] == 0 and not result["active"],
+                    f"Expected explicit prebattle allocation refusal: {result}")
+            after = save_ram(emu)[1]
+            story_owned_changes(before, after, base)
+            (directory / "save-ram.bin").write_bytes(after)
         elif args.phase == "interrupt":
             base = find_pak(before)
             start_command(emu, 3)
@@ -247,7 +308,8 @@ def main():
     parser.add_argument("--map", default="build_story_probe/pokestadium-rl.map")
     parser.add_argument("--out", default=".local/rltest/story-probe")
     parser.add_argument("--phase", choices=("create", "interrupt", "interrupted_reload",
-                                          "battle", "natural", "reload", "missing", "full"))
+                                          "battle", "natural", "reload", "missing", "full",
+                                          "allocation"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")

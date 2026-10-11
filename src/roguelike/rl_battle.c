@@ -302,7 +302,17 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     gRlBattleLaunchStage = 3;
     FRAGMENT_LOAD(fragment34);
     gRlBattleLaunchStage = 4;
+#ifdef STORY_NATIVE_PROBE
+    if (FRAGMENT_LOAD_AND_CALL(fragment62, 0, (u32)&D_800AE540) < 0) {
+        main_pool_pop_state(0x524C4254);
+        gRlBattleActive = 0;
+        gCurrentGameState = return_state;
+        osSyncPrintf("story probe: native battle initialization failed\n");
+        return -1;
+    }
+#else
     FRAGMENT_LOAD_AND_CALL(fragment62, 0, (u32)&D_800AE540);
+#endif
     gRlBattleLaunchStage = 5;
     main_pool_pop_state(0x524C4254);
     result->outcome = RL_LAUNCH_DRAW;
