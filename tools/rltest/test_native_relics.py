@@ -17,13 +17,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.rltest.frontend import Frontend, HarnessError
-from tools.rltest.test_custom_battle import BattleRules, Mon, Result
+from tools.rltest.test_custom_battle import BattleRules, Mon, Result, require_battle_test_profile
 
 
 TRACE_CAPACITY = 256
 
 
 def require_relic_trace_build(map_path):
+    require_battle_test_profile(map_path)
     text = Path(map_path).read_text()
     if re.search(r"\bgScProbeCompiledSize\b", text):
         raise HarnessError("Relic trace acceptance does not support STORY_NATIVE_PROBE")

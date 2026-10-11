@@ -1505,6 +1505,42 @@ is unchanged to preserve accepted profiles and transactional/reentrant APIs.
 Cold-loader threshold/ownership tests remain required; source-only
 measurements do not establish live SP safety or six-party entry acceptance.
 
+#### Failed six-entry initialization and isolated test-payload omission
+
+The separately granted one-shot8544304 `six_entry` failed before its initialized
+boundary; frozen output `.local/rltest/story-six-entry-8544304/` has manifest
+b1d5d483591fd7979ede9869ca8ef1cebbc3225e9845ca9e3ccf8e6297881b8a.
+All six resident named records equal the host proof, cold176752 returned with
+balanced pool/cleared mapping, and combat counters remained zero. Stage12
+reached `func_8432C86C` -> `func_80019EA0(0)` -> compressed archive output
+allocation:37296 payload/37312 charged versus37040 available. The strict
+required-animation guard produced stage13. The272-byte deficit is at
+compressed-source/output coexistence, not final retained asset size.
+The normal consume-all scratch allocation/shrink reached raw zero earlier;
+it is not itself an allocation failure. Arena availability after cleanup is
+not proof of complete initializer capacity. No retry or native six-party
+mapping/active/bench/participant/terminal acceptance followed.
+
+The authorized source-only correction omits the unrelated RL relic/custom
+battle-test launcher code and payload only under `STORY_SIX_PROBE`. The
+public entrypoint and dispatcher request remain; invocation logs explicit
+unavailability, clears the request and returns to the standard title state
+without launching or stepping assets. Real battle/prepare/PP-pouch APIs and
+all story bridge/progress/KO/terminal state and assets remain. Custom/relic/
+cadence harnesses refuse this profile before constructing Frontend.
+
+Compiled test entry shrinks1156->60; overall resident text/rodata alignment
+reclaims1088 and BSS reclaims848, for1936 total. `text_BSS_END`/heap start moves
+8011e470->8011dce0; main pool has a fixed4MB/6MB end, so this is1936 additional
+initial capacity, not an emulator measurement. At the previously failed
+allocation, unchanged-lifetime arithmetic predicts38976 available versus37312
+charged (1664 margin), not an arbitrary272-byte-only adjustment. Actual
+initializer allocation/peak behavior remains unverified pending a new grant.
+Cold size176752 and mailbox/state/Mon/bridge/progress ABI remain unchanged;
+old Ember/KO/defaultRL binary hashes and vanilla matching remain unchanged.
+Host refusal lifecycle and three pre-Frontend harness refusals augment the
+normal/sanitized actual launcher/adapter tests;45 helpers pass.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

@@ -19,10 +19,12 @@ volatile unsigned int gRlBattleCount;
 int gRlBattleActive;
 volatile int gRlBattleTestRequest;
 const unsigned int gRlBattleTestMonSize = sizeof(RlMon);
+#ifndef STORY_SIX_PROBE
 RlMon gRlRelicTestParty[6], gRlRelicTestEnemy[6];
 RlBattleRules gRlRelicTestRules;
 unsigned int gRlRelicTestPartyCount, gRlRelicTestEnemyCount, gRlRelicTestMask;
 unsigned int gRlRelicTestConsumed;
+#endif
 volatile unsigned int gRlBattleLaunchStage;
 
 static int rl_valid_team(const RlMon* team, int count) {
@@ -355,6 +357,11 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
 }
 
 void rl_battle_test_entry(void) {
+#ifdef STORY_SIX_PROBE
+    gRlBattleTestRequest = 0;
+    gCurrentGameState = STATE_TITLE_SCREEN;
+    osSyncPrintf("story six probe: RL relic/custom battle test payload unavailable\n");
+#else
     RlMon party[3];
     RlMon enemy[3];
     RlBattleRules rules;
@@ -435,5 +442,6 @@ void rl_battle_test_entry(void) {
     rules.use_state = 1;
     rules.player_count = 2;
     rl_start_battle(party, 3, enemy, 3, &rules, STATE_TITLE_SCREEN, NULL);
+#endif
 }
 #endif

@@ -37,6 +37,22 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_omitted_battle_payload_refused_before_frontend(self):
+        from tools.rltest import test_custom_battle, test_native_relics, test_relic_cadence
+        with tempfile.TemporaryDirectory() as directory:
+            map_path = Path(directory) / "six.map"
+            map_path.write_text("  0x80100000 gScProbeSixMapping\n")
+            for module in (test_custom_battle, test_native_relics, test_relic_cadence):
+                with patch.object(module, "Frontend") as frontend:
+                    with self.assertRaisesRegex(HarnessError, "payload is unavailable"):
+                        if module is test_custom_battle:
+                            module.run("unused", "unused", map_path, directory)
+                        else:
+                            module.run_one("unused", "unused", "unused", map_path, directory, 1)
+                    frontend.assert_not_called()
+            map_path.write_text("  0x80100000 gRlBattleTestRequest\n")
+            test_custom_battle.require_battle_test_profile(map_path)
+
     def test_six_entry_full_party_native_mapping_and_refusals(self):
         from tools.rltest import story_probe
         proof = Path("build/story/six-host-proof.jsonl")

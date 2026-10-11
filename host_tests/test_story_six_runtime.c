@@ -16,7 +16,7 @@ static int native_battle(void);
 #include "src/roguelike/rl_battle.c"
 
 static RlU8 saved[SC_SAVE_SIZE];
-static unsigned writes;
+static unsigned writes, refusal_logs;
 static int corrupt_terminal, fail_store, permute_party;
 static RlBattleSide sides[2];
 static unk_D_800AE540_0004 teams[2];
@@ -31,7 +31,10 @@ s32 gCurrentGameState;
            __LINE__, (unsigned)corrupt_terminal, resident.phase, gScProgressProbe.error, gScProbe.status); return -1; \
 } } while (0)
 
-void osSyncPrintf(const char *format, ...) { (void)format; }
+void osSyncPrintf(const char *format, ...) {
+    if (!strcmp(format, "story six probe: RL relic/custom battle test payload unavailable\n"))
+        refusal_logs++;
+}
 
 int sc_pak_probe_load(unsigned controller, const ScCatalog *catalog, ScSnapshot *snapshot) {
     RlU32 generation;
@@ -164,6 +167,14 @@ int main(void) {
     ScState fixture;
     RlMon returned, launched, invalid;
     unk_func_80026268_arg0 native;
+    for (scenario = 0; scenario < 4; scenario++) {
+        unsigned count = gRlBattleCount;
+        gRlBattleTestRequest = scenario;
+        gCurrentGameState = STATE_MENU_SELECT;
+        rl_battle_test_entry();
+        assert(!gRlBattleTestRequest && gCurrentGameState == STATE_TITLE_SCREEN &&
+               gRlBattleCount == count && !writes && refusal_logs == scenario + 1);
+    }
     memset(&nested_output, 0x55, sizeof(nested_output));
     nested_before = nested_output;
     assert(sc_six_checkpoint(&fixture, &sc_catalog, reenter, 0) == SC_OK);
