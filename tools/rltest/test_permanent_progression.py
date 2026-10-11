@@ -169,6 +169,8 @@ def phase(directory, part):
             for index, cost in ((2, 30), (5, 50), (9, 50)):
                 before = read_meta(emu).currency
                 select(emu, index)
+                emu.wait(lambda runner: read_meta(runner).currency != before,
+                         frames=1800, description="native permanent purchase save")
                 require(read_meta(emu).currency == before - cost, "purchase debit wrong")
                 require(bytes(read_run(emu)) == suspended, "profile edit mutated resident run")
             require(read_meta(emu).options & ((1 << 1) | (1 << 4) | (1 << 8)) ==
