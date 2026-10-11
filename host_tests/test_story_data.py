@@ -271,8 +271,8 @@ class CanonicalInventoryTests(unittest.TestCase):
     def test_access_fact_evidence(self):
         facts = self.data["access_fact_audit"]["red"]
         self.assertEqual(facts, self.data["access_fact_audit"]["blue"])
-        self.assertEqual(len(facts), 13)
-        self.assertEqual(len({fact["id"] for fact in facts}), 13)
+        self.assertEqual(len(facts), 17)
+        self.assertEqual(len({fact["id"] for fact in facts}), 17)
         self.assertTrue(all(fact["line"] <= fact["end_line"] for fact in facts))
         source = Source(Path(__file__).resolve().parents[1] / ".local/story-source", False)
         source.paths()
@@ -281,6 +281,11 @@ class CanonicalInventoryTests(unittest.TestCase):
             return original(path).replace("bit BIT_CASCADEBADGE, a", "bit BIT_SOULBADGE, a")
         with patch.object(source, "get", side_effect=altered):
             with self.assertRaisesRegex(DataError, "cut_badge"):
+                access_fact_audit(source, "red")
+        def switched_fossil(path):
+            return original(path).replace("ld b, OMANYTE", "ld b, KABUTO")
+        with patch.object(source, "get", side_effect=switched_fossil):
+            with self.assertRaisesRegex(DataError, "fossil_species_mapping"):
                 access_fact_audit(source, "red")
 
     def test_candidate_optional_routes_and_retirement(self):

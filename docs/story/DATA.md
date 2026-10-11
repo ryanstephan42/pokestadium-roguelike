@@ -120,12 +120,14 @@ does not install these partial rules or change `graph_reviewed = 0`.
 
 ### Access facts and candidate traversals
 
-Thirteen exact source sequences are now checked in both retail versions and
+Seventeen exact source sequences are now checked in both retail versions and
 recorded with source line ranges: Cut/Cascade, Surf/Soul and Strength/Rainbow
 badge eligibility; the corresponding HM acquisitions; Tower Silph Scope
 identification; both finite Snorlax/Flute triggers; fossil choice exclusion;
 Old Amber acquisition; seven badges opening Viridian Gym; and Hall of Fame
-removing the Cerulean Cave guard. Virtual Console-only battle patches are
+removing the Cerulean Cave guard; the lab's exact fossil item/species mapping
+and level-30 handover; and both Dojo gifts' mutually exclusive claim guards.
+Virtual Console-only battle patches are
 explicitly excluded, just as debug-only code is excluded.
 
 Important references:

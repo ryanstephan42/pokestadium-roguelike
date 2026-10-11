@@ -131,7 +131,7 @@ class Source:
                            "engine/pokemon/experience.asm",
                            "engine/pokemon/evos_moves.asm", "engine/pokemon/add_mon.asm",
                            "engine/battle/read_trainer_party.asm", "engine/battle/experience.asm"}
-                   or path in {"engine/items/item_effects.asm",
+                   or path in {"engine/items/item_effects.asm", "engine/events/cinnabar_lab.asm",
                                "engine/menus/start_sub_menus.asm", "engine/battle/core.asm"}
                    or re.fullmatch(r"data/pokemon/base_stats/\w+\.asm", path)
                    or re.fullmatch(r"data/maps/objects/\w+\.asm", path)
@@ -534,6 +534,23 @@ def access_fact_audit(source, version):
         ("viridian_seven_badges", "scripts/ViridianCity.asm",
          ["ld a, [wObtainedBadges]", "cp ~(1 << BIT_EARTHBADGE)",
           "jr nz, .gym_closed", "SetEvent EVENT_VIRIDIAN_GYM_OPEN"]),
+        ("fossil_species_mapping", "engine/events/cinnabar_lab.asm",
+         ["cp DOME_FOSSIL", "jr z, .choseDomeFossil", "cp HELIX_FOSSIL",
+          "jr z, .choseHelixFossil", "ld b, AERODACTYL", "jr .fossilSelected",
+          ".choseHelixFossil", "ld b, OMANYTE", "jr .fossilSelected",
+          ".choseDomeFossil", "ld b, KABUTO"]),
+        ("fossil_revival_level", "scripts/CinnabarLabFossilRoom.asm",
+         ["ld a, [wFossilMon]", "ld b, a", "ld c, 30", "call GivePokemon",
+          "jr nc, .done",
+          "ResetEvents EVENT_GAVE_FOSSIL_TO_LAB, EVENT_LAB_STILL_REVIVING_FOSSIL, EVENT_LAB_HANDING_OVER_FOSSIL_MON"]),
+        ("dojo_gift_exclusion", "scripts/FightingDojo.asm",
+         ["FightingDojoHitmonleePokeBallText:", "text_asm",
+          "CheckEitherEventSet EVENT_GOT_HITMONLEE, EVENT_GOT_HITMONCHAN",
+          "jr z, .GetMon"]),
+        ("dojo_other_gift_exclusion", "scripts/FightingDojo.asm",
+         ["FightingDojoHitmonchanPokeBallText:", "text_asm",
+          "CheckEitherEventSet EVENT_GOT_HITMONLEE, EVENT_GOT_HITMONCHAN",
+          "jr z, .GetMon"]),
     )
     for identifier, path, expected in specifications:
         rows = list(clean(source.get(path), version))
