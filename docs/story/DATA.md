@@ -705,10 +705,15 @@ live-party bridge, KO/learning, six-party or full gate acceptance. Existing
 
 Command 6 uses a separate synthetic canonical lab fixture: HP17/22, PP7/40,
 L6/XP235/DVs `0x8889` and paralysis status `0x40`. Commands 3 and 5 remain
-unchanged. A probe-only, pointer-free 496-byte diagnostic holds four value
-views (initial/carry original-party and live-mon) plus enabled/action/boundary/
+unchanged. A probe-only, pointer-free 736-byte diagnostic holds six value
+views (initial/carry/current original-party and live-mon) plus enabled/action/boundary/
 error words. Its target-compiled size is checked independently of the unchanged
-212-byte mailbox.
+212-byte mailbox. Every held frame freshly captures the native original/live
+records into the current views, comparing all named fields against the
+immutable initial or carry boundary before any injected action. Drift logs
+error 5 and holds without correction/publication/observation; current mismatch
+evidence and immutable history remain available to the harness. The 60-frame
+assertion therefore checks fresh native evidence, not cached boundary copies.
 
 At the first frame gate, **before `publish_live` or any tick/XP/action**, the
 bridge-only path captures the actual native original-party and live mon.
@@ -728,9 +733,12 @@ or initializer mismatches fail explicitly. All subsequent held frames render
 without further observation. The host regression exercises both boundaries,
 unchanged durable prebattle data, initializer mismatch, invalid/repeated action
 rejection, invalid party count, native HP mismatch, unmodified paralysis Speed
-and normal command-3 behavior.
+and normal command-3 behavior. Additional regressions mutate actual original
+PP/live status after boundary 1 and original HP/live Speed after boundary 2:
+each rejects freshly observed drift, preserves boundary history/resident state
+and prevents carry injection after an unnoticed initializer change.
 Error codes distinguish input bounds (1), initializer comparison (2),
-invalid/repeated action (3) and carry observation/comparison (4).
+invalid/repeated action (3), carry observation/comparison (4) and held drift (5).
 
 Explicit `bridge_init` and `bridge_carry` phases use separate fresh processes.
 They preserve prebattle save bytes and initial native/resident/result/memory
@@ -742,8 +750,9 @@ These phases stop while BATL is still active; they do **not** complete a battle,
 exercise natural poisoning/PP usage, KO/learning or postbattle commit.
 No emulator run has been authorized for this delta.
 
-The source-stage pool starts at `0x8011D670`, 2,464 bytes above the `6e467fc`
-checkpoint stage, including the 496-byte value diagnostic and code/alignment.
+The source-stage pool starts at `0x8011D9E0`, 3,344 bytes above the `6e467fc`
+checkpoint stage, including the 736-byte value diagnostic and code/alignment.
+The fresh-read fix adds 880 bytes relative to unlaunched `82100d2`.
 Cold RAM is 173,872 bytes (64-byte growth). The target tick frame stays at
 112 bytes; poll grows from 120 to 128, and the bridge hold has a 64-byte frame
 before its existing native/combat observation callees. These are static

@@ -43,11 +43,12 @@ BRIDGE_VIEW_FIELDS = (
 
 
 def read_bridge(emu):
-    size = 16 + 16 * len(BRIDGE_VIEW_FIELDS)
+    size = 16 + 24 * len(BRIDGE_VIEW_FIELDS)
     require(emu.read_u32("gScBridgeProbeSize") == size, "Story bridge ABI mismatch")
     values = struct.unpack(f">{size // 4}I", emu.read("gScBridgeProbe", size))
     evidence = dict(zip(("enabled", "action", "boundary", "error"), values[:4]))
-    for slot, name in enumerate(("initial_party", "initial_live", "carry_party", "carry_live")):
+    for slot, name in enumerate(("initial_party", "initial_live", "carry_party", "carry_live",
+                                 "current_party", "current_live")):
         start = 4 + slot * len(BRIDGE_VIEW_FIELDS)
         evidence[name] = dict(zip(BRIDGE_VIEW_FIELDS, values[start:start + len(BRIDGE_VIEW_FIELDS)]))
     return evidence
@@ -56,6 +57,9 @@ def read_bridge(emu):
 def require_bridge(evidence, party, carry=False):
     require(evidence["enabled"] == 1 and not evidence["error"] and
             evidence["boundary"] == (2 if carry else 1), f"Bridge boundary failed: {evidence}")
+    prefix = "carry" if carry else "initial"
+    require(all(evidence[f"current_{kind}"] == evidence[f"{prefix}_{kind}"]
+                for kind in ("party", "live")), f"Fresh native bridge drift: {evidence}")
     require_fixture_party(party, hp=16 if carry else 17, pp=6 if carry else 7,
                           status=0x48 if carry else 0x40)
     mon = party[0]

@@ -107,6 +107,19 @@ static int bridge_matches(const volatile ScBridgeView *party,
     return 1;
 }
 
+static int bridge_view_equal(const volatile ScBridgeView *a, const volatile ScBridgeView *b) {
+    unsigned i;
+    if (a->species != b->species || a->level != b->level || a->exp != b->exp ||
+        a->dvs != b->dvs || a->hp != b->hp || a->max_hp != b->max_hp ||
+        a->status != b->status) return 0;
+    for (i = 0; i < 4; i++)
+        if (a->moves[i] != b->moves[i] || a->pp[i] != b->pp[i] || a->base[i] != b->base[i])
+            return 0;
+    for (i = 0; i < 5; i++) if (a->stats[i] != b->stats[i]) return 0;
+    for (i = 0; i < 6; i++) if (a->stages[i] != b->stages[i]) return 0;
+    return 1;
+}
+
 static int bridge_hold(RlBattleSide *player, RlBattleSide *enemy) {
     unsigned i, error = 1;
     if (!player || !enemy || !player->unk_724 || !enemy->unk_724 ||
@@ -114,6 +127,17 @@ static int bridge_hold(RlBattleSide *player, RlBattleSide *enemy) {
         enemy->unk_724->unk_002 != 1 || rl_battle_active_index(player) != 0 ||
         rl_battle_active_index(enemy) != 0 || !rl_battle_hp(rl_battle_mon(enemy)))
         goto invalid;
+    bridge_views(player, &gScBridgeProbe.current_party, &gScBridgeProbe.current_live);
+    if (gScBridgeProbe.boundary) {
+        const volatile ScBridgeView *party = gScBridgeProbe.boundary == 1 ?
+            &gScBridgeProbe.initial_party : &gScBridgeProbe.carry_party;
+        const volatile ScBridgeView *live = gScBridgeProbe.boundary == 1 ?
+            &gScBridgeProbe.initial_live : &gScBridgeProbe.carry_live;
+        error = 5;
+        if (gScBridgeProbe.boundary > 2 ||
+            !bridge_view_equal(&gScBridgeProbe.current_party, party) ||
+            !bridge_view_equal(&gScBridgeProbe.current_live, live)) goto invalid;
+    }
     if (!gScBridgeProbe.boundary) {
         bridge_views(player, &gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live);
         error = 2;
@@ -144,6 +168,7 @@ static int bridge_hold(RlBattleSide *player, RlBattleSide *enemy) {
         for (i = 1; i < 4; i++)
             if (resident.party[0].pp[i] != gScBridgeProbe.initial_party.pp[i]) goto invalid;
         gScBridgeProbe.boundary = 2;
+        bridge_views(player, &gScBridgeProbe.current_party, &gScBridgeProbe.current_live);
     }
     report();
     return 1;

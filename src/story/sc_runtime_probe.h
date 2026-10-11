@@ -27,6 +27,7 @@ typedef struct ScBridgeView {
 typedef struct ScBridgeProbe {
     RlU32 enabled, action, boundary, error;
     ScBridgeView initial_party, initial_live, carry_party, carry_live;
+    ScBridgeView current_party, current_live;
 } ScBridgeProbe;
 extern volatile ScBridgeProbe gScBridgeProbe;
 extern int gScProbeActive;

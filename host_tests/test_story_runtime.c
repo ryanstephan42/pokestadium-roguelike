@@ -94,13 +94,26 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
                   gScBridgeProbe.initial_live.pp[0] == 35 && resident.party[0].pp[0] == 7);
             return -1;
         }
-        if (bridge_case >= 4) {
+        if (bridge_case >= 4 && bridge_case <= 6) {
             check(gScBridgeProbe.error && !gScBridgeProbe.boundary &&
                   resident.party[0].cur_hp == 17 && resident.party[0].pp[0] == 7);
             return -1;
         }
         check(gScBridgeProbe.boundary == 1 && !gScBridgeProbe.error &&
               resident.party[0].cur_hp == 17 && resident.party[0].status == 0x40);
+        if (bridge_case == 7 || bridge_case == 8) {
+            if (bridge_case == 7) teams[0].unk_01C[0].unk_20[0] = 35;
+            else rl_battle_status(rl_battle_mon(&sides[0])) = 0;
+            gScBridgeProbe.action = 1;
+            check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
+                  gScBridgeProbe.error == 5 && gScBridgeProbe.boundary == 1 &&
+                  resident.party[0].pp[0] == 7 && resident.party[0].cur_hp == 17 &&
+                  gScBridgeProbe.initial_party.pp[0] == 7 &&
+                  gScBridgeProbe.initial_live.status == 0x40);
+            check(bridge_case == 7 ? gScBridgeProbe.current_party.pp[0] == 35 :
+                  gScBridgeProbe.current_live.status == 0);
+            return -1;
+        }
         for (i = 0; i < 10; i++) {
             check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
                   !gScProbe.ticks && !gScProbe.ko_count && resident.party[0].pp[0] == 7);
@@ -116,6 +129,18 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
               resident.party[0].cur_hp == 16 && resident.party[0].pp[0] == 6 &&
               resident.party[0].status == 0x48 && resident.party[0].exp == 235 &&
               !resident.defeated_mask && !resident.learn_mask);
+        if (bridge_case == 9 || bridge_case == 10) {
+            if (bridge_case == 9) teams[0].unk_01C[0].unk_02 = 22;
+            else rl_battle_speed(rl_battle_mon(&sides[0])) = 11;
+            check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
+                  gScBridgeProbe.error == 5 && gScBridgeProbe.boundary == 2 &&
+                  resident.party[0].cur_hp == 16 && resident.party[0].pp[0] == 6 &&
+                  gScBridgeProbe.carry_party.hp == 16 &&
+                  gScBridgeProbe.carry_live.stats[3] == 2);
+            check(bridge_case == 9 ? gScBridgeProbe.current_party.hp == 22 :
+                  gScBridgeProbe.current_live.stats[3] == 11);
+            return -1;
+        }
         for (i = 0; i < 10; i++)
             check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
                   resident.party[0].cur_hp == 16 && !gScProbe.ticks && !gScProbe.ko_count);
@@ -254,7 +279,7 @@ int main(void) {
               resident.party[0].pp[i] == checkpoint.pp[i] &&
               resident.party[0].max_pp[i] == checkpoint.max_pp[i]);
     fail_initialization = 0;
-    for (bridge_case = 1; bridge_case <= 6; bridge_case++) {
+    for (bridge_case = 1; bridge_case <= 10; bridge_case++) {
         writes = 0; gScProbe.command = 6;
         check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
               writes == 1 && !gScProbeActive && !gScProbe.active);

@@ -46,9 +46,12 @@ class StoryHarnessTests(unittest.TestCase):
                     view.update({f"base{i}": stat for i, stat in enumerate([11, 11, 11, 13])})
                     view.update({f"stage{i}": 7 for i in range(6)})
                 evidence[f"{prefix}_{kind}"] = view
+        for kind in ("party", "live"):
+            evidence[f"current_{kind}"] = copy.deepcopy(evidence[f"initial_{kind}"])
         require_bridge(evidence, [mon])
         values = [1, 0, 1, 0]
-        for name in ("initial_party", "initial_live", "carry_party", "carry_live"):
+        for name in ("initial_party", "initial_live", "carry_party", "carry_live",
+                     "current_party", "current_live"):
             values.extend(evidence[name][field] for field in BRIDGE_VIEW_FIELDS)
         emu = Mock()
         emu.read_u32.return_value = len(values) * 4
@@ -63,8 +66,15 @@ class StoryHarnessTests(unittest.TestCase):
             with self.assertRaises(HarnessError):
                 require_bridge(wrong, [mon])
         evidence["boundary"] = 2
+        for kind in ("party", "live"):
+            evidence[f"current_{kind}"] = copy.deepcopy(evidence[f"carry_{kind}"])
         carry = {**mon, "hp": 16, "pp": [6, 40, 0, 0], "status": 0x48}
         require_bridge(evidence, [carry], carry=True)
+        for kind in ("party", "live"):
+            wrong = copy.deepcopy(evidence)
+            wrong[f"current_{kind}"]["pp0"] = 35
+            with self.assertRaisesRegex(HarnessError, "Fresh native bridge drift"):
+                require_bridge(wrong, [carry], carry=True)
         evidence["error"] = 1
         with self.assertRaisesRegex(HarnessError, "boundary failed"):
             require_bridge(evidence, [carry], carry=True)
