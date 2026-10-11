@@ -1,5 +1,6 @@
 import struct
 import ctypes
+import copy
 import subprocess
 import sys
 import tempfile
@@ -16,11 +17,58 @@ from tools.rltest.story_probe import (
     verify_mailbox_abi,
     require_checkpoint_party,
     decode_party,
+    BRIDGE_VIEW_FIELDS,
+    read_bridge,
+    require_bridge,
 )
 from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_bridge_snapshot_abi_and_rejections(self):
+        mon = dict(species=1, level=6, exp=235, dvs=0x8889, hp=17, max_hp=22,
+                   fainted=0, status=0x40, moves=[33, 45, 0, 0], pp=[7, 40, 0, 0],
+                   max_pp=[35, 40, 0, 0], current_stats=[22, 11, 11, 11, 13],
+                   stat_exp=[0] * 5, base_stats=[45, 49, 49, 45, 65], growth=3)
+        evidence = dict(enabled=1, action=0, boundary=1, error=0)
+        for prefix in ("initial", "carry"):
+            for kind in ("party", "live"):
+                view = dict.fromkeys(BRIDGE_VIEW_FIELDS, 0)
+                view.update(species=1, level=6, exp=235 if kind == "party" else 0, dvs=0x8889,
+                            hp=17 if prefix == "initial" else 16, max_hp=22,
+                            status=0x40 if prefix == "initial" else 0x48)
+                view.update({f"moves{i}": move for i, move in enumerate(mon["moves"])})
+                view.update({f"pp{i}": pp for i, pp in enumerate(
+                    mon["pp"] if prefix == "initial" else [6, 40, 0, 0])})
+                view.update({f"stats{i}": stat for i, stat in enumerate(
+                    [22, 11, 11, 2, 13] if kind == "live" else mon["current_stats"])})
+                if kind == "live":
+                    view.update({f"base{i}": stat for i, stat in enumerate([11, 11, 11, 13])})
+                    view.update({f"stage{i}": 7 for i in range(6)})
+                evidence[f"{prefix}_{kind}"] = view
+        require_bridge(evidence, [mon])
+        values = [1, 0, 1, 0]
+        for name in ("initial_party", "initial_live", "carry_party", "carry_live"):
+            values.extend(evidence[name][field] for field in BRIDGE_VIEW_FIELDS)
+        emu = Mock()
+        emu.read_u32.return_value = len(values) * 4
+        emu.read.return_value = struct.pack(f">{len(values)}I", *values)
+        self.assertEqual(read_bridge(emu), evidence)
+        emu.read_u32.return_value -= 4
+        with self.assertRaisesRegex(HarnessError, "bridge ABI mismatch"):
+            read_bridge(emu)
+        for field, value in (("hp", 22), ("pp0", 35), ("status", 0), ("stats3", 11), ("stage0", 8)):
+            wrong = copy.deepcopy(evidence)
+            wrong["initial_live"][field] = value
+            with self.assertRaises(HarnessError):
+                require_bridge(wrong, [mon])
+        evidence["boundary"] = 2
+        carry = {**mon, "hp": 16, "pp": [6, 40, 0, 0], "status": 0x48}
+        require_bridge(evidence, [carry], carry=True)
+        evidence["error"] = 1
+        with self.assertRaisesRegex(HarnessError, "boundary failed"):
+            require_bridge(evidence, [carry], carry=True)
+
     def test_mailbox_and_execution_hold(self):
         self.assertEqual(len(FIELDS), 53)
         self.assertEqual(len(set(FIELDS)), len(FIELDS))

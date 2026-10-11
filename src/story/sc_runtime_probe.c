@@ -9,7 +9,9 @@ const RlU32 gScProbeCompiledSize = sizeof(gScProbe);
 const RlU32 gScProbePartyOffset = (RlU32)&((ScState *)0)->party;
 const RlU32 gScProbePartyCountOffset = (RlU32)&((ScState *)0)->party_count;
 const RlU32 gScProbeMonSize = sizeof(RlMon);
+const RlU32 gScBridgeProbeSize = sizeof(gScBridgeProbe);
 int gScProbeActive;
+volatile ScBridgeProbe gScBridgeProbe;
 static ScState resident;
 static ScBridge bridge;
 static ScCombat combat;
@@ -42,6 +44,116 @@ static void report(void) {
     gScProbe.combat_address = (RlU32)&combat;
     gScProbe.combat_size = sizeof(combat);
     gScProbe.combat_crc = sc_save_crc((const RlU8 *)&combat, sizeof(combat));
+}
+
+static void bridge_views(RlBattleSide *side, volatile ScBridgeView *party,
+                         volatile ScBridgeView *view) {
+    const RlBattlePartyMon *native = rl_battle_party_mon(side, 0);
+    const RlBattleMon *live = rl_battle_mon(side);
+    unsigned i;
+    party->species = rl_battle_party_species(native);
+    party->level = rl_battle_party_level(native);
+    party->exp = native->unk_10;
+    party->dvs = native->unk_1E;
+    party->hp = rl_battle_party_hp(native);
+    party->max_hp = rl_battle_party_max_hp(native);
+    party->status = rl_battle_party_status(native);
+    party->stats[0] = native->unk_26; party->stats[1] = native->unk_28;
+    party->stats[2] = native->unk_2A; party->stats[3] = native->unk_2C;
+    party->stats[4] = native->unk_2E;
+    view->species = rl_battle_species(live);
+    view->level = rl_battle_level(live);
+    view->dvs = live->unk_24;
+    view->hp = rl_battle_hp(live); view->max_hp = rl_battle_max_hp(live);
+    view->status = rl_battle_status(live);
+    view->stats[0] = rl_battle_max_hp(live); view->stats[1] = rl_battle_attack(live);
+    view->stats[2] = rl_battle_defense(live); view->stats[3] = rl_battle_speed(live);
+    view->stats[4] = rl_battle_special(live);
+    view->base[0] = rl_battle_base_attack(live); view->base[1] = rl_battle_base_defense(live);
+    view->base[2] = rl_battle_base_speed(live); view->base[3] = rl_battle_base_special(live);
+    for (i = 0; i < 4; i++) {
+        party->moves[i] = rl_battle_party_move(native, i);
+        party->pp[i] = rl_battle_party_packed_pp(native, i);
+        view->moves[i] = rl_battle_move(live, i);
+        view->pp[i] = rl_battle_packed_pp(live, i);
+    }
+    for (i = 0; i < 6; i++) view->stages[i] = rl_battle_stage(live, i);
+}
+
+static int bridge_matches(const volatile ScBridgeView *party,
+                           const volatile ScBridgeView *live) {
+    const RlMon *mon = &resident.party[0];
+    unsigned i, value;
+    if (party->species != mon->species || live->species != mon->species ||
+        party->level != mon->level || live->level != mon->level ||
+        party->exp != mon->exp || party->dvs != mon->dvs || live->dvs != mon->dvs ||
+        party->hp != mon->cur_hp || live->hp != mon->cur_hp ||
+        party->max_hp != mon->max_hp || live->max_hp != mon->max_hp ||
+        party->status != mon->status || live->status != mon->status ||
+        live->stats[0] != mon->max_hp) return 0;
+    for (i = 0; i < 5; i++)
+        if (party->stats[i] != mon->current_stats[i]) return 0;
+    for (i = 0; i < 6; i++)
+        if (live->stages[i] != RL_BATTLE_STAGE_NEUTRAL) return 0;
+    for (i = 0; i < 4; i++) {
+        if (party->moves[i] != mon->moves[i] || live->moves[i] != mon->moves[i] ||
+            party->pp[i] != mon->pp[i] || live->pp[i] != mon->pp[i] ||
+            live->base[i] != mon->current_stats[i + 1]) return 0;
+        value = mon->current_stats[i + 1];
+        if (i == 0 && (mon->status & RL_BATTLE_STATUS_BURN)) value /= 2;
+        if (i == 2 && (mon->status & RL_BATTLE_STATUS_PARALYSIS)) value /= 4;
+        if (live->stats[i + 1] != (value ? value : 1)) return 0;
+    }
+    return 1;
+}
+
+static int bridge_hold(RlBattleSide *player, RlBattleSide *enemy) {
+    unsigned i, error = 1;
+    if (!player || !enemy || !player->unk_724 || !enemy->unk_724 ||
+        resident.party_count != 1 || player->unk_724->unk_002 != 1 ||
+        enemy->unk_724->unk_002 != 1 || rl_battle_active_index(player) != 0 ||
+        rl_battle_active_index(enemy) != 0 || !rl_battle_hp(rl_battle_mon(enemy)))
+        goto invalid;
+    if (!gScBridgeProbe.boundary) {
+        bridge_views(player, &gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live);
+        error = 2;
+        if (gScBridgeProbe.action ||
+            !bridge_matches(&gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live))
+            goto invalid;
+        gScBridgeProbe.boundary = 1;
+    } else if (gScBridgeProbe.action) {
+        error = 3;
+        if (gScBridgeProbe.boundary != 1 || gScBridgeProbe.action != 1) goto invalid;
+        gScBridgeProbe.action = 0;
+        /* Synthetic carry changes persistence only; paralysis and all stages stay intact. */
+        rl_battle_party_hp(rl_battle_party_mon(player, 0)) = rl_battle_hp(rl_battle_mon(player)) = 16;
+        rl_battle_party_packed_pp(rl_battle_party_mon(player, 0), 0) =
+            rl_battle_packed_pp(rl_battle_mon(player), 0) = 6;
+        rl_battle_party_status(rl_battle_party_mon(player, 0)) =
+            rl_battle_status(rl_battle_mon(player)) = 0x48;
+        bridge_views(player, &gScBridgeProbe.carry_party, &gScBridgeProbe.carry_live);
+        error = 4;
+        if (sc_native_observe_combat(&resident, &bridge, &combat,
+                player->unk_724->unk_01C, 1, mapping, 0, 0,
+                rl_battle_hp(rl_battle_mon(enemy))) != SC_OK ||
+            !bridge_matches(&gScBridgeProbe.carry_party, &gScBridgeProbe.carry_live) ||
+            resident.party[0].cur_hp != 16 || resident.party[0].pp[0] != 6 ||
+            resident.party[0].status != 0x48 || resident.party[0].exp != 235 ||
+            resident.phase != SC_BATTLE || resident.defeated_mask || resident.learn_mask)
+            goto invalid;
+        for (i = 1; i < 4; i++)
+            if (resident.party[0].pp[i] != gScBridgeProbe.initial_party.pp[i]) goto invalid;
+        gScBridgeProbe.boundary = 2;
+    }
+    report();
+    return 1;
+invalid:
+    gScBridgeProbe.error = error;
+    failed = 1;
+    gScProbe.status = 0x100 + SC_INVALID;
+    osSyncPrintf("story probe: bridge boundary error %u; battle held before publication\n", error);
+    report();
+    return 1;
 }
 
 static int publish_live(RlBattleSide *side) {
@@ -85,6 +197,7 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
     int status;
     if (!gScProbeActive) return 0;
     if (failed) return 1;
+    if (gScBridgeProbe.enabled) return bridge_hold(player, enemy);
     gScProbe.ticks++;
     if (!player || !enemy || !player->unk_724 || !enemy->unk_724) goto invalid;
     active = rl_battle_active_index(player);
@@ -164,7 +277,7 @@ int sc_runtime_probe_after(RlBattleSide *player, RlBattleSide *enemy, int result
 }
 
 int sc_runtime_probe_paused(void) {
-    return gScProbeActive && (failed || resident.phase == SC_LEARNING);
+    return gScProbeActive && (failed || gScBridgeProbe.enabled || resident.phase == SC_LEARNING);
 }
 
 static int commit_result(void) {
@@ -200,16 +313,21 @@ int sc_runtime_probe_poll(void) {
             combat.ready = 0;
             gScProbe.interrupted = request.interrupted;
         }
-    } else if (command == 2 || command == 3 || command == 5) {
+    } else if (command == 2 || command == 3 || command == 5 || command == 6) {
         if (pending_outcome != 255) { status = 0x100 + SC_PENDING; goto end; }
         combat.ready = 0;
-        request.command = command == 2 ? SC_COLD_NEW :
-            (command == 5 ? SC_COLD_CHECKPOINT : SC_COLD_PREPARE);
+        request.command = command == 2 ? SC_COLD_NEW : (command == 5 ? SC_COLD_CHECKPOINT :
+            (command == 6 ? SC_COLD_BRIDGE : SC_COLD_PREPARE));
         request.combat = &combat;
         request.opponents = opponents;
         status = sc_cold_call(&request);
         gScProbe.stage = 5;
-        if (status != SC_SAVE_OK || command != 3) goto end;
+        if (status != SC_SAVE_OK || (command != 3 && command != 6)) goto end;
+        {
+            volatile unsigned char *values = (volatile unsigned char *)&gScBridgeProbe;
+            for (i = 0; i < sizeof(gScBridgeProbe); i++) values[i] = 0;
+        }
+        gScBridgeProbe.enabled = command == 6;
         for (i = 0; i < 6; i++) { mapping[i] = (RlU8)i; bridge.participants[i] = 0; }
         bridge.enemy_count = request.enemy_count;
         gScProbe.stage = 6;

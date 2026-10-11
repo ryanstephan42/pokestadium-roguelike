@@ -35,6 +35,69 @@ FIELDS = (
 ).split()
 
 POOL_COUNTERS = ("gScPoolMinimum", "gScPoolAllocations", "gScPoolFailures", "gScPoolLargest")
+BRIDGE_VIEW_FIELDS = (
+    "species level exp dvs hp max_hp status moves0 moves1 moves2 moves3 "
+    "pp0 pp1 pp2 pp3 stats0 stats1 stats2 stats3 stats4 base0 base1 base2 base3 "
+    "stage0 stage1 stage2 stage3 stage4 stage5"
+).split()
+
+
+def read_bridge(emu):
+    size = 16 + 16 * len(BRIDGE_VIEW_FIELDS)
+    require(emu.read_u32("gScBridgeProbeSize") == size, "Story bridge ABI mismatch")
+    values = struct.unpack(f">{size // 4}I", emu.read("gScBridgeProbe", size))
+    evidence = dict(zip(("enabled", "action", "boundary", "error"), values[:4]))
+    for slot, name in enumerate(("initial_party", "initial_live", "carry_party", "carry_live")):
+        start = 4 + slot * len(BRIDGE_VIEW_FIELDS)
+        evidence[name] = dict(zip(BRIDGE_VIEW_FIELDS, values[start:start + len(BRIDGE_VIEW_FIELDS)]))
+    return evidence
+
+
+def require_bridge(evidence, party, carry=False):
+    require(evidence["enabled"] == 1 and not evidence["error"] and
+            evidence["boundary"] == (2 if carry else 1), f"Bridge boundary failed: {evidence}")
+    require_fixture_party(party, hp=16 if carry else 17, pp=6 if carry else 7,
+                          status=0x48 if carry else 0x40)
+    mon = party[0]
+    require(mon["current_stats"] == [22, 11, 11, 11, 13] and mon["stat_exp"] == [0] * 5 and
+            mon["base_stats"] == [45, 49, 49, 45, 65] and mon["growth"] == 3,
+            f"Bridge resident canonical stats mismatch: {party}")
+    for prefix in ("initial", "carry") if carry else ("initial",):
+        for kind in ("party", "live"):
+            view = evidence[f"{prefix}_{kind}"]
+            require(all(view[key] == value for key, value in dict(
+                species=1, level=6, dvs=0x8889, hp=16 if prefix == "carry" else 17,
+                max_hp=22, status=0x48 if prefix == "carry" else 0x40).items()),
+                f"Bridge {prefix} {kind} scalar mismatch: {view}")
+            require([view[f"moves{i}"] for i in range(4)] == [33, 45, 0, 0] and
+                    [view[f"pp{i}"] for i in range(4)] ==
+                    ([6, 40, 0, 0] if prefix == "carry" else [7, 40, 0, 0]),
+                    f"Bridge {prefix} {kind} moves/PP mismatch: {view}")
+            require([view[f"stats{i}"] for i in range(5)] ==
+                    ([22, 11, 11, 2, 13] if kind == "live" else [22, 11, 11, 11, 13]),
+                    f"Bridge {prefix} {kind} canonical stats mismatch: {view}")
+            if kind == "live":
+                require([view[f"base{i}"] for i in range(4)] == [11, 11, 11, 13] and
+                        all(view[f"stage{i}"] == 7 for i in range(6)),
+                        f"Bridge {prefix} live stages/base mismatch: {view}")
+            else:
+                require(view["exp"] == 235, "Bridge original native XP mismatch")
+
+
+def wait_bridge_boundary(emu, directory, label, boundary, frames):
+    try:
+        emu.wait(lambda e: read_bridge(e)["boundary"] == boundary or read_bridge(e)["error"],
+                 frames=frames, description=f"native bridge boundary {boundary}")
+    except HarnessError:
+        result = read_probe(emu)
+        memory = memory_evidence(emu, result)
+        for name, data in (("result", result), ("memory", memory)):
+            (directory / f"{label}-failure-{name}.json").write_text(json.dumps(data, indent=2) + "\n")
+        (directory / f"{label}-failure-bridge.json").write_text(json.dumps(read_bridge(emu), indent=2) + "\n")
+        raw, party = decode_party(emu, result)
+        (directory / f"{label}-failure-state.bin").write_bytes(raw)
+        (directory / f"{label}-failure-party.json").write_text(json.dumps(party, indent=2) + "\n")
+        raise
 
 
 def decode_party(emu, result):
@@ -61,15 +124,19 @@ def decode_party(emu, result):
     return raw, party
 
 
-def require_checkpoint_party(party):
+def require_fixture_party(party, hp=17, pp=7, status=4):
     require(len(party) == 1, "Checkpoint fixture party count mismatch")
     mon = party[0]
-    require(mon["species"] == 1 and mon["hp"] == 17 and mon["max_hp"] == 22 and
+    require(mon["species"] == 1 and mon["hp"] == hp and mon["max_hp"] == 22 and
             mon["level"] == 6 and mon["exp"] == 235 and mon["dvs"] == 0x8889 and
-            mon["fainted"] == 0 and mon["status"] == 4 and mon["pp"][0] == 7 and
+            mon["fainted"] == 0 and mon["status"] == status and mon["pp"][0] == pp and
             mon["moves"] == [33, 45, 0, 0] and mon["max_pp"] == [35, 40, 0, 0] and
             mon["pp"][1:] == [40, 0, 0],
             f"Decoded discriminating checkpoint mismatch: {party}")
+
+
+def require_checkpoint_party(party):
+    require_fixture_party(party)
 
 
 def stack_written_margin(data):
@@ -295,7 +362,7 @@ def phase(args):
                   options=options, timeout=900) as emu, probe_deadline(emu, directory):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
-                          "allocation", "checkpoint", "checkpoint_reload"):
+                          "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -321,6 +388,28 @@ def phase(args):
             result = command(emu, 5)
             after = save_ram(emu)[1]
             (directory / "save-ram.bin").write_bytes(after)
+        elif args.phase in ("bridge_init", "bridge_carry"):
+            start_command(emu, 6)
+            wait_bridge_boundary(emu, directory, args.phase, 1, 1800)
+            initial_bridge = read_bridge(emu)
+            initial_result = read_probe(emu)
+            initial_memory = memory_evidence(emu, initial_result)
+            raw, initial_party = decode_party(emu, initial_result)
+            (directory / f"{args.phase}-initial-state.bin").write_bytes(raw)
+            for label, data in (("bridge", initial_bridge), ("result", initial_result),
+                                ("memory", initial_memory), ("party", initial_party)):
+                (directory / f"{args.phase}-initial-{label}.json").write_text(json.dumps(data, indent=2) + "\n")
+            (directory / f"{args.phase}-prebattle-save.bin").write_bytes(save_ram(emu)[1])
+            require_bridge(initial_bridge, initial_party)
+            story_owned_changes(before, save_ram(emu)[1], find_pak(before))
+            validate_memory(initial_memory, initial_result)
+            if args.phase == "bridge_carry":
+                emu.write_u32(emu.symbols.address("gScBridgeProbe") + 4, 1)
+                wait_bridge_boundary(emu, directory, args.phase, 2, 120)
+            emu.step(60)
+            result = read_probe(emu)
+            bridge_evidence = read_bridge(emu)
+            (directory / f"{args.phase}-bridge.json").write_text(json.dumps(bridge_evidence, indent=2) + "\n")
         elif args.phase == "allocation":
             base = find_pak(before)
             result = command(emu, 3)
@@ -424,7 +513,7 @@ def phase(args):
                 (directory / "save-ram.bin").write_bytes(save_ram(emu)[1])
         (directory / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n")
         if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload",
-                          "checkpoint", "checkpoint_reload"):
+                          "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry"):
             evidence = memory_evidence(emu, result)
             (directory / f"{args.phase}-memory.json").write_text(json.dumps(evidence, indent=2) + "\n")
             raw, party = decode_party(emu, result)
@@ -446,6 +535,21 @@ def phase(args):
                 checkpoint = json.loads((directory / "checkpoint-result.json").read_text())
                 require(result["completed_crc"] == checkpoint["completed_crc"],
                         "Checkpoint load changed completed encounter CRC")
+            if args.phase in ("bridge_init", "bridge_carry"):
+                require_bridge(bridge_evidence, party, carry=args.phase == "bridge_carry")
+                require(result["command"] == 6 and result["active"] == 1 and result["phase"] == 1 and
+                        result["status"] == 0xFFFFFFFF and
+                        not any(result[key] for key in ("ticks", "ko_count", "logic_steps", "presentation_steps")) and
+                        result["completed_crc"] == initial_result["completed_crc"],
+                        f"Bridge diagnostic hold advanced battle/accounting: {result}")
+                if args.phase == "bridge_init":
+                    require(party == initial_party and bridge_evidence == initial_bridge,
+                            "Initializer hold changed native/resident boundary")
+                else:
+                    expected = [{**initial_party[0], "hp": 16, "pp": [6, 40, 0, 0], "status": 0x48}]
+                    require(party == expected, "Injected carry changed unrelated resident fields")
+                require(save_ram(emu)[1] == (directory / f"{args.phase}-prebattle-save.bin").read_bytes(),
+                        "Bridge diagnostic hold changed storage")
             validate_memory(evidence, result)
         print(f"story native {args.phase}: OK")
 
@@ -460,7 +564,8 @@ def main():
     parser.add_argument("--out", default=".local/rltest/story-probe")
     parser.add_argument("--phase", choices=("create", "interrupt", "interrupted_reload",
                                           "battle", "natural", "reload", "missing", "full",
-                                          "allocation", "checkpoint", "checkpoint_reload"))
+                                          "allocation", "checkpoint", "checkpoint_reload",
+                                          "bridge_init", "bridge_carry"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")

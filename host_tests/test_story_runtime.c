@@ -7,6 +7,7 @@ static int fail_final;
 static int native_result = 1;
 static int launch_outcome = RL_BATTLE_WIN;
 static int fail_initialization;
+static int bridge_case;
 static unsigned char saved[SC_SAVE_SIZE];
 static RlBattleSide sides[2];
 static unk_D_800AE540_0004 teams[2];
@@ -67,7 +68,64 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
         rl_battle_hp(live) = mon->cur_hp;
         rl_battle_status(live) = mon->status;
         live->unk_24 = mon->dvs;
-        for (j = 0; j < 4; j++) rl_battle_stage(live, j) = 7;
+        rl_battle_level(live) = mon->level;
+        rl_battle_max_hp(live) = mon->max_hp;
+        rl_battle_base_attack(live) = rl_battle_attack(live) = mon->current_stats[1];
+        rl_battle_base_defense(live) = rl_battle_defense(live) = mon->current_stats[2];
+        rl_battle_base_speed(live) = mon->current_stats[3];
+        rl_battle_speed(live) = mon->current_stats[3] / ((mon->status & 0x40) ? 4 : 1);
+        rl_battle_base_special(live) = rl_battle_special(live) = mon->current_stats[4];
+        for (j = 0; j < 6; j++) rl_battle_stage(live, j) = 7;
+        for (j = 0; j < 4; j++) {
+            rl_battle_move(live, j) = mon->moves[j];
+            rl_battle_packed_pp(live, j) = mon->pp[j];
+        }
+    }
+    if (gScBridgeProbe.enabled) {
+        if (bridge_case == 2) rl_battle_packed_pp(rl_battle_mon(&sides[0]), 0) = 35;
+        if (bridge_case == 4) teams[0].unk_002 = 2;
+        if (bridge_case == 5) teams[0].unk_01C[0].unk_02 = 22;
+        if (bridge_case == 6) rl_battle_speed(rl_battle_mon(&sides[0])) = 11;
+        check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 && !terminal);
+        check(!gScProbe.ticks && !gScProbe.ko_count && !gScProbe.logic_steps &&
+              !gScProbe.presentation_steps);
+        if (bridge_case == 2) {
+            check(gScBridgeProbe.error && !gScBridgeProbe.boundary &&
+                  gScBridgeProbe.initial_live.pp[0] == 35 && resident.party[0].pp[0] == 7);
+            return -1;
+        }
+        if (bridge_case >= 4) {
+            check(gScBridgeProbe.error && !gScBridgeProbe.boundary &&
+                  resident.party[0].cur_hp == 17 && resident.party[0].pp[0] == 7);
+            return -1;
+        }
+        check(gScBridgeProbe.boundary == 1 && !gScBridgeProbe.error &&
+              resident.party[0].cur_hp == 17 && resident.party[0].status == 0x40);
+        for (i = 0; i < 10; i++) {
+            check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
+                  !gScProbe.ticks && !gScProbe.ko_count && resident.party[0].pp[0] == 7);
+        }
+        gScBridgeProbe.action = bridge_case == 3 ? 2 : 1;
+        check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1);
+        if (bridge_case == 3) {
+            check(gScBridgeProbe.error && gScBridgeProbe.boundary == 1 &&
+                  resident.party[0].cur_hp == 17 && resident.party[0].pp[0] == 7);
+            return -1;
+        }
+        check(gScBridgeProbe.boundary == 2 && !gScBridgeProbe.error &&
+              resident.party[0].cur_hp == 16 && resident.party[0].pp[0] == 6 &&
+              resident.party[0].status == 0x48 && resident.party[0].exp == 235 &&
+              !resident.defeated_mask && !resident.learn_mask);
+        for (i = 0; i < 10; i++)
+            check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
+                  resident.party[0].cur_hp == 16 && !gScProbe.ticks && !gScProbe.ko_count);
+        check(sc_save_decode(&checkpoint, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK &&
+              checkpoint.state.party[0].cur_hp == 17 && checkpoint.state.party[0].pp[0] == 7 &&
+              checkpoint.state.party[0].status == 0x40 && cold_calls == calls_before);
+        gScBridgeProbe.action = 1;
+        check(sc_runtime_probe_gate(&sides[0], &sides[1], &terminal) == 1 &&
+              gScBridgeProbe.error && resident.party[0].cur_hp == 16);
+        return -1;
     }
     check(!sc_runtime_probe_gate(&sides[0], &sides[1], &terminal));
     live = rl_battle_mon(&sides[0]);
@@ -195,6 +253,12 @@ int main(void) {
         check(resident.party[0].moves[i] == checkpoint.moves[i] &&
               resident.party[0].pp[i] == checkpoint.pp[i] &&
               resident.party[0].max_pp[i] == checkpoint.max_pp[i]);
+    fail_initialization = 0;
+    for (bridge_case = 1; bridge_case <= 6; bridge_case++) {
+        writes = 0; gScProbe.command = 6;
+        check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
+              writes == 1 && !gScProbeActive && !gScProbe.active);
+    }
     puts("Story runtime host scheduling/stat/pause/codec scaffold: OK (not emulator proof)");
     return 0;
 }

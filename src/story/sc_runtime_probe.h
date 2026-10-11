@@ -20,6 +20,15 @@ typedef struct ScProbeMailbox {
     RlU32 map_before, map_before_size, map_loaded, map_loaded_size, map_after, map_after_size;
 } ScProbeMailbox;
 extern volatile ScProbeMailbox gScProbe;
+typedef struct ScBridgeView {
+    RlU32 species, level, exp, dvs, hp, max_hp, status;
+    RlU32 moves[4], pp[4], stats[5], base[4], stages[6];
+} ScBridgeView;
+typedef struct ScBridgeProbe {
+    RlU32 enabled, action, boundary, error;
+    ScBridgeView initial_party, initial_live, carry_party, carry_live;
+} ScBridgeProbe;
+extern volatile ScBridgeProbe gScBridgeProbe;
 extern int gScProbeActive;
 int sc_runtime_probe_poll(void);
 int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy);

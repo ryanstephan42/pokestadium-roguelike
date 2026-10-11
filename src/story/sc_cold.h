@@ -3,7 +3,10 @@
 
 #include "sc_combat.h"
 
-enum ScColdCommand { SC_COLD_LOAD = 1, SC_COLD_NEW, SC_COLD_PREPARE, SC_COLD_COMMIT, SC_COLD_CHECKPOINT };
+enum ScColdCommand {
+    SC_COLD_LOAD = 1, SC_COLD_NEW, SC_COLD_PREPARE, SC_COLD_COMMIT,
+    SC_COLD_CHECKPOINT, SC_COLD_BRIDGE
+};
 typedef struct ScColdRequest {
     ScState *state;
     ScCombat *combat;

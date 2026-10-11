@@ -679,10 +679,85 @@ interrupted flag, completed CRC, no storage change and no battle accounting.
 Helper tests reject full PP/zero status and altered resident PP, ignore
 padding differences, and reject out-of-bounds party decoding.
 
-These new phases require independent source review and an explicit emulator
-grant; none has run. Their eventual scope is checkpoint restoration, **not**
-preservation of PP/status through the native live-party bridge. Existing
-`68bb3da` reload evidence retains its narrower acceptance and limitations.
+After independent source/host clearance and a separate exclusive cap-4 grant,
+exact `6e467fc0b707894abe73635eb4364098180feb17` passed `checkpoint` ->
+fresh-process `checkpoint_reload`. The validator independently redecoded both
+644-byte resident snapshots: all named mon fields match the party JSON and
+each other, including HP17/22, PP7/40, status4, moves/max PP, stats and nickname.
+Reload restored interrupted=1 and completed CRC 1,972,200,246 without storage
+mutation or KO/logic/presentation replay. Each phase recorded 55 allocation
+attempts and zero failures; cold pool values balanced at 2,960,752, the loaded
+173,808-byte fragment cleared both direct map words, and written pre/post
+margins were 1,340 with no new bottom writes. This is not exhaustive SP safety.
+
+Evidence is separate in `.local/rltest/story-checkpoint-6e467fc/`, with frozen
+artifacts in `.local/rltest/story-checkpoint-decoder/`. Source-save provenance
+records the unchanged `68bb3da` input SHA256
+`ca483ab3a0e5d562db80422cf0ab62023f683ab258f5e57198a9ed53f1c726d2`
+and new synthetic checkpoint SHA256
+`273bdf8034c670b3ae7eb96e801f83a881b0fdb1e4c28eb3938925b9eb33d241`.
+The slot was released process-free. Acceptance is **synthetic checkpoint
+restoration only**, not preservation of PP/status through the native
+live-party bridge, KO/learning, six-party or full gate acceptance. Existing
+`68bb3da` live/reload evidence retains its narrower limitations.
+
+#### Bridge-only initializer/carry instrumentation (pre-native review)
+
+Command 6 uses a separate synthetic canonical lab fixture: HP17/22, PP7/40,
+L6/XP235/DVs `0x8889` and paralysis status `0x40`. Commands 3 and 5 remain
+unchanged. A probe-only, pointer-free 496-byte diagnostic holds four value
+views (initial/carry original-party and live-mon) plus enabled/action/boundary/
+error words. Its target-compiled size is checked independently of the unchanged
+212-byte mailbox.
+
+At the first frame gate, **before `publish_live` or any tick/XP/action**, the
+bridge-only path captures the actual native original-party and live mon.
+It requires canonical HP/PP/status/moves/level/DVs and stats, neutral stages,
+original XP and live paralysis Speed 2 from canonical base Speed 11. A mismatch
+logs explicitly, marks the probe invalid and renders only; no corrective
+publication can hide the failed initializer. Boundary 1 holds without native
+logic/presentation accounting, observation or awards.
+
+The separately labeled injected-carry action 1 changes only original/live
+HP to 16, PP slot 0 to 6 and status to `0x48` (poison plus retained paralysis).
+It captures both native views and invokes the existing
+`sc_native_observe_combat` once with the still-living enemy. Boundary 2
+requires matching resident persistence, unchanged canonical stats/stages,
+XP235 and no KO/learning. Action replay, unknown actions, invalid count/index
+or initializer mismatches fail explicitly. All subsequent held frames render
+without further observation. The host regression exercises both boundaries,
+unchanged durable prebattle data, initializer mismatch, invalid/repeated action
+rejection, invalid party count, native HP mismatch, unmodified paralysis Speed
+and normal command-3 behavior.
+Error codes distinguish input bounds (1), initializer comparison (2),
+invalid/repeated action (3) and carry observation/comparison (4).
+
+Explicit `bridge_init` and `bridge_carry` phases use separate fresh processes.
+They preserve prebattle save bytes and initial native/resident/result/memory
+snapshots before assertions, then hold 60 frames and require no native
+logic/presentation/tick/KO/storage advancement. Injected carry may alter only
+resident HP/PP/status; all other decoded named fields must remain identical.
+The existing strict resource/allocation/map/pool/written-stack checks remain.
+These phases stop while BATL is still active; they do **not** complete a battle,
+exercise natural poisoning/PP usage, KO/learning or postbattle commit.
+No emulator run has been authorized for this delta.
+
+The source-stage pool starts at `0x8011D670`, 2,464 bytes above the `6e467fc`
+checkpoint stage, including the 496-byte value diagnostic and code/alignment.
+Cold RAM is 173,872 bytes (64-byte growth). The target tick frame stays at
+112 bytes; poll grows from 120 to 128, and the bridge hold has a 64-byte frame
+before its existing native/combat observation callees. These are static
+measurements, not a whole-stack or required-allocation safety claim; the
+strict bounded run must remeasure both.
+
+Result lifetime source review: `func_8002B700` returns a slot of resident
+`D_800AE540.unk_0004`, and `func_8002B888` copies records into its inline
+`unk_01C` party. `rl_start_battle` reads those resident records after BATL/RLBT
+pop into resident `gRlLastBattleResult`; it does not read freed live-mon views.
+The new diagnostics copy values while the side/live pointers are valid and
+retain no such pointer. Final native-result versus story-resident carry
+comparison and synthetic/natural KO-learning execution remain a later,
+separately reviewed milestone.
 
 ## Verification scope and remaining review
 

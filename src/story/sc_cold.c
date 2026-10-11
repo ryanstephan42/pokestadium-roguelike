@@ -33,9 +33,10 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
         return status;
     }
     if (request->command != SC_COLD_NEW && request->command != SC_COLD_PREPARE &&
-        request->command != SC_COLD_CHECKPOINT)
+        request->command != SC_COLD_CHECKPOINT && request->command != SC_COLD_BRIDGE)
         return 0x100 + SC_INVALID;
-    if (request->command == SC_COLD_PREPARE && (!request->combat || !request->opponents))
+    if ((request->command == SC_COLD_PREPARE || request->command == SC_COLD_BRIDGE) &&
+        (!request->combat || !request->opponents))
         return 0x100 + SC_INVALID;
     status = sc_new(&snapshot.state, &sc_catalog, &options, request->seed);
     if (status != SC_OK) return 0x100 + status;
@@ -44,16 +45,16 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
         snapshot.state.party[0].level = 6;
         snapshot.state.party[0].exp = sc_xp(7, snapshot.state.party[0].growth) - 1;
         sc_recalculate(&snapshot.state.party[0], 0);
-        if (request->command == SC_COLD_CHECKPOINT) {
+        if (request->command == SC_COLD_CHECKPOINT || request->command == SC_COLD_BRIDGE) {
             snapshot.state.party[0].cur_hp = 17;
             snapshot.state.party[0].pp[0] = 7;
-            snapshot.state.party[0].status = 4;
+            snapshot.state.party[0].status = request->command == SC_COLD_CHECKPOINT ? 4 : 0x40;
         }
     }
     snapshot.interrupted = request->command != SC_COLD_NEW;
     status = sc_pak_probe_store(request->controller, &sc_catalog, &snapshot, request->create);
     if (status != SC_SAVE_OK) return status;
-    if (request->command != SC_COLD_PREPARE) {
+    if (request->command == SC_COLD_NEW || request->command == SC_COLD_CHECKPOINT) {
         *state = snapshot.state;
         return SC_SAVE_OK;
     }
