@@ -1341,6 +1341,35 @@ vanilla remains byte-matching. Frozen88f target files and accepted natural
 source evidence are unchanged. No reload emulator run or full gate was
 performed: both still require separate execution authorization.
 
+### Completed Ember reload bounded result
+
+The separately granted one-shot `ember_reload` on exact
+`2d45de1fb61e45144ba9b9a26b46b8abc23a7a69` passed its runtime assertions.
+Evidence is frozen at `.local/rltest/story-ember-reload-2d45de1/`, recursive
+manifest SHA256 `a4cddd52542fedf7e9b44c357538a426ceb7c63d56cd180aca18adad54768536`.
+The frozen88f ROM/map/ELF, installed core and accepted natural source evidence
+were unchanged; source hashes and the actual journal codec passed before
+Frontend startup. Independent completed-reload acceptance remains pending.
+
+Boot/native-query setup ended at frame2106; launch ended2118; LOAD completed
+2210: exactly12 launch frames plus92 load-wait frames,104 operation frames.
+All93 history rows2118..2210 are retained. No completion cleanup frames,
+combat launch, resume or reward selection followed. Full644-byte resident
+state and every named party field equal the immutable terminal source,
+including reward offer/RNG/completedbits57,349,351/SC_REWARD/interrupted0,
+XP437/L9/HP16/Ember52PP25. Source, post-boot preload and loaded saves all retain
+SHA256 `8c8b2b3c868b7cf593e03b0bb2c54c6fbc704dc2b2caea42fbb37a6f60ce7822`.
+KO/tick/logic/presentation/resume/injection/error/terminal/award/learning
+accounting stays zero, and native battle count stays0.
+
+Cold size175968, one cold call and pool2956480 before/after are unchanged;
+the owned direct map clears, six allocations have zero failures and minimum
+availability2780480. Written stack margin1340 and no new bottom writes are
+observations, not exhaustive reserved-SP safety. Captured state/storage/
+resource validators were rerun read-only; the process-free release is
+recorded. There was no retry. Defeat, six-party, Transform, full gate and merge
+remain outside this grant.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
