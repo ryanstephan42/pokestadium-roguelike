@@ -541,6 +541,17 @@ Diagnostics do not change allocation decisions, pool ends, team data or
 gameplay. Their source/host build is not native acceptance; another explicit
 slot grant is required before rerunning the bounded sequence.
 
+The first instrumented `62cdd43` create run stopped on its map assertion.
+An incremental-build dependency omission left `sc_runtime_probe.o` with the
+old 188-byte mailbox while the newly compiled loader wrote the 212-byte ABI.
+ELF addresses placed `gScProbeActive` at mailbox offset 188; loader disassembly
+stored new fields at 188..208, overlapping following resident storage.
+That failed run is not accepted evidence, despite successful SC01 status and
+direct post-pop map zeroes. Story objects now depend on all story headers;
+the fragment-62 mailbox user has an explicit dependency too. Before any probe
+write, the harness checks the exact ELF symbol spacing against its field
+count and rejects the old ABI. Frozen failed artifacts/evidence are retained.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

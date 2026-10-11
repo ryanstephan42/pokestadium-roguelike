@@ -9,6 +9,9 @@ SC_RELOCS0_O := $(RL_DIR)/fragmentSC_relocs_pass1.o
 RL_MAIN_O += $(filter-out $(SC_COLD_O),$(SC_PROBE_O))
 O_FILES += $(SC_PROBE_O) $(SC_PROBE_CATALOG) $(SC_HEADER_O)
 
+$(SC_PROBE_O): $(wildcard src/story/*.h)
+$(BUILD_DIR)/src/fragments/62/fragment62_2EA8E0.o: src/story/sc_runtime_probe.h
+
 $(SC_RELOCS0_O:.o=.s): tools/rl/gen_rl_relocs.py
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py - $@ --section .fragmentSC
 

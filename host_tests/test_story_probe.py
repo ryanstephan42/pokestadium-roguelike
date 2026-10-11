@@ -11,6 +11,7 @@ from tools.rltest.story_probe import (
     FIELDS, finish_command, foreign_note, map_value, probe_deadline, story_owned_changes,
     stack_written_margin,
     memory_evidence,
+    verify_mailbox_abi,
 )
 
 
@@ -27,6 +28,14 @@ class StoryHarnessTests(unittest.TestCase):
         self.assertEqual(stack_written_margin(b"\xA5" * 64 + b"\x01\xA5"), 64)
         self.assertEqual(stack_written_margin(b"\xA5" * 64), 64)
         self.assertEqual(stack_written_margin(b"\0" + b"\xA5" * 64), 0)
+
+    def test_stale_target_mailbox_rejected(self):
+        emu = Mock()
+        emu.symbols.address.side_effect = [0x80110000, 0x80110000 + 47 * 4]
+        with self.assertRaisesRegex(HarnessError, "Stale target mailbox ABI"):
+            verify_mailbox_abi(emu)
+        emu.symbols.address.side_effect = [0x80110000, 0x80110000 + len(FIELDS) * 4]
+        verify_mailbox_abi(emu)
 
     def test_actual_fragment_map_and_allocation_diagnostics(self):
         emu = Mock()

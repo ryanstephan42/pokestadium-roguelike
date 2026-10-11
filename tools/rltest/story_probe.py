@@ -71,6 +71,13 @@ def memory_evidence(emu, result):
     return evidence
 
 
+def verify_mailbox_abi(emu):
+    base = emu.symbols.address("gScProbe")
+    active = emu.symbols.address("gScProbeActive")
+    require(active - base == len(FIELDS) * 4,
+            f"Stale target mailbox ABI: {active - base} bytes, expected {len(FIELDS) * 4}")
+
+
 def read_probe(emu):
     data = emu.read(emu.symbols.address("gScProbe"), len(FIELDS) * 4)
     return dict(zip(FIELDS, struct.unpack(f">{len(FIELDS)}I", data)))
@@ -81,6 +88,7 @@ def set_field(emu, name, value):
 
 
 def start_command(emu, command, create=0):
+    verify_mailbox_abi(emu)
     for name in POOL_COUNTERS:
         emu.write_u32(emu.symbols.address(name), 0xFFFFFFFF if name == "gScPoolMinimum" else 0)
     values = dict.fromkeys(FIELDS, 0)
