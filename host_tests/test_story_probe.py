@@ -159,15 +159,65 @@ class StoryHarnessTests(unittest.TestCase):
                 struct.pack_into(">H", raw, start + 20 + j * 2, mon["stat_exp"][j])
                 struct.pack_into(">H", raw, start + 38 + j * 2, mon["current_stats"][j])
         emu = Mock()
-        emu.read_u32.side_effect = lambda name: 696 if name == "gScSixTerminalSize" else 732
-        emu.read.side_effect = lambda name, size: bytes(raw) if size == 696 else bytes(644)
-        decoder = Mock(side_effect=party)
+        sizes = dict(gScSixTerminalSize=696, gScSixCombatSize=732, gScSixLaunchSize=828,
+                     gScSixLaunchPlayerOffset=12, gScSixLaunchEnemyOffset=420)
+        emu.read_u32.side_effect = sizes.__getitem__
+        launch = bytearray(828)
+        launch[:9] = bytes([1, 6, 2] + list(reversed(range(6))))
+        foes = [{**mon, "hp": 0, "fainted": 1} for mon in target]
+        decoded = party + list(reversed(party)) + foes
+        emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
+                                                  bytes(launch) if size == 828 else bytes(644))
+        decoder = Mock(side_effect=decoded)
         self.assertEqual(terminal_proof(emu, decoder)["party"], party)
         for offset, value in ((15, 0), (17, 5), (24 + 2, 1), (24 + 6 * 84 + 3, 1)):
             bad = bytearray(raw); bad[offset] = value
-            emu.read.side_effect = lambda name, size: bytes(bad) if size == 696 else bytes(644)
+            emu.read.side_effect = lambda name, size: (bytes(bad) if size == 696 else
+                                                      bytes(launch) if size == 828 else bytes(644))
             with self.assertRaises(HarnessError):
-                terminal_proof(emu, Mock(side_effect=party))
+                terminal_proof(emu, Mock(side_effect=decoded))
+        for offset, value in ((0, 0), (1, 5), (2, 1), (3, 0)):
+            bad = bytearray(launch); bad[offset] = value
+            emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
+                                                      bytes(bad) if size == 828 else bytes(644))
+            with self.assertRaises(HarnessError):
+                terminal_proof(emu, Mock(side_effect=decoded))
+        emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
+                                                  bytes(launch) if size == 828 else bytes(644))
+        for slot in range(8):
+            bad = copy.deepcopy(decoded); bad[6 + slot]["exp"] += 1
+            with self.assertRaises(HarnessError):
+                terminal_proof(emu, Mock(side_effect=bad))
+        def encoded(mon):
+            record = Mon()
+            for key, value in mon.items():
+                field = "cur_hp" if key == "hp" else key
+                if key == "nickname":
+                    record.nickname = bytes.fromhex(value)
+                elif isinstance(value, list):
+                    getattr(record, field)[:] = value
+                else:
+                    setattr(record, field, value)
+            return bytes(record)
+        state = bytearray(644)
+        for slot, mon in enumerate(party):
+            state[168 + slot * 68:236 + slot * 68] = encoded(mon)
+        for slot, mon in enumerate(list(reversed(party))):
+            launch[12 + slot * 68:80 + slot * 68] = encoded(mon)
+        for slot, mon in enumerate(foes):
+            launch[420 + slot * 68:488 + slot * 68] = encoded(mon)
+        emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
+                                                  bytes(launch) if size == 828 else bytes(state))
+        self.assertEqual(terminal_proof(emu, story_probe.decode_mon)["launch_party"],
+                         list(reversed(party)))
+        for slot in range(8):
+            bad = bytearray(launch)
+            start = 12 + slot * 68 if slot < 6 else 420 + (slot - 6) * 68
+            bad[start + Mon.exp.offset + 3] ^= 1
+            emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
+                                                      bytes(bad) if size == 828 else bytes(state))
+            with self.assertRaises(HarnessError):
+                terminal_proof(emu, story_probe.decode_mon)
 
     def test_six_natural_prefrontend_profile_and_output_refusals(self):
         from tools.rltest import story_probe

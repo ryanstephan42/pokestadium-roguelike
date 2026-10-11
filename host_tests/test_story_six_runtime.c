@@ -288,6 +288,7 @@ int main(void) {
         report();
         assert(!gScProbe.combat_crc && sc_runtime_probe_paused());
         assert(publish_live((RlBattleSide *)1) == SC_INVALID);
+        assert(six_before_award((RlBattleSide *)1, 6, 0, 0) == SC_INVALID);
         bridge_views((RlBattleSide *)1, &gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live);
         assert(!bridge_view_equal(&gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live));
         assert(sc_runtime_probe_tick(&sides[0], &sides[1]) == 1);

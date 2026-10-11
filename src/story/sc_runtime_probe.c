@@ -25,6 +25,9 @@ ScSixCombatStorage gScSixCombatStorage;
 const RlU32 gScSixEventSize = sizeof(ScSixEvent);
 const RlU32 gScSixTerminalSize = sizeof(ScSixTerminal);
 const RlU32 gScSixCombatSize = sizeof(ScSixCombatStorage);
+const RlU32 gScSixLaunchSize = sizeof(RlLaunchResult);
+const RlU32 gScSixLaunchPlayerOffset = (RlU32)&((RlLaunchResult *)0)->player;
+const RlU32 gScSixLaunchEnemyOffset = (RlU32)&((RlLaunchResult *)0)->enemy;
 typedef char ScSixEventFits[(sizeof(ScSixEvent) <= sizeof(ScProgressProbe)) ? 1 : -1];
 typedef char ScSixTerminalFits[(sizeof(ScSixTerminal) <= sizeof(ScBridgeProbe)) ? 1 : -1];
 #define probe_combat gScSixCombatStorage.combat
@@ -71,6 +74,32 @@ static unsigned pending_outcome = 255;
 int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count) {
     if (gScSixControl.role != SC_SIX_COMBAT) return SC_INVALID;
     return sc_native_mapping(&resident, count, indices, mapping);
+}
+static int six_before_award(RlBattleSide *player, unsigned count, unsigned active, unsigned enemy) {
+    ScSixEvent *event = &gScSixProgressStorage.event;
+    ScBattleSnapshot snapshot;
+    unsigned i, j, native_slot;
+    if (gScSixControl.role != SC_SIX_COMBAT) return SC_INVALID;
+    for (i = 0; i < resident.party_count; i++) {
+        bcopy(&resident.party[i], &event->before[i], sizeof(event->before[i]));
+        for (native_slot = 0; native_slot < count; native_slot++)
+            if (mapping[native_slot] == i) break;
+        if (native_slot == count) {
+            if (resident.party[i].cur_hp) return SC_INVALID;
+            continue;
+        }
+        if (sc_native_snapshot(&player->unk_724->unk_01C[native_slot],
+                               &resident.party[i], &snapshot) != SC_OK) return SC_INVALID;
+        event->before[i].cur_hp = snapshot.hp;
+        event->before[i].status = snapshot.status;
+        event->before[i].fainted = snapshot.hp == 0;
+        for (j = 0; j < 4; j++) event->before[i].pp[j] = snapshot.pp[j];
+    }
+    event->active = mapping[active]; event->enemy = enemy;
+    event->participants = bridge.participants[enemy] | (1U << mapping[active]);
+    event->count = resident.party_count;
+    event->generation = ++gScSixControl.events;
+    return SC_OK;
 }
 int sc_runtime_probe_terminal(const unk_D_800AE540_0004 *player,
                               const unk_D_800AE540_0004 *enemy, unsigned outcome) {
@@ -436,24 +465,8 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
 #ifdef STORY_SIX_PROBE
         unsigned canonical = mapping[active];
         if (canonical >= resident.party_count) goto invalid;
-        if (!already && !rl_battle_hp(foe)) {
-            ScBattleSnapshot snapshots[6];
-            ScSixEvent *event = &gScSixProgressStorage.event;
-            unsigned j;
-            if (sc_native_capture(&resident, player->unk_724->unk_01C, count, mapping,
-                                  active, snapshots) != SC_OK) goto invalid;
-            for (i = 0; i < resident.party_count; i++) {
-                event->before[i] = resident.party[i];
-                event->before[i].cur_hp = snapshots[i].hp;
-                event->before[i].status = snapshots[i].status;
-                event->before[i].fainted = snapshots[i].hp == 0;
-                for (j = 0; j < 4; j++) event->before[i].pp[j] = snapshots[i].pp[j];
-            }
-            event->active = canonical; event->enemy = opponent;
-            event->participants = bridge.participants[opponent] | (1U << canonical);
-            event->count = resident.party_count;
-            event->generation = ++gScSixControl.events;
-        }
+        if (!already && !rl_battle_hp(foe) &&
+            six_before_award(player, count, active, opponent) != SC_OK) goto invalid;
 #else
         if (!already && !rl_battle_hp(foe)) {
             if (gScProgressProbe.ko_captures || count != 1 || active || opponent) goto invalid;

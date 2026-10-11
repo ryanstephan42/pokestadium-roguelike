@@ -1615,6 +1615,50 @@ bytes, and default-RL ROM, remain identical to their frozen baselines.
 Source review and a separately reserved exact-target native grant remain
 required before running this distinct natural test.
 
+The focused followup adds actual `gRlLastBattleResult` evidence, not a cached
+proxy: compiled size828, player offset12 and enemy offset420 are checked;
+the entire payload is persisted before transient decoding and at terminal.
+Actual outcome/counts/compact indices and all six converted player mons
+must agree with the raw originals and canonical precommit. Both converted
+foes must also agree with their raw originals. Tests decode real big-endian
+payload bytes and reject independent XP corruption in all eight slots,
+plus outcome/count/index corruption.
+
+To remove additional scratch from the deepest award branch, the pre-award
+event copy uses a role-gated helper and one native snapshot at a time.
+Tick frame is now104 (baseline40f2d9b112; initial1ee20ff184). The helper
+finishes before `sc_native_observe_combat`; its locals do not coexist with
+the full-state XP transaction. The scoped compiled observer peak is1848:
+tick104 -> native-observe88 -> combat-observe56 -> observe-values736 ->
+KO-values760 -> add-XP48 -> recalculate56. Gate/after wrappers24 plus
+poll144, launcher192, fragment entry40, frame-loop48, registered callback32,
+frame-handler40, and inspected outer Game32/rl_main32 give2432. The
+frame-loop `jalr s3` at80007a8c is bound to `func_843010EC` by the fragment
+entry callsite84301ee4. No unresolved indirect call or cycle remains in
+this synchronous observer slice. This is not the maximum of all native
+logic/render/asset paths, interrupt frames, other threads or a live-SP proof.
+The stack is never repainted while active.
+
+Exact compiled ordering resolves a reviewer's withdrawn numeric-stage
+inference: `func_84301A2C` calls initializer01430 at84301e70, checks stage13
+at84301e84, and writes stage9 at84301ec0/ec4 only after successful return.
+Stage12's required animation fetch occurs inside01430 before the remaining
+geo/model/state3 setup. Independent review confirmed this in both the
+accepted40f2d9b and current ELF. Thus prior stage9 entry did cover successful
+initializer/animation loading; it did not cover later combat allocations.
+The existing post-initializer first-observer entry gate is retained with
+no new asset latch, scheduling hold, input or continuation.
+
+The followup costs224 additional resident bytes versus1ee20ff (1328 aligned
+text/rodata plus16 aligned BSS versus40f2d9b,1344 total), moving heap start
+to8011e220. The corresponding same-lifetime prior animation projection is
+37632 free versus37312 charged:320 bytes, still not measured capacity.
+The reduced nested stack and explicit converted-result evidence trade
+against a smaller projected pool margin. All assets/guards remain unchanged;
+an exact-followup resource check is still a prerequisite to a full18000-frame
+test. Vanilla and the old profiles remain byte-identical;52 host helpers
+and normal/sanitized tests pass. No emulator execution is authorized here.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

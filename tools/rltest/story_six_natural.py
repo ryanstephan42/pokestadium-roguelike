@@ -208,8 +208,22 @@ def terminal_proof(emu, decode_mon):
         require(all(originals[i][key] == mon[key] for key in originals[i]),
                 "Actual raw native RESULT differs from all-party precommit")
     require(all(not mon["hp"] for mon in originals[6:]), "Terminal foes not exhausted")
+    require(emu.read_u32("gScSixLaunchSize") == 828 and
+            emu.read_u32("gScSixLaunchPlayerOffset") == 12 and
+            emu.read_u32("gScSixLaunchEnemyOffset") == 420, "Six launcher-result compiled ABI mismatch")
+    launch = emu.read("gRlLastBattleResult", 828)
+    require(list(launch[:3]) == [outcome, count, enemies] and list(launch[3:9]) == mapping,
+            "Actual launcher-result outcome/count/index mismatch")
+    converted = [decode_mon(launch[12 + i * 68:80 + i * 68]) for i in range(6)]
+    converted_enemy = [decode_mon(launch[420 + i * 68:488 + i * 68]) for i in range(2)]
+    require(all(mon == party[mapping[i]] for i, mon in enumerate(converted)),
+            "Actual converted launcher party differs from precommit")
+    for actual, original in zip(converted + converted_enemy, originals):
+        require(all(actual[key] == original[key] for key in original),
+                "Actual converted launcher-result differs from raw originals")
     return dict(raw=raw.hex(), precommit=precommit.hex(), party=party, mapping=mapping,
-                native=originals)
+                native=originals, launch_raw=launch.hex(), launch_party=converted,
+                launch_enemy=converted_enemy)
 
 
 def run(emu, directory, before, probe):
@@ -246,6 +260,7 @@ def run(emu, directory, before, probe):
         row["bridge_storage_raw"] = emu.read("gScSixBridgeStorage", 736).hex()
         row["combat_storage_raw"] = emu.read("gScSixCombatStorage", 732).hex()
         row["event_storage_raw"] = emu.read("gScSixProgressStorage", 416).hex()
+        row["launcher_storage_raw"] = emu.read("gRlLastBattleResult", 828).hex()
         row["budget"] = dict(start=budget.start, frame=emu.frame,
                              accepted_holds=dict(budget.holds), resume_ids=sorted(budget.resumed),
                              tentative_hold=label.startswith("hold-"))
@@ -338,6 +353,7 @@ def run(emu, directory, before, probe):
         pages = probe.story_owned_changes(before, after, base)
         (directory / "six_natural-terminal-save.bin").write_bytes(after)
         (directory / "six_natural-terminal-state.bin").write_bytes(committed)
+        (directory / "six_natural-launcher-result.bin").write_bytes(bytes.fromhex(terminal["launch_raw"]))
         (directory / "six_natural-precommit-state.bin").write_bytes(bytes.fromhex(terminal["precommit"]))
         note = b"".join(after[base + page * 256:base + (page + 1) * 256] for page in pages)
         note_path = directory / "six_natural-terminal-note.bin"
