@@ -60,6 +60,15 @@ ROGUELIKE ?= 0
 STORY_PROBE ?= 0
 STORY_KO_PROBE ?= 0
 STORY_EMBER_PROBE ?= 0
+STORY_SIX_PROBE ?= 0
+ifeq ($(STORY_SIX_PROBE),1)
+  ifneq ($(STORY_KO_PROBE),1)
+    $(error STORY_SIX_PROBE=1 requires STORY_KO_PROBE=1)
+  endif
+  ifeq ($(STORY_EMBER_PROBE),1)
+    $(error STORY_SIX_PROBE and STORY_EMBER_PROBE are exclusive)
+  endif
+endif
 ifeq ($(STORY_EMBER_PROBE),1)
   ifneq ($(STORY_KO_PROBE),1)
     $(error STORY_EMBER_PROBE=1 requires STORY_KO_PROBE=1)
@@ -132,6 +141,9 @@ ifeq ($(ROGUELIKE),1)
       ifeq ($(STORY_EMBER_PROBE),1)
         BUILD_DIR := build_story_ember_probe
       endif
+      ifeq ($(STORY_SIX_PROBE),1)
+        BUILD_DIR := build_story_six_probe
+      endif
     endif
   endif
   ROM       := $(BUILD_DIR)/$(TARGET)-rl.z64
@@ -169,6 +181,9 @@ ifeq ($(ROGUELIKE),1)
       BUILD_DEFINES += -DSTORY_KO_PROBE
       ifeq ($(STORY_EMBER_PROBE),1)
         BUILD_DEFINES += -DSTORY_EMBER_PROBE
+      endif
+      ifeq ($(STORY_SIX_PROBE),1)
+        BUILD_DEFINES += -DSTORY_SIX_PROBE
       endif
     endif
   endif

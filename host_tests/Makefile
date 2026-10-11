@@ -32,6 +32,16 @@ story-test:
 		../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
 		../src/story/sc_crc.c ../src/story/sc_storage.c ../build/story/sc_data.c -o ../build/story/test_story_ember_san
 	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_ember_san > ../build/story/ember-host-proof-san.jsonl
+	$(CC) $(CFLAGS) -I.. test_story_six.c ../tools/rltest/story_six_fixture.c \
+		../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+		../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+		../src/story/sc_crc.c ../build/story/sc_data.c -o ../build/story/test_story_six
+	../build/story/test_story_six ../build/story/six-checkpoint.sc01 > ../build/story/six-host-proof.jsonl
+	$(CC) $(SANFLAGS) -I.. test_story_six.c ../tools/rltest/story_six_fixture.c \
+		../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+		../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+		../src/story/sc_crc.c ../build/story/sc_data.c -o ../build/story/test_story_six_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_six_san > ../build/story/six-host-proof-san.jsonl
 	$(CC) $(SANFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c ../src/story/sc_graph.c ../src/story/sc_progression.c \
 		../src/story/sc_save.c ../src/story/sc_crc.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
 		../build/story/sc_data.c -o ../build/story/test_story_san

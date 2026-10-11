@@ -4,6 +4,9 @@
 #ifdef STORY_EMBER_PROBE
 #include "tools/rltest/story_ember_fixture.h"
 #endif
+#ifdef STORY_SIX_PROBE
+#include "tools/rltest/story_six_fixture.h"
+#endif
 
 int sc_cold_entry(int unused, ScColdRequest *request) {
     static ScSnapshot snapshot;
@@ -43,6 +46,16 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
         return 0x100 + SC_INVALID;
     status = sc_new(&snapshot.state, &sc_catalog, &options, request->seed);
     if (status != SC_OK) return 0x100 + status;
+#ifdef STORY_SIX_PROBE
+    if (request->command == SC_COLD_PREPARE) {
+        if (request->seed != 42) return 0x100 + SC_INVALID;
+        status = sc_six_checkpoint(&snapshot.state, &sc_catalog, 0, 0);
+        if (status != SC_OK) {
+            osSyncPrintf("story six probe: pure checkpoint preparation failed\n");
+            return 0x100 + status;
+        }
+    } else
+#endif
 #ifdef STORY_EMBER_PROBE
     if (request->command == SC_COLD_PREPARE) {
         if (request->seed != 42) return 0x100 + SC_INVALID;
@@ -73,6 +86,10 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
     }
     for (i = 0; i < sc_catalog.count; i++) {
         const char *a = sc_encounters[i].id, *b =
+#ifdef STORY_SIX_PROBE
+            request->command == SC_COLD_PREPARE ?
+            "PewterGym/TEXT_PEWTERGYM_BROCK" :
+#endif
 #ifdef STORY_EMBER_PROBE
             request->command == SC_COLD_PREPARE ?
             "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER4" :
@@ -81,7 +98,7 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
         while (*a && *a == *b) { a++; b++; }
         if (*a == *b) lab = i;
     }
-#ifdef STORY_EMBER_PROBE
+#if defined(STORY_EMBER_PROBE) || defined(STORY_SIX_PROBE)
     i = request->command == SC_COLD_PREPARE ? 0 : snapshot.state.rival_branch;
     if (sc_begin(&snapshot.state, &sc_catalog, lab, i) != SC_OK ||
         sc_team(&snapshot.state, &sc_catalog, lab, i,

@@ -37,6 +37,105 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_six_entry_full_party_native_mapping_and_refusals(self):
+        from tools.rltest import story_probe
+        proof = Path("build/story/six-host-proof.jsonl")
+        checkpoint, party, target = story_probe.six_expected(proof)
+        raw = bytearray(644)
+        struct.pack_into(">4I", raw, 0, 42, 1441438134, 0, 1)
+        struct.pack_into(">H", raw, 36, 58)
+        raw[38:102] = bytes.fromhex(checkpoint["completed"])
+        machine = dict(sides=[])
+        for mons in (party, target):
+            team = bytearray(0x21C)
+            live = bytearray(0x94)
+            for i, mon in enumerate(mons):
+                start = 0x1C + i * 0x54
+                team[start] = mon["species"]
+                team[start + 0x24] = mon["level"]
+                struct.pack_into(">I", team, start + 0x10, mon["exp"])
+                struct.pack_into(">H", team, start + 0x1E, mon["dvs"])
+                struct.pack_into(">H", team, start + 2, mon["hp"])
+                team[start + 5] = mon["status"]
+                team[start + 9:start + 13] = bytes(mon["moves"])
+                team[start + 0x20:start + 0x24] = bytes(mon["pp"])
+                for j in range(5):
+                    struct.pack_into(">H", team, start + 0x14 + j * 2, mon["stat_exp"][j])
+                    struct.pack_into(">H", team, start + 0x26 + j * 2, mon["current_stats"][j])
+            mon = mons[0]
+            live[0x0B] = mon["species"]; live[0x26] = mon["level"]
+            struct.pack_into(">H", live, 0x24, mon["dvs"])
+            for j in range(5):
+                struct.pack_into(">H", live, 0x28 + j * 2, mon["current_stats"][j])
+            machine["sides"].append(dict(flags=2, count=len(mons), active=0, team_raw=team.hex(),
+                                         control_raw=(bytes(0x38) + live).hex(), hp=mon["hp"],
+                                         moves=mon["moves"], pp=mon["pp"], status=0, stages=[7] * 6))
+        result = dict(active=1, phase=1, ko_count=0, resume=0, force_ko=0, cold_calls=1,
+                      cold_busy=0, cold_address=0, cold_before=100, cold_after=100,
+                      arena_archive=1, arena_count=18, arena_index=3, arena_required=58160,
+                      pool_free=200000)
+        progress = dict(error=0, injected=0, ko_captures=0, resumes=0, terminal=0, award=0, learn_move=0)
+        mapping = bytes(range(6))
+        story_probe.require_six_entry(result, progress, raw, party, machine, mapping, mapping, proof)
+        for key, value in (("ko_count", 1), ("force_ko", 1), ("cold_after", 99),
+                           ("arena_required", 200001)):
+            with self.assertRaises(HarnessError):
+                story_probe.require_six_entry({**result, key: value}, progress, raw, party,
+                                              machine, mapping, mapping, proof)
+        for index in range(6):
+            wrong = copy.deepcopy(party)
+            wrong[index]["hp"] -= 1
+            with self.assertRaises(HarnessError):
+                story_probe.require_six_entry(result, progress, raw, wrong, machine, mapping, mapping, proof)
+        with self.assertRaises(HarnessError):
+            story_probe.require_six_entry(result, progress, raw, party, machine,
+                                          bytes(reversed(mapping)), mapping, proof)
+        wrong = copy.deepcopy(machine)
+        team = bytearray.fromhex(wrong["sides"][0]["team_raw"])
+        team[0x1C + 4 * 0x54 + 0x24] = 7
+        wrong["sides"][0]["team_raw"] = team.hex()
+        with self.assertRaises(HarnessError):
+            story_probe.require_six_entry(result, progress, raw, party, wrong, mapping, mapping, proof)
+
+    def test_six_entry_phase_isolation_and_no_continuation(self):
+        from tools.rltest import story_probe
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            map_path = directory / "probe.map"
+            map_path.write_text("gScProbeSixProfile\ngScProbeKoProfile")
+            require_probe_profile(map_path, "six_entry")
+            for phase in ("ko_reload", "ko_natural", "ember_entry", "ember_reload", "ko_ember_e2e"):
+                with self.assertRaises(HarnessError):
+                    require_probe_profile(map_path, phase)
+            map_path.write_text("gScProbeKoProfile")
+            with self.assertRaises(HarnessError):
+                require_probe_profile(map_path, "six_entry")
+            emu = Mock()
+            with patch.object(story_probe, "start_command") as start, \
+                    patch.object(story_probe, "wait_probe"), \
+                    patch.object(story_probe, "capture_progress",
+                                 return_value=({}, {}, b"raw", [], {})) as capture, \
+                    patch.object(story_probe, "save_ram", return_value=(0, b"save")), \
+                    patch.object(story_probe, "require_six_entry") as check, \
+                    patch.object(story_probe, "read_native_machine"), \
+                    patch.object(story_probe, "validate_memory"), \
+                    patch.object(story_probe, "story_owned_changes"), \
+                    patch.object(story_probe, "find_pak"):
+                emu.read.side_effect = lambda address, size: (
+                    bytes([1, 0, 0, 0, 0, 0]) if address == "gScProbeSixBridge" and size == 6
+                    else bytes(range(6)))
+                emu.symbols.address.return_value = 100
+                story_probe.six_entry_only(emu, directory, b"save")
+                start.assert_called_once_with(emu, 3)
+                emu.step.assert_not_called()
+                emu.write.assert_not_called()
+                emu.write_u32.assert_not_called()
+                emu.press.assert_not_called()
+                check.side_effect = HarnessError("entry mismatch")
+                with self.assertRaises(HarnessError):
+                    story_probe.six_entry_only(emu, directory, b"save")
+                self.assertEqual(capture.call_args.args[2], "six_entry-failure")
+
     def test_ember_reload_failed_load_captures_empty_resident_without_native_read(self):
         from tools.rltest import story_probe
         raw = bytes(644)

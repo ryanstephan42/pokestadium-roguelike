@@ -6,6 +6,10 @@
 #include "sc_bridge.h"
 #include "sc_combat.h"
 
+#ifdef STORY_SIX_PROBE
+int sc_native_mapping(const ScState *state, unsigned count, const RlU8 indices[6],
+                       RlU8 output[6]);
+#endif
 int sc_native_record(const RlMon *story, unk_func_80026268_arg0 *native);
 int sc_native_snapshot(const unk_func_80026268_arg0 *native,
                        const RlMon *story, ScBattleSnapshot *snapshot);

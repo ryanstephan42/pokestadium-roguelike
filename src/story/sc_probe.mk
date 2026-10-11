@@ -10,6 +10,13 @@ O_FILES += $(SC_EMBER_O)
 $(SC_EMBER_O): tools/rltest/story_ember_fixture.h $(wildcard src/story/*.h)
 $(shell mkdir -p $(BUILD_DIR)/tools/rltest)
 endif
+ifeq ($(STORY_SIX_PROBE),1)
+SC_SIX_O := $(BUILD_DIR)/tools/rltest/story_six_fixture.o
+SC_COLD_O += $(SC_SIX_O)
+O_FILES += $(SC_SIX_O)
+$(SC_SIX_O): tools/rltest/story_six_fixture.h $(wildcard src/story/*.h)
+$(shell mkdir -p $(BUILD_DIR)/tools/rltest)
+endif
 SC_HEADER_O := $(BUILD_DIR)/src/story/sc_cold_header.o
 SC_RELOCS_O := $(RL_DIR)/fragmentSC_relocs.o
 SC_RELOCS0_O := $(RL_DIR)/fragmentSC_relocs_pass1.o

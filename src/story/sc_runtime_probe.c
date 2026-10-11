@@ -21,17 +21,35 @@ const RlU32 gScProbeKoProfile = 1;
 #ifdef STORY_EMBER_PROBE
 const RlU32 gScProbeEmberProfile = 1;
 #endif
+#ifdef STORY_SIX_PROBE
+const RlU32 gScProbeSixProfile = 1;
+#endif
 static ScState resident;
+#ifdef STORY_SIX_PROBE
+ScBridge gScProbeSixBridge;
+#define bridge gScProbeSixBridge
+#else
 static ScBridge bridge;
+#endif
 static ScCombat combat;
 static RlMon opponents[6];
+#ifdef STORY_SIX_PROBE
+RlU8 gScProbeSixMapping[6];
+#define mapping gScProbeSixMapping
+#else
 static RlU8 mapping[6];
+#endif
 static unsigned last_active = 255;
 static int deferred_result;
 static int deferred_frame;
 static int failed;
 static unsigned pending_outcome = 255;
 
+#ifdef STORY_SIX_PROBE
+int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count) {
+    return sc_native_mapping(&resident, count, indices, mapping);
+}
+#endif
 static int terminal_matches(const RlMon *a, const RlMon *b) {
     unsigned i;
     if (a->species != b->species || a->level != b->level || a->exp != b->exp ||
@@ -43,6 +61,11 @@ static int terminal_matches(const RlMon *a, const RlMon *b) {
     for (i = 0; i < 4; i++)
         if (a->moves[i] != b->moves[i] || a->pp[i] != b->pp[i] || a->max_pp[i] != b->max_pp[i])
             return 0;
+#ifdef STORY_SIX_PROBE
+    if (a->growth != b->growth || a->held_relic != b->held_relic) return 0;
+    for (i = 0; i < 5; i++) if (a->base_stats[i] != b->base_stats[i]) return 0;
+    for (i = 0; i < 11; i++) if (a->nickname[i] != b->nickname[i]) return 0;
+#endif
     return 1;
 }
 
@@ -71,7 +94,13 @@ static void report(void) {
 
 static void bridge_views(RlBattleSide *side, volatile ScBridgeView *party,
                          volatile ScBridgeView *view) {
-    const RlBattlePartyMon *native = rl_battle_party_mon(side, 0);
+    const RlBattlePartyMon *native = rl_battle_party_mon(side,
+#ifdef STORY_SIX_PROBE
+        rl_battle_active_index(side)
+#else
+        0
+#endif
+    );
     const RlBattleMon *live = rl_battle_mon(side);
     unsigned i;
     party->species = rl_battle_party_species(native);
@@ -270,7 +299,9 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
             !bridge_view_equal(&gScBridgeProbe.current_live, &gScBridgeProbe.initial_live))
             goto invalid;
         if (!gScProbe.resume) { report(); return 1; }
+#ifndef STORY_SIX_PROBE
         if (gScProgressProbe.resumes) goto invalid;
+#endif
         gScProbe.resume = 0;
         for (i = 0; i < resident.party_count; i++)
             if (resident.learn_mask & (1U << i))
@@ -278,12 +309,18 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
                     goto invalid;
         if (publish_live(player) != SC_OK) goto invalid;
         gScProgressProbe.resumes++;
-        gScProgressProbe.after_resume = resident.party[0];
+        gScProgressProbe.after_resume = resident.party[
+#ifdef STORY_SIX_PROBE
+            mapping[active]
+#else
+            0
+#endif
+        ];
         for (i = 0; i < 6; i++) gScProgressProbe.resume_stages[i] = rl_battle_stage(live, i);
         bridge_views(player, &gScBridgeProbe.carry_party, &gScBridgeProbe.carry_live);
     }
     if (gScProbe.force_ko) {
-#ifdef STORY_EMBER_PROBE
+#if defined(STORY_EMBER_PROBE) || defined(STORY_SIX_PROBE)
         goto invalid;
 #else
         gScProgressProbe.injected++;
@@ -297,6 +334,18 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
     rl_battle_party_status(rl_battle_party_mon(player, active)) = rl_battle_status(live);
     {
         unsigned already = resident.defeated_mask & (1U << opponent);
+#ifdef STORY_SIX_PROBE
+        unsigned canonical = mapping[active];
+        if (canonical >= resident.party_count) goto invalid;
+        if (!already && !rl_battle_hp(foe)) {
+            gScProgressProbe.before_ko = resident.party[canonical];
+            gScProgressProbe.before_ko.cur_hp = rl_battle_hp(live);
+            gScProgressProbe.before_ko.status = rl_battle_status(live);
+            for (i = 0; i < 4; i++)
+                gScProgressProbe.before_ko.pp[i] =
+                    rl_battle_party_packed_pp(rl_battle_party_mon(player, active), i) & 63;
+        }
+#else
         if (!already && !rl_battle_hp(foe)) {
             if (gScProgressProbe.ko_captures || count != 1 || active || opponent) goto invalid;
             gScProgressProbe.before_ko = resident.party[0];
@@ -310,6 +359,7 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
             if (combat.kind == SC_TRAINER || combat.kind == SC_RIVAL)
                 gScProgressProbe.award += gScProgressProbe.award / 2;
         }
+#endif
         status = sc_native_observe_combat(&resident, &bridge, &combat,
                                    player->unk_724->unk_01C, count, mapping,
                                    active, opponent, already ? 1 : rl_battle_hp(foe));
@@ -318,17 +368,33 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
             gScProbe.ko_count++;
             if (publish_live(player) != SC_OK) goto invalid;
             gScProgressProbe.ko_captures++;
-            gScProgressProbe.after_ko = resident.party[0];
-            gScProgressProbe.learn_move = resident.learn_moves[0];
+            gScProgressProbe.after_ko = resident.party[
+#ifdef STORY_SIX_PROBE
+                canonical
+#else
+                0
+#endif
+            ];
+            gScProgressProbe.learn_move = resident.learn_moves[
+#ifdef STORY_SIX_PROBE
+                canonical
+#else
+                0
+#endif
+            ];
             for (i = 0; i < 6; i++) gScProgressProbe.ko_stages[i] = rl_battle_stage(live, i);
             bridge_views(player, &gScBridgeProbe.initial_party, &gScBridgeProbe.initial_live);
             bridge_views(player, &gScBridgeProbe.current_party, &gScBridgeProbe.current_live);
+#ifdef STORY_SIX_PROBE
+            gScProgressProbe.award = resident.party[canonical].exp - gScProgressProbe.before_ko.exp;
+#else
             if (resident.party[0].exp != gScProgressProbe.before_ko.exp + gScProgressProbe.award)
                 goto invalid;
             for (i = 0; i < 5; i++)
                 if (resident.party[0].stat_exp[i] !=
                     gScProgressProbe.before_ko.stat_exp[i] + combat.enemy_species[0].base[i])
                     goto invalid;
+#endif
         }
     }
     gScProbe.live_hp = rl_battle_hp(live);
@@ -434,7 +500,14 @@ int sc_runtime_probe_poll(void) {
             for (i = 0; i < sizeof(gScProgressProbe); i++) values[i] = 0;
         }
         gScBridgeProbe.enabled = command == 6;
+#ifdef STORY_SIX_PROBE
+        for (i = 0; i < 6; i++) {
+            mapping[i] = RL_NO_SLOT;
+            bridge.participants[i] = 0;
+        }
+#else
         for (i = 0; i < 6; i++) { mapping[i] = (RlU8)i; bridge.participants[i] = 0; }
+#endif
         bridge.enemy_count = request.enemy_count;
         gScProbe.stage = 6;
         last_active = 255;
@@ -446,6 +519,27 @@ int sc_runtime_probe_poll(void) {
         status = rl_start_battle(resident.party, resident.party_count, opponents, request.enemy_count,
                                  &rules, STATE_MENU_SELECT, &result);
         if (status >= 0 && command == 3) {
+#ifdef STORY_SIX_PROBE
+            unsigned seen = 0;
+            gScProgressProbe.terminal = 1;
+            if (!result.player_count || result.player_count > 6) failed = 1;
+            for (i = 0; !failed && i < result.player_count; i++) {
+                unsigned slot = result.player_index[i];
+                if (slot >= resident.party_count || slot != mapping[i] || (seen & (1U << slot)) ||
+                    !terminal_matches(&resident.party[slot], &result.player[i])) {
+                    failed = 1;
+                    break;
+                }
+                seen |= 1U << slot;
+            }
+            for (i = 0; i < resident.party_count; i++)
+                if (!(seen & (1U << i)) && resident.party[i].cur_hp) failed = 1;
+            if (failed) {
+                gScProgressProbe.error = 2;
+                status = -1;
+                osSyncPrintf("story six probe: terminal mapped carry mismatch before commit\n");
+            }
+#else
             gScProgressProbe.terminal_resident = resident.party[0];
             gScProgressProbe.terminal_native = result.player[0];
             gScProgressProbe.terminal = 1;
@@ -456,6 +550,7 @@ int sc_runtime_probe_poll(void) {
                 status = -1;
                 osSyncPrintf("story probe: terminal native/resident carry mismatch before commit\n");
             }
+#endif
         }
         gScProbeActive = 0; gScProbe.active = 0;
         combat.ready = 0;

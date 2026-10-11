@@ -68,6 +68,18 @@ static int mapping_valid(const ScState *state, unsigned count, const RlU8 mappin
     return 1;
 }
 
+#ifdef STORY_SIX_PROBE
+int sc_native_mapping(const ScState *state, unsigned count, const RlU8 indices[6],
+                       RlU8 output[6]) {
+    unsigned i;
+    if (!output || !mapping_valid(state, count, indices)) return SC_INVALID;
+    for (i = 0; i < count; i++)
+        if (!state->party[indices[i]].cur_hp || state->party[indices[i]].fainted)
+            return SC_INVALID;
+    for (i = 0; i < 6; i++) output[i] = i < count ? indices[i] : RL_NO_SLOT;
+    return SC_OK;
+}
+#endif
 int sc_native_capture(const ScState *state, const unk_func_80026268_arg0 *party,
                     unsigned count, const RlU8 mapping[6], unsigned active,
                     ScBattleSnapshot snapshots[6]) {

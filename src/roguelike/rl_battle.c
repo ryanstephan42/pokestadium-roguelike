@@ -9,6 +9,9 @@
 #ifdef STORY_NATIVE_PROBE
 #include "src/story/sc_native_probe.h"
 extern int gScProbeActive;
+#ifdef STORY_SIX_PROBE
+extern int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count);
+#endif
 #endif
 
 RlLaunchResult gRlLastBattleResult;
@@ -290,6 +293,12 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
 #endif
         func_8002B888(opponent, &native);
     }
+#ifdef STORY_SIX_PROBE
+    if (gScProbeActive && sc_runtime_probe_mapping(result->player_index, player->unk_002) != SC_OK) {
+        osSyncPrintf("story six probe: invalid launcher party mapping\n");
+        return -1;
+    }
+#endif
     gRlBattleActive = 1;
     rl_native_relics_reset(rules->relics);
     gRlBattleLaunchStage = 1;

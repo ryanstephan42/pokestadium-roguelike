@@ -13,6 +13,28 @@ gcc "${flags[@]}" host_tests/test_story_native.c src/story/sc_native_probe.c src
     src/story/sc_graph.c src/story/sc_save.c src/story/sc_crc.c src/story/sc_storage.c build/story/sc_data.c \
     -Wl,--gc-sections -o build/story/test_story_native
 build/story/test_story_native
+gcc "${flags[@]}" -DSTORY_SIX_PROBE host_tests/test_story_six_native.c \
+    tools/rltest/story_six_fixture.c src/story/sc_native_probe.c src/story/sc_native_cold.c \
+    src/story/sc_core.c src/story/sc_combat.c src/story/sc_make.c src/story/sc_graph.c \
+    src/story/sc_progression.c src/story/sc_save.c src/story/sc_crc.c build/story/sc_data.c \
+    -Wl,--gc-sections -o build/story/test_story_six_native
+build/story/test_story_six_native
+gcc "${flags[@]}" -DSTORY_KO_PROBE -DSTORY_SIX_PROBE host_tests/test_story_six_runtime.c \
+    tools/rltest/story_six_fixture.c src/story/sc_native_probe.c src/story/sc_cold.c \
+    src/story/sc_core.c src/story/sc_combat.c src/story/sc_make.c src/story/sc_graph.c \
+    src/story/sc_progression.c src/story/sc_save.c src/story/sc_crc.c build/story/sc_data.c \
+    -Wl,--gc-sections -o build/story/test_story_six_runtime
+build/story/test_story_six_runtime
+for test in native runtime; do
+    gcc "${flags[@]}" -DSTORY_KO_PROBE -DSTORY_SIX_PROBE \
+        -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+        "host_tests/test_story_six_${test}.c" tools/rltest/story_six_fixture.c \
+        src/story/sc_native_probe.c src/story/sc_native_cold.c src/story/sc_cold.c \
+        src/story/sc_core.c src/story/sc_combat.c src/story/sc_make.c src/story/sc_graph.c \
+        src/story/sc_progression.c src/story/sc_save.c src/story/sc_crc.c build/story/sc_data.c \
+        -Wl,--gc-sections -o "build/story/test_story_six_${test}_san"
+    ASAN_OPTIONS=detect_leaks=1 "build/story/test_story_six_${test}_san"
+done
 gcc "${flags[@]}" host_tests/test_story_runtime.c src/story/sc_native_probe.c \
     src/story/sc_progression.c src/story/sc_combat.c src/story/sc_make.c src/story/sc_bridge.c src/story/sc_core.c \
     src/story/sc_graph.c src/story/sc_save.c src/story/sc_crc.c src/story/sc_storage.c src/story/sc_cold.c build/story/sc_data.c \

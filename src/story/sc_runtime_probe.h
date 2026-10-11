@@ -37,6 +37,9 @@ typedef struct ScProgressProbe {
 } ScProgressProbe;
 extern ScProgressProbe gScProgressProbe;
 extern int gScProbeActive;
+#ifdef STORY_SIX_PROBE
+int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count);
+#endif
 int sc_runtime_probe_poll(void);
 int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy);
 /* Gate: 0 advance, 1 render only, 2 resume the deferred post-logic frame. */

@@ -1372,6 +1372,93 @@ resource validators were rerun read-only; the process-free release is
 recorded. There was no retry. Defeat, six-party, Transform, full gate and merge
 remain outside this grant.
 
+### Six-party baseline (source/host milestone only)
+
+The separately authorized `STORY_SIX_PROBE` profile uses a new cold-only PURE
+constructor, `tools/rltest/story_six_fixture.c`, with Red/Standard/Charmander
+seed42. Actual shared APIs prepare victories and confirmed recruits at
+57 (lab),349,350,351 (Forest) and59 (optional Pewter trainer), with available
+Viridian healing after each reward. Optional59 precedes Brock58 because
+Brock retires it. All prior victories are host prehistory, not native wins;
+no native damage history, XP padding, manual party append or DV override is
+invented. The one learning prompt accepts Ember in slot3. Reward slots are
+0,1,2,0,0, giving the following actual checkpoint:
+
+| Slot | Species | Level | XP | DVs | HP | Moves | PP | Stats | Stat EXP |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | Charmander4 | 12 | 1108 | 4528 | 32 | 10,45,0,52 | 35,40,0,25 | 32,20,16,22,18 | 354,373,380,458,250 |
+| 1 | Squirtle7 | 5 | 135 | 8889 | 20 | 33,39,0,0 | 35,30,0,0 | 20,10,12,10,10 | 0,0,0,0,0 |
+| 2 | Caterpie10 | 6 | 216 | 8889 | 22 | 33,81,0,0 | 35,40,0,0 | 22,9,10,11,8 | 0,0,0,0,0 |
+| 3 | Weedle13 | 7 | 343 | 8889 | 23 | 40,81,0,0 | 35,40,0,0 | 23,11,10,13,8 | 0,0,0,0,0 |
+| 4 | Weedle13 | 9 | 729 | 8889 | 27 | 40,81,0,0 | 35,40,0,0 | 27,12,11,15,10 | 0,0,0,0,0 |
+| 5 | Diglett50 | 11 | 1331 | 8889 | 24 | 10,0,0,0 | 35,0,0,0 | 24,19,12,27,16 | 0,0,0,0,0 |
+
+Final RNG1441438134, completedbits57,59,349,350,351, no retired bits;
+Brock58 is available but uncompleted. All six are healthy with full PP.
+The deterministic proof includes37 API-transition rows plus a separately
+labeled canonical target-team row (Geodude12/Onix14), not another campaign
+transition. Normal/sanitized proof SHA256 is
+`b50e1aa1b956601faaf573f45edc41d8a6c46df42bfddd8df8e311446825cd83`;
+checkpoint736-byte SC01 SHA256 is
+`b069b6656b93ced8f61cb05a11fc41b72e9c7389ae22ac713eccbf0f0f1ac3a8`.
+Capacity/replacement confirmation, learning, graph retirement, invalid-output
+preservation and codec roundtrip are checked through the real APIs.
+
+The dedicated profile obtains compact-native-index to canonical-slot mapping
+from the launcher's actual `RlLaunchResult.player_index` table after fainted
+filtering and before native execution. It rejects missing living slots,
+duplicates, out-of-range or fainted indices without changing the destination.
+That mapping drives observation, per-enemy participants/XP, active publication
+and terminal carry. The existing bridge/mapping allocations are exported
+under profile-specific names for raw capture rather than enlarged. The
+212-byte mailbox,644-byte state,68-byte mon,736-byte bridge view and416-byte
+progress view remain unchanged. Progress's before/after KO mon is the last
+active canonical recipient, not a new all-party or cumulative-award view.
+
+Correction to the initial proposal: runtime rules start `{3,0,0x20,0,...}`:
+3 is the stadium selector, while player_count0 already means all living
+members. There was no cap3 to remove. Confirmed singleton KO/terminal guards
+and identity mapping were the actual blockers. Old singleton and Ember
+branches retain their behavior and original mapping-loop source shape;
+expanded formatting initially changed IDO instruction scheduling, so the
+original branch was restored before final regression. Original Ember ROM/ELF
+hashes remain84940c...6ec8/026fce...cca0, original KO ROM/ELF remain
+a1356b...039d/970e50...90ac, and default RL remainsa4fab9...125d.
+Vanilla still prints `build/pokestadium-us.z64: OK`.
+
+Host adapter tests exercise six permutations/all active slots, duplicate
+species identity, discriminating HP/PP/status, fainted exclusion, per-enemy
+KO/participant masks, bench no-award, fainted-participant denominator rounding,
+duplicate KO and transactional invalid mappings. Dedicated runtime mocks
+exercise launcher indices, two different active recipients/enemies, all-six
+terminal identity, cold commit/load, invalid terminal and save refusal.
+These and the constructor pass normal and ASan/UBSan runs;44 harness helpers
+and both original runtime profiles pass. Mock KO/switch/damage inputs are
+host-only assertions, not legal native fixture history.
+
+`six_entry` is the only harness phase allowed on the new marker; all old
+profiles refuse it, and the six profile refuses other phases. It stops at
+the existing1800-frame initialized-entry boundary, captures raw state/all
+party/native records/launcher mapping/participants/save/resources before
+assertions, and performs no subsequent combat wait, resume, input or cleanup
+steps. It checks every original record and active live record against the
+host proof, graph state, zero KO/error/injection/learning/terminal, cold
+ownership, required assets, isolated storage, allocations and stack sentinel.
+Initial native gate(s) may already have occurred; this is not zero-ever-update
+or six-switch/participant-XP coverage. No six-party combat budget is approved.
+
+The isolated cold image is176000 bytes,32 more than Ember and2128 more than
+the original KO profile. Compiled constructor frame792 nests `sc_on_ko`800
+and `sc_ko_values`760, with cold entry88:2440 bytes before further callees/
+outer callers. Other observed frames include `sc_new`720, native publish608,
+native capture56/observe88, runtime tick112/poll144, launcher192,
+`sc_state_valid`1376 and `sc_team`496. These are static frame observations,
+not exhaustive SP bounds; no prior written watermark establishes safety.
+Actual six-party required assets/peak allocation/headroom and written-stack
+observations remain untested until an independently reviewed entry grant.
+No emulator, Transform implementation/seed search, defeat, full gate or merge
+was authorized or performed in this source/host milestone.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

@@ -36,4 +36,5 @@ build_rl/
 build_story_probe/
 build_story_ko_probe/
 build_story_ember_probe/
+build_story_six_probe/
 .local/

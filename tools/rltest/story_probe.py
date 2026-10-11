@@ -651,11 +651,93 @@ def require_learning_storage(prebattle, paused, held):
 
 def require_probe_profile(map_path, phase):
     contents = Path(map_path).read_text()
+    require(("gScProbeSixProfile" in contents) == (phase == "six_entry"),
+            "Six-party entry requires its separate profile; other scenarios refuse it")
     require(("gScProbeEmberProfile" in contents) == (phase in EMBER_PHASES),
             "Ember scenario requires its separate profile; original scenarios refuse it")
     if phase in ("bridge_init", "bridge_carry"):
         require("gScProbeKoProfile" not in contents,
                 "Bridge phases unavailable in STORY_KO_PROBE profile")
+
+
+def six_expected(proof):
+    rows = [json.loads(line) for line in Path(proof).read_text().splitlines()]
+    checkpoint = next(row for row in rows if row["operation"] == "target-available")
+    target = next(row for row in rows if row["operation"] == "target-team")
+    require(len(checkpoint["party"]) == 6 and checkpoint["rng"] == 1441438134 and
+            checkpoint["index"] == target["index"] == 58,
+            "Six-party host checkpoint proof mismatch")
+    def named(mon):
+        return {("exp" if key == "xp" else "current_stats" if key == "stats" else key): value
+                for key, value in mon.items()}
+    return checkpoint, [named(mon) for mon in checkpoint["party"]], [named(mon) for mon in target["party"]]
+
+
+def require_six_entry(result, progress, raw, party, machine, mapping, launcher_indices, proof):
+    checkpoint, expected, target = six_expected(proof)
+    require(result["active"] and result["phase"] == 1 and party == expected and
+            raw[38:102].hex() == checkpoint["completed"] and
+            struct.unpack_from(">4I", raw) == (42, 1441438134, 0, 1) and
+            struct.unpack_from(">H", raw, 36)[0] == 58 and raw[102:166] == bytes(64),
+            "Six-party legal native checkpoint identity mismatch")
+    require(not any(result[key] for key in ("ko_count", "resume", "force_ko")) and
+            not any(progress[key] for key in
+                    ("error", "injected", "ko_captures", "resumes", "terminal", "award", "learn_move")),
+            "Six-party entry advanced KO/learning/terminal state")
+    require(list(mapping) == list(launcher_indices) == list(range(6)),
+            "Six-party entry launcher-produced mapping mismatch")
+    require(len(machine["sides"]) == 2, "Six-party entry native side count mismatch")
+    for side, mons in zip(machine["sides"], (expected, target)):
+        team = bytes.fromhex(side["team_raw"])
+        require(side["flags"] & 2 and side["count"] == len(mons) and side["active"] == 0,
+                "Six-party native count/CPU/active mismatch")
+        for index, mon in enumerate(mons):
+            record = team[0x1C + index * 0x54:0x70 + index * 0x54]
+            half = lambda offset: struct.unpack_from(">H", record, offset)[0]
+            require(record[0] == mon["species"] and record[0x24] == mon["level"] and
+                    struct.unpack_from(">I", record, 0x10)[0] == mon["exp"] and
+                    half(0x1E) == mon["dvs"] and half(2) == mon["hp"] and
+                    record[5] == mon["status"] and list(record[9:13]) == mon["moves"] and
+                    list(record[0x20:0x24]) == mon["pp"] and
+                    [half(0x14 + i * 2) for i in range(5)] == mon["stat_exp"] and
+                    [half(0x26 + i * 2) for i in range(5)] == mon["current_stats"],
+                    "Six-party original native slot fields mismatch")
+        mon = mons[side["active"]]
+        live = bytes.fromhex(side["control_raw"])[0x38:]
+        require(live[0x0B] == mon["species"] and live[0x26] == mon["level"] and
+                struct.unpack_from(">H", live, 0x24)[0] == mon["dvs"] and
+                side["hp"] == mon["hp"] and side["moves"] == mon["moves"] and
+                side["pp"] == mon["pp"] and not side["status"] and side["stages"] == [7] * 6 and
+                [struct.unpack_from(">H", live, 0x28 + i * 2)[0] for i in range(5)] ==
+                mon["current_stats"], "Six-party active live canonical fields mismatch")
+    require(result["cold_calls"] == 1 and not result["cold_busy"] and
+            not result["cold_address"] and result["cold_before"] == result["cold_after"] and
+            result["arena_archive"] and result["arena_count"] > result["arena_index"] and
+            0 < result["arena_required"] <= result["pool_free"],
+            "Six-party entry cold ownership/assets mismatch")
+
+
+def six_entry_only(emu, directory, before):
+    start_command(emu, 3)
+    try:
+        wait_probe(emu, lambda result: result["active"] and result["ticks"],
+                   1800, "Six-party initialized entry only")
+        result, progress, raw, party, memory = capture_progress(emu, directory, "six_entry-entry")
+        mapping = emu.read("gScProbeSixMapping", 6)
+        launcher = emu.read(emu.symbols.address("gRlLastBattleResult") + 3, 6)
+        (directory / "six_entry-mapping.json").write_text(
+            json.dumps(dict(mapping=list(mapping), launcher=list(launcher)), indent=2) + "\n")
+        (directory / "six_entry-participants.bin").write_bytes(emu.read("gScProbeSixBridge", 7))
+        require(emu.read("gScProbeSixBridge", 6) == bytes([1, 0, 0, 0, 0, 0]),
+                "Six-party entry initial participant attribution mismatch")
+        require_six_entry(result, progress, raw, party, read_native_machine(emu), mapping, launcher,
+                          directory / "six-host-proof.jsonl")
+        validate_memory(memory, result)
+        story_owned_changes(before, save_ram(emu)[1], find_pak(before))
+        return result
+    except HarnessError:
+        capture_progress(emu, directory, "six_entry-failure")
+        raise
 
 
 def require_ember_native_entry(machine):
@@ -966,6 +1048,14 @@ def phase(args):
             data = source.read_bytes()
             (directory / name).write_bytes(data)
             provenance[name + "_sha256"] = hashlib.sha256(data).hexdigest()
+    if args.phase == "six_entry":
+        provenance["coverage_scope"] = "pure-host-five-recruits; initialized-native-entry-only"
+        provenance["save_source_sha256"] = hashlib.sha256(
+            (directory / "save-ram.bin").read_bytes()).hexdigest()
+        for name in ("six-host-proof.jsonl", "six-checkpoint.sc01"):
+            data = (ROOT / "build/story" / name).read_bytes()
+            (directory / name).write_bytes(data)
+            provenance[name + "_sha256"] = hashlib.sha256(data).hexdigest()
     (directory / f"{args.phase}-provenance.json").write_text(
         json.dumps(provenance, indent=2) + "\n")
     options = {"mupen64plus-pak1": "none" if args.phase == "missing" else "memory",
@@ -975,7 +1065,7 @@ def phase(args):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
                           "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e", "ember_entry", "ember_reload"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e", "ember_entry", "ember_reload", "six_entry"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -983,6 +1073,13 @@ def phase(args):
         # Stabilize vanilla FlashRAM initialization, without invoking any story writer.
         native_command(emu, 1)
         pointer, before = save_ram(emu)
+        if args.phase == "six_entry":
+            result = six_entry_only(emu, directory, before)
+            (directory / "six_entry-result.json").write_text(
+                json.dumps({**result, "acceptance_scope": "entry only, not participant/switch/KO coverage"},
+                           indent=2) + "\n")
+            print("story native six_entry: OK")
+            return
         if args.phase == "ember_reload":
             (directory / "ember_reload-setup.json").write_text(json.dumps(dict(
                 frame=emu.frame, save_sha256=hashlib.sha256(before).hexdigest(),
@@ -1287,7 +1384,7 @@ def main():
                                           "allocation", "checkpoint", "checkpoint_reload",
                                           "bridge_init", "bridge_carry",
                                           "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e",
-                                          "ember_entry", "ember_reload"))
+                                          "ember_entry", "ember_reload", "six_entry"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")
