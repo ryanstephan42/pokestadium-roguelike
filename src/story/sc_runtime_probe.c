@@ -227,6 +227,12 @@ int sc_runtime_probe_poll(void) {
                                  &rules, STATE_MENU_SELECT, &result);
         gScProbeActive = 0; gScProbe.active = 0;
         if (status < 0) goto end;
+        if (result.outcome == RL_LAUNCH_DRAW) {
+            pending_outcome = SC_DRAW;
+            status = 0x100 + SC_PENDING;
+            osSyncPrintf("story probe: native draw unresolved; reload prebattle checkpoint to retry\n");
+            goto end;
+        }
         pending_outcome = result.outcome == RL_BATTLE_WIN ? SC_WIN : SC_LOSS;
         status = commit_result();
         gScProbe.post_pool_crc = sc_save_crc(resident.completed, SC_BITS);

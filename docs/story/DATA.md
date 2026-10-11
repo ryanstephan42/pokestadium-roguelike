@@ -322,12 +322,18 @@ resident storage and post-pool lifetime still need runtime proof before UI.
 `make story-probe` first checks vanilla, then produces the separate ignored
 `build_story_probe/pokestadium-rl.z64` with `ROGUELIKE=1 STORY_PROBE=1`.
 Neither `make` nor `make rl` enables it. There is no story menu/campaign UI.
+Vanilla remains byte-matching. Checked native conversion returns are isolated
+to the probe build; the default RL path retains its original void conversion.
 The harness drives `gScProbe` through the existing debug battle launcher.
 Commands are 1 load, 2 explicitly create/store a fresh isolated story,
 3 store an interrupted checkpoint and launch the fixed lab probe, and
 4 retry a failed completed-result write. Save results use `ScSaveStatus`;
 core/native precondition failures use `0x100 + ScStatus`. An invalid live
 observation logs an error and holds the battle instead of fabricating success.
+The probe rejects a native draw as an unresolved result (`0x100 + SC_PENDING`),
+logs it, and leaves the interrupted prebattle checkpoint intact. Command 1
+explicitly reloads that checkpoint before retry; result-write retry command 4
+cannot commit the draw. Campaign draw policy is not decided by this probe.
 
 The fixture is deliberately **not a playable campaign**: it uses Bulbasaur
 level 6 with experience one point below level 7 and DVs `0x8889`, against the

@@ -5,6 +5,7 @@
 static unsigned failure, writes;
 static int fail_final;
 static int native_result = 1;
+static int launch_outcome = RL_BATTLE_WIN;
 static unsigned char saved[SC_SAVE_SIZE];
 static RlBattleSide sides[2];
 static unk_D_800AE540_0004 teams[2];
@@ -101,8 +102,8 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
     check(publish_live(&sides[0]) == SC_OK && live->unk_2A == base * 66 / 100);
     live->unk_5C[0] = 0;
     check(publish_live(&sides[0]) == SC_INVALID);
-    memset(result, 0, sizeof(*result)); result->outcome = RL_BATTLE_WIN;
-    return RL_BATTLE_WIN;
+    memset(result, 0, sizeof(*result)); result->outcome = launch_outcome;
+    return launch_outcome;
 }
 
 int main(void) {
@@ -136,6 +137,15 @@ int main(void) {
     gScProbe.command = 4;
     check(sc_runtime_probe_poll() && gScProbe.status == SC_SAVE_OK &&
            resident.phase == SC_REWARD && writes == 3);
+    writes = 0; fail_final = 0; launch_outcome = RL_LAUNCH_DRAW;
+    gScProbe.command = 3;
+    check(sc_runtime_probe_poll() && !failure && gScProbe.status == 0x100 + SC_PENDING);
+    check(writes == 1 && resident.phase == SC_BATTLE && pending_outcome == SC_DRAW);
+    gScProbe.command = 4;
+    check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID && writes == 1);
+    gScProbe.command = 1;
+    check(sc_runtime_probe_poll() && gScProbe.status == SC_SAVE_OK &&
+           resident.phase == SC_ROUTE && resident.party[0].level == 6 && gScProbe.interrupted);
     puts("Story runtime host scheduling/stat/pause/codec scaffold: OK (not emulator proof)");
     return 0;
 }
