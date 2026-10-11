@@ -44,6 +44,7 @@ def read_meta(emu):
 
 
 def select(emu, index):
+    emu.step(30)
     for _ in range(index):
         press(emu, "DOWN")
     press(emu, "N64_A")
@@ -57,10 +58,14 @@ def resolve_pending(emu, register=False):
     wait_scene(emu, 11)
     press(emu, "N64_A")
     wait_scene(emu, 12)
+    emu.step(30)
     while read_meta(emu).pending_registration_count:
         meta = read_meta(emu)
         count = sum(byte.bit_count() for byte in meta.pending_species)
         select(emu, 0 if register else count)
+        emu.wait(lambda runner: read_meta(runner).pending_registration_count !=
+                 meta.pending_registration_count, frames=1800,
+                 description="native registration/skip save")
         wait_scene(emu, 12)
         require(read_meta(emu).pending_registration_count ==
                 meta.pending_registration_count - 1, "choice consumed twice or not saved")
