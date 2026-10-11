@@ -267,6 +267,10 @@ LIB_DIRS      := $(foreach f, $(LIBULTRA_DIR), $f)
 C_FILES       := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 S_FILES       := $(foreach dir,$(ASM_DIRS) $(SRC_DIRS),$(wildcard $(dir)/*.s))
 
+# The story milestone is host-only until its graph and native bridge are reviewed.
+C_FILES       := $(filter-out src/story/%,$(C_FILES))
+S_FILES       := $(filter-out src/story/%,$(S_FILES))
+
 # Roguelike sources are only compiled and linked by the roguelike build.
 # `rl_rosters.o` is linked into fragmentRL with the scene to keep its large
 # generated trainer tables out of the native battle's resident heap.

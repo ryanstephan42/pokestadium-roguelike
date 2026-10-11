@@ -12,7 +12,22 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test clean
+.PHONY: test core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test story-test clean
+
+story-test:
+	cd .. && python3 tools/story_data.py
+	cd .. && python3 -m unittest host_tests.test_story_data
+	mkdir -p ../build/story
+	$(CC) $(CFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_progression.c \
+		../build/story/sc_data.c -o ../build/story/test_story
+	../build/story/test_story
+	$(CC) $(SANFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_progression.c \
+		../build/story/sc_data.c -o ../build/story/test_story_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_san
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_core.c -o ../build/story/sc_core.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_progression.c -o ../build/story/sc_progression.o
 
 test: core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test
 	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance
