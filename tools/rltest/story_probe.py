@@ -221,7 +221,132 @@ def capture_progress(emu, directory, label):
     raw, party = decode_party(emu, result)
     (directory / f"{label}-state.bin").write_bytes(raw)
     (directory / f"{label}-party.json").write_text(json.dumps(party, indent=2) + "\n")
+    (directory / f"{label}-save.bin").write_bytes(save_ram(emu)[1])
+    if result["active"]:
+        (directory / f"{label}-machine.json").write_text(
+            json.dumps(read_native_machine(emu), indent=2) + "\n")
     return result, progress, raw, party, memory
+
+
+def read_native_machine(emu):
+    def read(address, size):
+        require(0x80000000 <= address < address + size <= 0x80400000,
+                f"Native machine read outside granted cap4: {address:#x}+{size:#x}")
+        return emu.read(address, size)
+
+    machine_address = emu.read_u32(emu.resolve("D_84390240"))
+    machine = read(machine_address, 0xE0)
+    word = lambda data, offset: struct.unpack_from(">I", data, offset)[0]
+    half = lambda data, offset: struct.unpack_from(">H", data, offset)[0]
+    result = {
+        "address": machine_address, "raw": machine.hex(),
+        "mode": word(machine, 0x1C), "step": word(machine, 0x20),
+        "actor": half(machine, 0x2C), "sequence": word(machine, 0x30),
+        "action": word(machine, 0x38), "result": word(machine, 0x40),
+        "sides": [],
+    }
+    sides_address = emu.resolve("D_84390010")
+    for index in range(2):
+        address = emu.read_u32(sides_address + 4 * index)
+        control = read(address + 0x654, 0xCC)
+        team_address = emu.read_u32(address + 0x724)
+        team = read(team_address, 0x21C)
+        count, active = team[2], word(control, 8)
+        require(0 < count <= 6 and active < count, "Native machine party bounds mismatch")
+        hp = half(control, 0x44)
+        party_hp = [half(team, 0x1E + i * 0x54) for i in range(count)]
+        controller_address = word(control, 0xC8)
+        controller = read(controller_address, 0x0C)
+        result["sides"].append({
+            "address": address, "control_raw": control.hex(),
+            "team_address": team_address, "team_raw": team.hex(),
+            "active": active, "count": count, "hp": hp, "party_hp": party_hp,
+            "living": sum(value != 0 for value in party_hp),
+            "choice": word(control, 4), "menu": word(control, 0x10),
+            "move_slot": word(control, 0x14), "state": control[0x2D],
+            "queued_move": control[0x92],
+            "controller": controller_address,
+            "buttons_down": half(controller, 6), "buttons_pressed": half(controller, 8),
+            "moves": list(control[0x57:0x5B]),
+            "pp": [value & 63 for value in control[0x6A:0x6E]],
+        })
+    return result
+
+
+def synthetic_selector_input(probe, machine):
+    if (not probe["active"] or probe["phase"] != 1 or probe["resume"] or
+            machine["result"] or machine["mode"] != 1 or machine["sequence"] != 0):
+        return None
+    player = machine["sides"][0]
+    if not player["hp"]:
+        return None
+    if player["menu"] == 0 and player["choice"] == 0:
+        return "fight"
+    if player["menu"] == 1 and player["choice"] == 1:
+        require(0 < player["moves"][0] <= 165 and player["pp"][0] > 0,
+                "Synthetic selector requires usable native move slot 0")
+        return "move0"
+    return None
+
+
+def finish_synthetic_command(emu, directory):
+    end = emu.frame + 6000
+    previous = None
+    remaining = 0
+    held = None
+    with (directory / "ko_synthetic-machine-history.jsonl").open("w") as history:
+        try:
+            while True:
+                probe = read_probe(emu)
+                if not probe["command"]:
+                    break
+                require(probe["status"] == 0xFFFFFFFF or probe["status"] < 0x100,
+                        f"Synthetic native command failed: {probe}")
+                require(emu.frame < end, "Timed out waiting for story probe native command")
+                require(probe["active"] and
+                        (probe["phase"] == 1 or (probe["phase"] == 2 and probe["resume"] == 1)),
+                        f"Unexpected synthetic post-resume phase: {probe}")
+                machine = read_native_machine(emu)
+                controls = {key: machine[key] for key in
+                            ("mode", "step", "actor", "sequence", "action", "result", "sides")}
+                # Keep transition history durable before attempting any controller input.
+                if controls != previous:
+                    history.write(json.dumps({"frame": emu.frame, "probe": probe,
+                                              "machine": machine}) + "\n")
+                    history.flush()
+                    previous = controls
+                eligible = synthetic_selector_input(probe, machine)
+                if held and eligible != held:
+                    if held == "fight":
+                        emu.release("N64_A")
+                    else:
+                        emu.stick(right=True)
+                    held = None
+                    remaining = 12
+                if remaining:
+                    remaining -= 1
+                    if not remaining and held:
+                        if held == "fight":
+                            emu.release("N64_A")
+                        else:
+                            emu.stick(right=True)
+                        held = None
+                        remaining = 12
+                else:
+                    held = eligible
+                    if held:
+                        history.write(json.dumps({"frame": emu.frame, "input": held}) + "\n")
+                        history.flush()
+                        if held == "fight":
+                            emu.hold("N64_A")
+                        else:
+                            emu.stick(0, -32767, right=True)
+                        remaining = 12
+                emu.step()
+        finally:
+            emu.release("N64_A")
+            emu.stick(right=True)
+    return finish_command(emu)
 
 
 def require_learning_storage(prebattle, paused, held):
@@ -622,7 +747,10 @@ def phase(args):
             validate_memory(held_memory, held)
             set_field(emu, "resume", 1)
             try:
-                result = finish_command(emu)
+                if args.phase == "ko_synthetic":
+                    result = finish_synthetic_command(emu, directory)
+                else:
+                    result = finish_command(emu)
             except HarnessError:
                 capture_progress(emu, directory, f"{args.phase}-failure")
                 raise

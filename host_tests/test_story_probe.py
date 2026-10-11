@@ -25,11 +25,119 @@ from tools.rltest.story_probe import (
     require_resume_native,
     require_learning_storage,
     require_probe_profile,
+    read_native_machine,
+    synthetic_selector_input,
+    finish_synthetic_command,
 )
 from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_native_machine_fresh_enemy_party_and_bounds(self):
+        machine_address, side0, side1 = 0x80100000, 0x80101000, 0x80103000
+        team0, team1 = 0x800AE544, 0x800AE760
+        machine = bytearray(0xE0)
+        struct.pack_into(">I", machine, 0x1C, 1)
+        control0, control1 = bytearray(0xCC), bytearray(0xCC)
+        struct.pack_into(">H", control0, 0x44, 24)
+        struct.pack_into(">I", control0, 0xC8, 0x80010000)
+        struct.pack_into(">I", control1, 0xC8, 0x80010020)
+        team = bytearray(0x21C)
+        team[2] = 1
+        struct.pack_into(">H", team, 0x1E, 24)
+        foe = bytearray(team)
+        struct.pack_into(">H", foe, 0x1E, 0)
+        blocks = {machine_address: machine, side0 + 0x654: control0,
+                  side1 + 0x654: control1, team0: team, team1: foe,
+                  0x80010000: bytes(12), 0x80010020: bytes(12)}
+        pointers = {0x80200000: machine_address, 0x80200010: side0,
+                    0x80200014: side1, side0 + 0x724: team0, side1 + 0x724: team1}
+        emu = Mock()
+        emu.resolve.side_effect = {"D_84390240": 0x80200000,
+                                   "D_84390010": 0x80200010}.__getitem__
+        emu.read_u32.side_effect = pointers.__getitem__
+        emu.read.side_effect = lambda address, size: bytes(blocks[address][:size])
+        initial = read_native_machine(emu)
+        self.assertEqual(initial["sides"][1]["living"], 0)
+        struct.pack_into(">H", foe, 0x1E, 3)
+        struct.pack_into(">H", control1, 0x44, 3)
+        current = read_native_machine(emu)
+        self.assertEqual(current["sides"][1]["party_hp"], [3])
+        self.assertEqual(current["sides"][1]["hp"], 3)
+        self.assertEqual(initial["sides"][1]["party_hp"], [0])
+        pointers[side1 + 0x724] = 0x80400000
+        with self.assertRaisesRegex(HarnessError, "cap4"):
+            read_native_machine(emu)
+        pointers[side1 + 0x724] = team1
+        struct.pack_into(">I", control1, 8, 1)
+        with self.assertRaisesRegex(HarnessError, "party bounds"):
+            read_native_machine(emu)
+
+    def test_synthetic_selector_only_drives_unqueued_fight_and_move(self):
+        probe = dict(active=1, phase=1, resume=0)
+        machine = dict(mode=1, sequence=0, result=0,
+                       sides=[dict(hp=24, menu=0, choice=0, moves=[33, 45, 0, 73],
+                                   pp=[35, 40, 0, 10])])
+        self.assertEqual(synthetic_selector_input(probe, machine), "fight")
+        machine["sides"][0].update(menu=1, choice=1)
+        self.assertEqual(synthetic_selector_input(probe, machine), "move0")
+        for changed_probe in ({**probe, "phase": 2}, {**probe, "resume": 1},
+                              {**probe, "active": 0}):
+            self.assertIsNone(synthetic_selector_input(changed_probe, machine))
+        for key, value in (("mode", 2), ("sequence", 1), ("result", 1)):
+            self.assertIsNone(synthetic_selector_input(probe, {**machine, key: value}))
+        for changed_side in (dict(hp=0, menu=1, choice=1),
+                             dict(hp=24, menu=3, choice=1),
+                             dict(hp=24, menu=0, choice=2),
+                             dict(hp=24, menu=1, choice=0)):
+            self.assertIsNone(synthetic_selector_input(probe, {**machine, "sides": [changed_side]}))
+        machine["sides"][0]["pp"][0] = 0
+        with self.assertRaisesRegex(HarnessError, "usable native move"):
+            synthetic_selector_input(probe, machine)
+
+    def test_synthetic_command_preserves_deadline_and_releases_input(self):
+        from tools.rltest import story_probe
+        emu = Mock(frame=0)
+        emu.step.side_effect = lambda: setattr(emu, "frame", emu.frame + 1)
+        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, resume=0)
+        machine = dict(mode=1, step=0, actor=0, sequence=0, action=0, result=0,
+                       sides=[dict(hp=24, menu=0, choice=0)])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe", return_value=probe), \
+                patch.object(story_probe, "read_native_machine", return_value=machine):
+            with self.assertRaisesRegex(HarnessError, "Timed out"):
+                finish_synthetic_command(emu, Path(temporary))
+            self.assertEqual(emu.frame, 6000)
+            history = (Path(temporary) / "ko_synthetic-machine-history.jsonl").read_text()
+            self.assertIn('"machine":', history)
+            self.assertIn('"input": "fight"', history)
+        emu.release.assert_called_with("N64_A")
+        emu.stick.assert_called_with(right=True)
+        emu.write.assert_not_called()
+        emu.write_u32.assert_not_called()
+
+    def test_synthetic_driver_waits_for_resume_and_releases_at_queue(self):
+        from tools.rltest import story_probe
+        emu = Mock(frame=0)
+        emu.step.side_effect = lambda: setattr(emu, "frame", emu.frame + 1)
+        probe = dict(command=3, status=0xFFFFFFFF, active=1, phase=1, resume=0)
+        machine = dict(mode=1, step=0, actor=0, sequence=0, action=0, result=0,
+                       sides=[dict(hp=24, menu=0, choice=0)])
+        pending = {**probe, "phase": 2, "resume": 1}
+        queued = {**machine, "sides": [dict(hp=24, menu=3, choice=1)]}
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe",
+                             side_effect=[pending, probe, probe, {"command": 0}]), \
+                patch.object(story_probe, "read_native_machine",
+                             side_effect=[machine, machine, queued]), \
+                patch.object(story_probe, "finish_command", return_value={"command": 0}):
+            self.assertEqual(finish_synthetic_command(emu, Path(temporary)), {"command": 0})
+            emu.hold.assert_called_once_with("N64_A")
+            calls = [call[0] for call in emu.mock_calls]
+            self.assertEqual(calls[:5], ["step", "hold", "step", "release", "step"])
+        emu.write.assert_not_called()
+        emu.write_u32.assert_not_called()
+
     def test_ko_profile_rejects_bridge_before_frontend(self):
         from tools.rltest import story_probe
         with tempfile.TemporaryDirectory() as temporary:

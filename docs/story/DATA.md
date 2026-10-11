@@ -883,6 +883,47 @@ Normal RL ROM remains the prior story-branch hash `a4fab9f9...125d`, not a
 claim of merged-master identity. No emulator rerun is authorized for this
 profile until source review and a new explicit bounded grant.
 
+#### Synthetic KO post-resume timeout and selector candidate
+
+The separately granted exact `2b78aa5` KO-profile run passed required resources
+(100 allocation attempts, zero failures), the 69-XP/stat-experience award,
+canonical L7/XP304 stats, the fresh 60-frame learning hold, byte-identical
+prebattle/paused/held saves, and one Leech Seed/PP10 publication. The validator
+accepted only those intermediate boundaries. Execution then exhausted the
+unchanged 6,000-frame command deadline with native ownership still active,
+story phase BATTLE, one KO/resume, and terminal capture zero. No RESULT,
+terminal carry, commit or reload is accepted. Evidence remains immutable in
+`.local/rltest/story-ko-synthetic-2b78aa5/`; the process-free slot was released.
+
+Source trace distinguishes two paths: `sc_runtime_probe_tick` forces only live
+and original enemy HP to zero, then immediately observes that value for story
+XP. It does not run native move selection or queue a faint/result sequence.
+`func_8430F8B8` queues a round only after both side menus reach state 3, through
+`func_84320108` and `func_8437345C`. Native zero-HP handling then goes through
+`func_843732B8`/`func_84373018`, sums actual remaining party HP, sets native
+side state 0x12 for an exhausted party, and proceeds through faint animation
+and the result sequence. The previous `finish_command` merely waits with L
+held; it supplies no Fight/C-button move selection after entry/resume.
+Its original captures do not include the enemy/queued-actor machine state,
+so the precise stalled native selector/animation state is not recoverable
+from that run. Missing selection is a source-supported scheduling candidate,
+not an emulator-confirmed root cause or proof that no enemy remained alive.
+
+The harness-only candidate captures actual native control, both original
+parties, remaining living counts, current/queued actors, machine result and
+controller masks while ownership is valid. Active boundary/failure save bytes
+are also durable. Only `ko_synthetic` post-resume gets a selector driver:
+in native mode 1/sequence 0 with result zero and a living player, choose Fight
+from menu 0/choice 0, or native move slot 0 from menu 1/choice 1. It uses normal
+N64 A/right-stick C-Up input, rejects an unusable slot, and never writes HP,
+PP, status, stages, party records, native result or story resume again.
+Transition/input history is flushed before input, with the same 6,000-frame
+budget including input frames. The paused hold has no driver; queued/menu-3,
+animation, terminal, switch and surrender states receive no input. Natural
+KO and bridge flows remain unchanged and ungranted. All target code, ABI,
+pool layout and frozen ROM/map/ELF are unchanged; this candidate needs source
+review and a separate native grant, with strict resources still required.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
