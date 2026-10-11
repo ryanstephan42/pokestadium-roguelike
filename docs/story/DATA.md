@@ -803,7 +803,11 @@ Learning snapshots record the freshly published original/live native records.
 Each held frame rereads them and rejects drift before resume, without
 correction. Harness evidence checks fresh resident/native/combat equality,
 unchanged XP/KO/logic/presentation and increasing render-pause count across
-60 frames. One resume accepts Leech Seed 73 into slot 3 with PP/max PP 10,
+60 frames. The gate-call `ticks` counter continues increasing while held;
+it is not battle logic advancement. Durable paused and held save captures
+must each equal the prebattle save bytes before resume, independently of
+the later legitimate terminal commit. A helper regression rejects mutations
+at either storage boundary. One resume accepts Leech Seed 73 into slot 3 with PP/max PP 10,
 captures immediate original/live publication and requires unchanged stages,
 canonical stats plus status modifiers, and unrelated party fields.
 

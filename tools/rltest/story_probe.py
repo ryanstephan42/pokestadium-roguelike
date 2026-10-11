@@ -224,6 +224,11 @@ def capture_progress(emu, directory, label):
     return result, progress, raw, party, memory
 
 
+def require_learning_storage(prebattle, paused, held):
+    require(paused == prebattle, "Learning pause changed durable prebattle storage")
+    require(held == prebattle, "Learning hold changed durable prebattle storage")
+
+
 def require_fixture_party(party, hp=17, pp=7, status=4):
     require(len(party) == 1, "Checkpoint fixture party count mismatch")
     mon = party[0]
@@ -563,6 +568,10 @@ def phase(args):
                 raise
             paused, progress, resident, paused_party, paused_memory = capture_progress(
                 emu, directory, f"{args.phase}-learning")
+            paused_save = save_ram(emu)[1]
+            (directory / f"{args.phase}-learning-save.bin").write_bytes(paused_save)
+            prebattle_save = (directory / f"{args.phase}-prebattle-save.bin").read_bytes()
+            require_learning_storage(prebattle_save, paused_save, paused_save)
             require_ko_progress(progress, synthetic)
             validate_memory(paused_memory, paused)
             paused = read_probe(emu)
@@ -590,6 +599,9 @@ def phase(args):
             emu.step(60)
             held, held_progress, held_state, held_party, held_memory = capture_progress(
                 emu, directory, f"{args.phase}-held")
+            held_save = save_ram(emu)[1]
+            (directory / f"{args.phase}-held-save.bin").write_bytes(held_save)
+            require_learning_storage(prebattle_save, paused_save, held_save)
             held_native = read_bridge(emu)
             require(held["pause_ticks"] > paused["pause_ticks"], "Learning pause did not pump frames")
             require(held_state == resident and held_party == paused_party and held_progress == progress and

@@ -23,11 +23,21 @@ from tools.rltest.story_probe import (
     require_ko_progress,
     read_progress,
     require_resume_native,
+    require_learning_storage,
 )
 from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_learning_storage_rejects_pause_and_hold_writes(self):
+        prebattle = bytes(1536)
+        changed = b"\1" + prebattle[1:]
+        require_learning_storage(prebattle, prebattle, prebattle)
+        with self.assertRaisesRegex(HarnessError, "Learning pause changed"):
+            require_learning_storage(prebattle, changed, changed)
+        with self.assertRaisesRegex(HarnessError, "Learning hold changed"):
+            require_learning_storage(prebattle, prebattle, changed)
+
     def test_ko_progression_and_terminal_carry_rejections(self):
         before = dict(species=1, level=6, exp=235, dvs=0x8889, hp=20, max_hp=22,
                       status=0, fainted=0, moves=[33, 45, 0, 0], pp=[34, 40, 0, 0],
