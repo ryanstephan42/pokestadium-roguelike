@@ -10,7 +10,10 @@ from tools.story_data import (
     DataError, REVISION, Source, base_stats, clean, construct_moves,
     constants, object_battles, trainer_key,
     retirement_audit,
+    rival_branch_audit, ship_retirement,
+    access_fact_audit,
 )
+from tools.story_graph import advance, available, candidate, traverse
 
 
 class ParserTests(unittest.TestCase):
@@ -25,6 +28,8 @@ db 3
 ENDC"""
         self.assertEqual(list(clean(text, "red")), [(2, "db 1")])
         self.assertEqual(list(clean(text, "blue")), [(4, "db 2")])
+        self.assertEqual(list(clean("IF DEF(_RED_VC) || DEF(_BLUE_VC)\ndb 1\nELSE\ndb 2\nENDC",
+                                    "red")), [(4, "db 2")])
         for text in ("ELSE", "ENDC", "IF DEF(_RED)", "IF BAD"):
             with self.assertRaises(DataError):
                 list(clean(text, "red"))
@@ -118,6 +123,35 @@ class CanonicalInventoryTests(unittest.TestCase):
             self.assertEqual(team[0]["moves"][2], 143)
             self.assertEqual(team[5]["moves"][2], move)
 
+    def test_rival_selector_and_ship_window_evidence(self):
+        self.assertEqual(self.data["rival_branch_audit"]["red"],
+                         self.data["rival_branch_audit"]["blue"])
+        self.assertEqual(len(self.data["rival_branch_audit"]["red"]), 8)
+        entries = {e["id"]: e for e in self.data["encounters"]["red"]}
+        for audit in self.data["rival_branch_audit"]["red"]:
+            entry = entries[audit["id"]]
+            self.assertEqual(audit["party_indices"],
+                             list(range(entry["party"], entry["party"] + 3)))
+            self.assertEqual(audit["starter_constants"], [2, 3, 1])
+        windows = self.data["event_retirement_audit"]["red"]
+        self.assertEqual(windows, self.data["event_retirement_audit"]["blue"])
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(len(windows[0]["retires"]), 17)
+        self.assertIn("SSAnne2F/rival-ship", windows[0]["retires"])
+        self.assertEqual(windows[0]["requires_event"], "EVENT_GOT_HM01")
+        source = Source(Path(__file__).resolve().parents[1] / ".local/story-source", False)
+        source.paths()
+        scripts = {audit["source"]: source.get(audit["source"])
+                   for audit in self.data["rival_branch_audit"]["red"]}
+        scripts["scripts/OaksLab.asm"] = scripts["scripts/OaksLab.asm"].replace(
+            "ld a, $1\n\tjr .done", "ld a, $2\n\tjr .done")
+        with self.assertRaisesRegex(DataError, "team IDs"):
+            rival_branch_audit(scripts, "red")
+        scripts["scripts/VermilionDock.asm"] = source.get("scripts/VermilionDock.asm").replace(
+            "CheckEventReuseHL EVENT_GOT_HM01", "CheckEventReuseHL EVENT_BEAT_SS_ANNE_RIVAL")
+        with self.assertRaises(ValueError):
+            ship_retirement(list(entries.values()), scripts, "red")
+
     def test_finite_static_schedule(self):
         entries = self.data["encounters"]["red"]
         wild = [e["teams"][0][0] for e in entries if e["kind"] == "static"]
@@ -201,6 +235,82 @@ class CanonicalInventoryTests(unittest.TestCase):
                 with self.assertRaisesRegex(DataError, "Wrong source tree"):
                     source.paths()
             self.assertFalse(destination.exists())
+
+    def test_candidate_full_traversals(self):
+        for version in ("red", "blue"):
+            for branch in range(3):
+                for fossil in range(2):
+                    graph = candidate(self.data, version, branch, fossil)
+                    order, retired = traverse(graph)
+                    self.assertFalse(graph["reviewed"])
+                    self.assertEqual(set(order), set(graph["nodes"]))
+                    self.assertFalse(retired)
+                    self.assertEqual(len(set(order) & graph["encounters"].keys()), 361)
+                    rivals = [e for e in graph["encounters"].values() if e["kind"] == "rival"]
+                    self.assertEqual(len(rivals), 8)
+                    for entry in rivals:
+                        variant = graph["nodes"][entry["id"]]["variant"]
+                        self.assertEqual(variant, branch)
+                        self.assertIn(entry["teams"][variant][-1]["species"],
+                                      ((7, 8, 9), (1, 2, 3), (4, 5, 6))[branch])
+                    self.assertEqual(graph["nodes"]["travel:fossil"]["variant"], fossil)
+                    self.assertEqual(graph["nodes"][graph["fossil_offer"]]["variant"], fossil)
+                    self.assertLess(order.index("travel:scope"),
+                                    order.index("PokemonTower6F/ghost"))
+                    self.assertLess(order.index("ChampionsRoom/rival-champion"),
+                                    next(i for i, e in enumerate(order) if e.startswith("CeruleanCave")))
+        with self.assertRaises(DataError):
+            candidate(self.data, "yellow")
+        with self.assertRaises(DataError):
+            candidate(self.data, "red", 3)
+
+    def test_access_fact_evidence(self):
+        facts = self.data["access_fact_audit"]["red"]
+        self.assertEqual(facts, self.data["access_fact_audit"]["blue"])
+        self.assertEqual(len(facts), 13)
+        self.assertEqual(len({fact["id"] for fact in facts}), 13)
+        self.assertTrue(all(fact["line"] <= fact["end_line"] for fact in facts))
+        source = Source(Path(__file__).resolve().parents[1] / ".local/story-source", False)
+        source.paths()
+        original = source.get
+        def altered(path):
+            return original(path).replace("bit BIT_CASCADEBADGE, a", "bit BIT_SOULBADGE, a")
+        with patch.object(source, "get", side_effect=altered):
+            with self.assertRaisesRegex(DataError, "cut_badge"):
+                access_fact_audit(source, "red")
+
+    def test_candidate_optional_routes_and_retirement(self):
+        for route in ("east", "west"):
+            graph = candidate(self.data, "red")
+            if route == "west":
+                graph["nodes"]["travel:fuchsia"]["clauses"].reverse()
+            completed, retired = set(), set()
+            def reach(identifier):
+                if identifier in completed:
+                    return
+                self.assertNotIn(identifier, retired)
+                clause = graph["nodes"][identifier]["clauses"][0]
+                for dependency in clause:
+                    reach(dependency)
+                advance(graph, completed, retired, identifier)
+            reach("travel:fuchsia")
+            self.assertIn("Route12/snorlax" if route == "east" else "Route16/snorlax", completed)
+            self.assertNotIn("Route16/snorlax" if route == "east" else "Route12/snorlax", completed)
+            self.assertTrue(available(graph, completed, retired,
+                                      "Route19/TEXT_ROUTE19_COOLTRAINER_M1"))
+            self.assertFalse(available(graph, completed, retired,
+                                       "Route19/TEXT_ROUTE19_SWIMMER1"))
+            # Reaching one coast does not erase the other coast's finite encounters.
+            reach("Route16/snorlax" if route == "east" else "Route12/snorlax")
+            reach("ChampionsRoom/rival-champion")
+            reach("travel:ship-departure")
+            self.assertIn("Route22/rival-early", retired)
+            self.assertIn("SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER", retired)
+            self.assertFalse(available(graph, completed, retired, "Route22/rival-early"))
+            self.assertNotIn("SilphCo7F/gift-lapras", retired)
+            self.assertFalse(set(graph["encounters"]) <= completed)
+            with self.assertRaises(DataError):
+                advance(graph, completed, retired, "Route22/rival-early")
 
     def test_construct_every_species_level(self):
         for mon in self.data["species"]:

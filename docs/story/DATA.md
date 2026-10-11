@@ -102,9 +102,61 @@ Silph evidence:
 [`SilphCo11F.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/SilphCo11F.asm#L73-L146),
 `constants/toggle_constants.asm` and `data/maps/toggleable_objects.asm`.
 These 76 retirements are independently bounded facts, **not a complete graph**.
-Ship departure, rival prerequisites, static permissions, route access and
+Ship departure is also checked as a distinct event window: all 17 ship
+encounters become inaccessible only after receiving HM01 and exiting through
+dock destination warp 1. Winning the ship rival is not itself the retirement
+trigger. The menu must warn before the departure action, allowing remaining
+ship trainers to be visited first.
+[`VermilionDock.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/VermilionDock.asm#L5-L11)
+provides the checked conditional sequence.
+
+All eight rival selectors are now checked against their actual script branch
+jumps/team loads (including Route 22's starter table lookup), not merely the
+presence of an `OPP_RIVAL` operand. Their source party index order is
+STARTER2/STARTER3/STARTER1, consistently Squirtle/Bulbasaur/Charmander.
+Rival prerequisites, static permissions, route access and
 full branch/version traversals remain under review. The C emitter deliberately
 does not install these partial rules or change `graph_reviewed = 0`.
+
+### Access facts and candidate traversals
+
+Thirteen exact source sequences are now checked in both retail versions and
+recorded with source line ranges: Cut/Cascade, Surf/Soul and Strength/Rainbow
+badge eligibility; the corresponding HM acquisitions; Tower Silph Scope
+identification; both finite Snorlax/Flute triggers; fossil choice exclusion;
+Old Amber acquisition; seven badges opening Viridian Gym; and Hall of Fame
+removing the Cerulean Cave guard. Virtual Console-only battle patches are
+explicitly excluded, just as debug-only code is excluded.
+
+Important references:
+[`start_sub_menus.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/engine/menus/start_sub_menus.asm#L152-L180),
+[`core.asm`, IsGhostBattle](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/engine/battle/core.asm#L3309-L3324),
+[`item_effects.asm`, ItemUsePokeFlute](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/engine/items/item_effects.asm#L1671-L1702),
+[`HallOfFame.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/HallOfFame.asm#L99-L101).
+Battle core source has a separately bounded 256 KiB download allowance; all
+other allowlisted source files retain the 128 KiB limit.
+
+`tools/story_graph.py` is a **host-only candidate policy**, separate from the C
+catalog. It gives all 361 inventory IDs explicit region/dependency clauses and
+21 nonbattle milestone nodes. Full sweeps cover both versions, all three
+locked rival branches and both fossil choices (12 traversals), without
+duplicate encounters or dangling edges. Destructive milestones are postponed
+until available optional encounters are consumed; minimal eastern/western
+Fuchsia traversals instead exercise skipped encounters and retirement.
+Both Fuchsia approaches remain usable, field permissions require the correct
+badge, no HM move slot is required, and the selected fossil branch carries
+through to its single revival offer. Ship departure is a separate action.
+
+**Those tests prove candidate-graph invariants, not canonical overworld
+reachability.** They do not prove that all 361 IDs can actually be fought on one
+original-game playthrough. Remaining source/topology review includes forced
+Nugget Bridge/exit paths, Card Key/warp paths, route partition boundaries
+(notably Route 19 shore interactions), and mandatory versus optional late
+rival traversal. Free nonbattle travel/item actions are the planned menu
+adaptation, not trainer wins or extra XP. Saffron beverage/Bicycle/Safari
+prerequisites require a clearly documented no-economy adaptation.
+The candidate remains `reviewed = False`; it is not emitted into either ROM
+or used to bypass `SC_UNREVIEWED`.
 
 ## Isolated C89 progression
 

@@ -74,6 +74,9 @@ def clean(text, version=None):
         if match:
             require(version is not None, "Version conditional without version")
             active.append(active[-1] and match[1] == "_" + version.upper())
+        elif line == "IF DEF(_RED_VC) || DEF(_BLUE_VC)":
+            require(version is not None, "Version conditional without version")
+            active.append(False)
         elif line == "ELSE":
             require(len(active) > 1, f"Unexpected ELSE at {number}")
             active[-1] = active[-2] and not active[-1]
@@ -128,20 +131,23 @@ class Source:
                            "engine/pokemon/experience.asm",
                            "engine/pokemon/evos_moves.asm", "engine/pokemon/add_mon.asm",
                            "engine/battle/read_trainer_party.asm", "engine/battle/experience.asm"}
+                   or path in {"engine/items/item_effects.asm",
+                               "engine/menus/start_sub_menus.asm", "engine/battle/core.asm"}
                    or re.fullmatch(r"data/pokemon/base_stats/\w+\.asm", path)
                    or re.fullmatch(r"data/maps/objects/\w+\.asm", path)
                    or re.fullmatch(r"scripts/\w+\.asm", path))
         require(allowed, f"Source path not allowlisted: {path}")
+        limit = 256 * 1024 if path == "engine/battle/core.asm" else 128 * 1024
         destination = self.root / path
         if not destination.exists():
             require(self.fetch, f"Missing cached source {path}; run with --fetch")
             with urllib.request.urlopen(RAW + path, timeout=45) as response:
-                data = response.read(128 * 1024 + 1)
-            require(len(data) <= 128 * 1024, f"Oversized source {path}")
+                data = response.read(limit + 1)
+            require(len(data) <= limit, f"Oversized source {path}")
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(data)
         data = destination.read_bytes()
-        require(len(data) <= 128 * 1024, f"Oversized cached source {path}")
+        require(len(data) <= limit, f"Oversized cached source {path}")
         require(path in self.blobs, f"Source absent from pinned tree: {path}")
         blob = hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
         require(blob == self.blobs[path], f"Source hash mismatch: {path}")
@@ -399,6 +405,147 @@ def silph_retirement(encounters, scripts, toggle_constants, toggle_objects, vers
                                 "data/maps/toggleable_objects.asm"]}
 
 
+def rival_branch_audit(scripts, version):
+    result = []
+    for area, stage, class_name, first in RIVALS:
+        path = f"scripts/{area}.asm"
+        rows = list(clean(scripts[path], version))
+        if area == "Route22":
+            helper = [code for _, code in rows]
+            begin = helper.index("Route22GetRivalTrainerNoByStarterScript:")
+            require(helper[begin + 1:begin + 14] == [
+                "ld a, [wRivalStarter]", "ld b, a", ".next_trainer_no",
+                "ld a, [hli]", "cp b", "jr z, .got_trainer_no", "inc hl",
+                "jr .next_trainer_no", ".got_trainer_no", "ld a, [hl]",
+                "ld [wTrainerNo], a", "ret", "Route22MoveRivalRightScript:"],
+                "Changed Route22 rival lookup semantics")
+            start = next(i for i, (_, code) in enumerate(rows)
+                         if code == "ld a, OPP_" + class_name)
+            tables = [i for i in range(start, len(rows)) if rows[i][1] == ".StarterTable:"]
+            require(tables, f"Missing rival starter table: {stage}")
+            table = rows[tables[0] + 1:tables[0] + 4]
+            require([code for _, code in table] ==
+                    [f"db STARTER{starter}, {first + branch}"
+                     for branch, starter in enumerate((2, 3, 1))],
+                    f"Changed rival starter table: {stage}")
+            require("call Route22GetRivalTrainerNoByStarterScript" in
+                    [code for _, code in rows[start:tables[0]]],
+                    f"Unreferenced rival starter table: {stage}")
+            line = table[0][0]
+        else:
+            start = next(i for i, (_, code) in enumerate(rows)
+                         if code == "ld a, OPP_" + class_name)
+            load = next(i for i in range(start, len(rows))
+                        if rows[i][1] == "ld a, [wRivalStarter]")
+            end = next(i for i in range(load, len(rows))
+                       if rows[i][1] == "ld [wTrainerNo], a")
+            block = [code.rstrip(":") for _, code in rows[load + 1:end]]
+            require(len(block) == 12, f"Changed rival selector: {area}")
+            require(block[0] == "cp STARTER2" and block[5] == "cp STARTER3",
+                    f"Changed rival branch order: {area}")
+            second, third, done = block[4], block[9], block[11]
+            require(all(re.fullmatch(r"\.\w+", label) for label in (second, third, done)) and
+                    len({second, third, done}) == 3 and
+                    block[1] == f"jr nz, {second}" and block[6] == f"jr nz, {third}" and
+                    block[3] == block[8] == f"jr {done}",
+                    f"Changed rival branch jumps: {area}")
+            actual = []
+            for index in (2, 7, 10):
+                require(block[index].startswith("ld a, "), f"Changed rival team load: {area}")
+                actual.append(number(block[index][6:]))
+            require(actual == [first, first + 1, first + 2],
+                    f"Changed rival team IDs: {area}")
+            line = rows[load][0]
+        result.append({"id": f"{area}/rival-{stage}", "source": path, "line": line,
+                       "class": class_name,
+                       "starter_constants": [2, 3, 1],
+                       "party_indices": [first, first + 1, first + 2]})
+    return result
+
+
+def ship_retirement(encounters, scripts, version):
+    path = "scripts/VermilionDock.asm"
+    rows = list(clean(scripts[path], version))
+    codes = [code for _, code in rows]
+    expected = ["CheckEventReuseHL EVENT_GOT_HM01", "ret z",
+                "ld a, [wDestinationWarpID]", "cp $1", "ret nz",
+                "CheckEventReuseHL EVENT_SS_ANNE_LEFT",
+                "jp z, VermilionDockSSAnneLeavesScript"]
+    start = codes.index(expected[0])
+    require(codes[start:start + len(expected)] == expected, "Changed ship departure condition")
+    depart = codes.index("VermilionDockSSAnneLeavesScript:")
+    require(codes[depart + 1] == "SetEventForceReuseHL EVENT_SS_ANNE_LEFT",
+            "Changed ship departure event")
+    retired = [e["id"] for e in encounters if e["area"].startswith("SSAnne")]
+    require(len(retired) == 17, "Changed ship encounter count")
+    return {"after_event": "EVENT_SS_ANNE_LEFT", "retires": sorted(retired),
+            "source": path, "line": rows[start][0],
+            "requires_event": "EVENT_GOT_HM01", "destination_warp": 1,
+            "note": "Winning the ship rival alone does not depart the ship."}
+
+
+def access_fact_audit(source, version):
+    facts = []
+    specifications = (
+        ("cut_badge", "engine/menus/start_sub_menus.asm",
+         [".cut", "bit BIT_CASCADEBADGE, a", "jp z, .newBadgeRequired"]),
+        ("surf_badge", "engine/menus/start_sub_menus.asm",
+         [".surf", "bit BIT_SOULBADGE, a", "jp z, .newBadgeRequired"]),
+        ("strength_badge", "engine/menus/start_sub_menus.asm",
+         [".strength", "bit BIT_RAINBOWBADGE, a", "jp z, .newBadgeRequired"]),
+        ("tower_scope", "engine/battle/core.asm",
+         ["IsGhostBattle:", "ld a, [wIsInBattle]", "dec a", "ret nz",
+          "ld a, [wCurMap]", "cp POKEMON_TOWER_1F", "jr c, .next",
+          "cp POKEMON_TOWER_7F + 1", "jr nc, .next", "ld b, SILPH_SCOPE",
+          "call IsItemInBag", "ret z"]),
+        ("snorlax_flute", "engine/items/item_effects.asm",
+         ["ItemUsePokeFlute:", "ld a, [wIsInBattle]", "and a", "jr nz, .inBattle",
+          "call ItemUseReloadOverworldData", "ld a, [wCurMap]", "cp ROUTE_12",
+          "jr nz, .notRoute12", "CheckEvent EVENT_BEAT_ROUTE12_SNORLAX",
+          "jr nz, .noSnorlaxToWakeUp", "ld hl, Route12SnorlaxFluteCoords",
+          "call ArePlayerCoordsInArray", "jr nc, .noSnorlaxToWakeUp",
+          "ld hl, PlayedFluteHadEffectText", "call PrintText",
+          "SetEvent EVENT_FIGHT_ROUTE12_SNORLAX"]),
+        ("snorlax_flute_west", "engine/items/item_effects.asm",
+         [".notRoute12", "cp ROUTE_16", "jr nz, .noSnorlaxToWakeUp",
+          "CheckEvent EVENT_BEAT_ROUTE16_SNORLAX", "jr nz, .noSnorlaxToWakeUp",
+          "ld hl, Route16SnorlaxFluteCoords", "call ArePlayerCoordsInArray",
+          "jr nc, .noSnorlaxToWakeUp", "ld hl, PlayedFluteHadEffectText",
+          "call PrintText", "SetEvent EVENT_FIGHT_ROUTE16_SNORLAX"]),
+        ("postgame_cave", "scripts/HallOfFame.asm",
+         ["ld a, TOGGLE_CERULEAN_CAVE_GUY", "ld [wToggleableObjectIndex], a",
+          "predef HideObject"]),
+        ("cut_acquisition", "scripts/SSAnneCaptainsRoom.asm",
+         ["lb bc, HM_CUT, 1", "call GiveItem", "jr nc, .bag_full",
+          "ld hl, SSAnneCaptainsRoomCaptainReceivedHM01Text", "call PrintText",
+          "SetEvent EVENT_GOT_HM01"]),
+        ("surf_acquisition", "scripts/SafariZoneSecretHouse.asm",
+         ["lb bc, HM_SURF, 1", "call GiveItem", "jr nc, .bag_full",
+          "ld hl, .ReceivedHM03Text", "call PrintText", "SetEvent EVENT_GOT_HM03"]),
+        ("strength_acquisition", "scripts/WardensHouse.asm",
+         ["lb bc, HM_STRENGTH, 1", "call GiveItem", "jr nc, .bag_full",
+          "ld hl, .ReceivedHM04Text", "call PrintText", "SetEvent EVENT_GOT_HM04"]),
+        ("amber_acquisition", "scripts/Museum1F.asm",
+         ["lb bc, OLD_AMBER, 1", "call GiveItem", "jr nc, .bag_full",
+          "SetEvent EVENT_GOT_OLD_AMBER"]),
+        ("fossil_exclusion", "scripts/MtMoonB2F.asm",
+         ["MtMoonB2FCheckGotAFossil:", "CheckEitherEventSet EVENT_GOT_DOME_FOSSIL, EVENT_GOT_HELIX_FOSSIL",
+          "jp z, CheckFightingMapTrainers", "ret"]),
+        ("viridian_seven_badges", "scripts/ViridianCity.asm",
+         ["ld a, [wObtainedBadges]", "cp ~(1 << BIT_EARTHBADGE)",
+          "jr nz, .gym_closed", "SetEvent EVENT_VIRIDIAN_GYM_OPEN"]),
+    )
+    for identifier, path, expected in specifications:
+        rows = list(clean(source.get(path), version))
+        codes = [code for _, code in rows]
+        starts = [i for i, code in enumerate(codes)
+                  if codes[i:i + len(expected)] == expected]
+        require(len(starts) == 1, f"Changed access fact: {identifier}")
+        facts.append({"id": identifier, "source": path, "line": rows[starts[0]][0],
+                      "end_line": rows[starts[0] + len(expected) - 1][0]})
+    return facts
+
+
 def retirement_audit(encounters, scripts, version):
     """Check bounded retirement facts, not general assembly control flow."""
     rules = []
@@ -455,7 +602,11 @@ def audit(source):
     dex = constants(source.get("constants/pokedex_constants.asm"))
     dex = {name: value for name, value in dex.items() if name.startswith("DEX_")}
     require(len(dex) == 151 and set(dex.values()) == set(range(1, 152)), "Invalid dex")
-    internal = constants(source.get("constants/pokemon_constants.asm"))
+    pokemon_constants = source.get("constants/pokemon_constants.asm")
+    internal = constants(pokemon_constants)
+    for starter, species_name in ((1, "CHARMANDER"), (2, "SQUIRTLE"), (3, "BULBASAUR")):
+        require(re.search(rf"^DEF STARTER{starter} EQU {species_name}$",
+                          pokemon_constants, re.M), "Changed starter constant identity")
     move_ids, pp = moves(source.get("data/moves/moves.asm"))
     base_paths = sorted(p for p in paths if re.fullmatch(r"data/pokemon/base_stats/\w+\.asm", p))
     if "data/pokemon/base_stats/mew.asm" not in base_paths:
@@ -583,6 +734,14 @@ def audit(source):
                          [silph_retirement(entries, script_texts, toggle_constants,
                                            toggle_objects, version)]
                 for version, entries in encounters.items()},
+            "rival_branch_audit": {
+                version: rival_branch_audit(script_texts, version)
+                for version in encounters},
+            "event_retirement_audit": {
+                version: [ship_retirement(entries, script_texts, version)]
+                for version, entries in encounters.items()},
+            "access_fact_audit": {version: access_fact_audit(source, version)
+                                  for version in encounters},
             "availability_audit_complete": False,
             "availability_note": "Map/script encounter inventory is not a verified traversal/retirement graph.",
             "sources": dict(sorted(source.provenance.items()))}
