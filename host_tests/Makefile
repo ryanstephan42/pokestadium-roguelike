@@ -15,7 +15,7 @@ UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
 .PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test clean
 
 test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test
-	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance
+	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance host_tests.test_progression_probes
 
 ido-test:
 	mkdir -p ../build/host_tests
