@@ -145,7 +145,11 @@ until available optional encounters are consumed; minimal eastern/western
 Fuchsia traversals instead exercise skipped encounters and retirement.
 Both Fuchsia approaches remain usable, field permissions require the correct
 badge, no HM move slot is required, and the selected fossil branch carries
-through to its single revival offer. Ship departure is a separate action.
+through to its single revival offer. Captain-room HM01 receipt is a separately
+named action that sets `EVENT_GOT_HM01`, not an implicit result of the rival win.
+Ship departure additionally requires explicit dock destination warp 1; neither
+the rival win alone nor a missing/wrong warp retires optional ship encounters.
+Receiving HM01 does not require Misty's badge; using Cut does.
 
 **Those tests prove candidate-graph invariants, not canonical overworld
 reachability.** They do not prove that all 361 IDs can actually be fought on one

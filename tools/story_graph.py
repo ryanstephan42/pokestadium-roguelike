@@ -95,9 +95,12 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
                     "COOLTRAINER_F1", "COOLTRAINER_M3"))
     extra("Route24/TEXT_ROUTE24_COOLTRAINER_M1", *bridge)
     action("travel:bill", ("Route24/TEXT_ROUTE24_COOLTRAINER_M1",))
-    action("travel:cut", ("SSAnne2F/rival-ship",))
-    action("travel:ship-departure", ("travel:cut",))
-    action("field:cut", ("travel:cut", bosses["CeruleanGym"]))
+    action("event:hm01-received", ("SSAnne2F/rival-ship",))
+    nodes["event:hm01-received"]["source_action"] = "SSAnneCaptainsRoom/HM01"
+    nodes["event:hm01-received"]["sets_event"] = "EVENT_GOT_HM01"
+    action("travel:ship-departure", ("event:hm01-received",))
+    nodes["travel:ship-departure"]["destination_warp"] = 1
+    action("field:cut", ("event:hm01-received", bosses["CeruleanGym"]))
     action("travel:amber", ("field:cut",))
     action("travel:saffron", ("field:cut",))
     hideout = "RocketHideoutB4F/TEXT_ROCKETHIDEOUTB4F_"
@@ -157,14 +160,18 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
             "reviewed": False, "fossil_offer": "CinnabarLabFossilRoom/gift-fossil"}
 
 
-def available(graph, completed, retired, identifier):
+def available(graph, completed, retired, identifier, destination_warp=None):
     require(identifier in graph["nodes"], "Unknown graph node")
-    return (identifier not in completed and identifier not in retired and
+    node = graph["nodes"][identifier]
+    return (("destination_warp" not in node or
+             destination_warp == node["destination_warp"]) and
+            identifier not in completed and identifier not in retired and
             any(set(clause) <= completed for clause in graph["nodes"][identifier]["clauses"]))
 
 
-def advance(graph, completed, retired, identifier):
-    require(available(graph, completed, retired, identifier), "Unavailable graph node")
+def advance(graph, completed, retired, identifier, destination_warp=None):
+    require(available(graph, completed, retired, identifier, destination_warp),
+            "Unavailable graph node")
     completed.add(identifier)
     retired.update(graph["retires"].get(identifier, set()) - completed)
 
@@ -176,14 +183,14 @@ def traverse(graph, priorities=()):
     ranks = {identifier: index for index, identifier in enumerate(priorities)}
     while True:
         ready = [identifier for identifier in graph["nodes"]
-                 if available(graph, completed, retired, identifier)]
+                 if available(graph, completed, retired, identifier, destination_warp=1)]
         if not ready:
             break
         # Delay destructive milestones until all currently available optional nodes.
         ready.sort(key=lambda identifier: (bool(graph["retires"].get(identifier)),
                                           ranks.get(identifier, len(ranks)), identifier))
         identifier = ready[0]
-        advance(graph, completed, retired, identifier)
+        advance(graph, completed, retired, identifier, destination_warp=1)
         order.append(identifier)
     require(len(order) == len(set(order)), "Repeated finite graph node")
     return order, retired

@@ -292,7 +292,7 @@ class CanonicalInventoryTests(unittest.TestCase):
                 clause = graph["nodes"][identifier]["clauses"][0]
                 for dependency in clause:
                     reach(dependency)
-                advance(graph, completed, retired, identifier)
+                advance(graph, completed, retired, identifier, destination_warp=1)
             reach("travel:fuchsia")
             self.assertIn("Route12/snorlax" if route == "east" else "Route16/snorlax", completed)
             self.assertNotIn("Route16/snorlax" if route == "east" else "Route12/snorlax", completed)
@@ -311,6 +311,31 @@ class CanonicalInventoryTests(unittest.TestCase):
             self.assertFalse(set(graph["encounters"]) <= completed)
             with self.assertRaises(DataError):
                 advance(graph, completed, retired, "Route22/rival-early")
+
+    def test_ship_requires_captain_receipt_and_exit_warp(self):
+        graph = candidate(self.data, "red")
+        completed, retired = {"SSAnne2F/rival-ship", "travel:bill"}, set()
+        departure = "travel:ship-departure"
+        receipt = "event:hm01-received"
+        self.assertFalse(available(graph, completed, retired, departure, destination_warp=1))
+        self.assertTrue(available(graph, completed, retired, receipt))
+        self.assertEqual(graph["nodes"][receipt]["sets_event"], "EVENT_GOT_HM01")
+        advance(graph, completed, retired, receipt)
+        self.assertFalse(available(graph, completed, retired, departure))
+        self.assertFalse(available(graph, completed, retired, departure, destination_warp=2))
+        self.assertTrue(available(graph, completed, retired,
+                                  "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
+        self.assertTrue(available(graph, completed, retired, departure, destination_warp=1))
+        # Receiving Cut is distinct from permission to use it: no Misty badge is needed to leave.
+        self.assertFalse(available(graph, completed, retired, "field:cut"))
+        with self.assertRaises(DataError):
+            advance(graph, completed, retired, departure, destination_warp=2)
+        self.assertFalse(retired)
+        advance(graph, completed, retired, departure, destination_warp=1)
+        self.assertEqual(len(retired), 16)
+        self.assertFalse(available(graph, completed, retired,
+                                   "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
+        self.assertNotIn("SSAnne2F/rival-ship", retired)
 
     def test_construct_every_species_level(self):
         for mon in self.data["species"]:
