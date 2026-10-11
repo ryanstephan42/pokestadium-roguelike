@@ -20,7 +20,11 @@ static int scan(const ScSaveDevice *device, const ScCatalog *catalog,
                 ScSlot slots[2], int *latest) {
     unsigned i, j;
     int status, damaged = 0;
+#ifdef STORY_NATIVE_PROBE
+    static ScSnapshot snapshot;
+#else
     ScSnapshot snapshot;
+#endif
     *latest = -1;
     for (i = 0; i < 2; i++) {
         status = device->read(device->context, i * SC_SAVE_SLOT_SIZE,
@@ -48,7 +52,11 @@ static int scan(const ScSaveDevice *device, const ScCatalog *catalog,
 
 int sc_storage_load(const ScSaveDevice *device, const ScCatalog *catalog,
                     ScSnapshot *snapshot) {
+#ifdef STORY_NATIVE_PROBE
+    static ScSlot slots[2];
+#else
     ScSlot slots[2];
+#endif
     RlU32 generation;
     int latest, status;
     if (!device_valid(device) || !snapshot || !sc_catalog_valid(catalog) ||
@@ -64,8 +72,13 @@ int sc_storage_load(const ScSaveDevice *device, const ScCatalog *catalog,
 
 int sc_storage_store(const ScSaveDevice *device, const ScCatalog *catalog,
                      const ScSnapshot *snapshot, int create) {
+#ifdef STORY_NATIVE_PROBE
+    static ScSlot slots[2];
+    static RlU8 bytes[SC_SAVE_SIZE], verify[SC_SAVE_SIZE], empty[32];
+#else
     ScSlot slots[2];
     RlU8 bytes[SC_SAVE_SIZE], verify[SC_SAVE_SIZE], empty[32];
+#endif
     RlU32 generation;
     unsigned i, offset;
     int latest, status;

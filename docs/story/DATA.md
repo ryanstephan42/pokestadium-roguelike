@@ -494,6 +494,15 @@ only a best-effort Python frame counter and terminates on deadline.
 The old `777e7b6` checkpoint-only/refusal evidence stays separate; no emulator
 was run for this new hot/cold stage before explicit slot reacquisition.
 
+The first hot/cold source head (`731aa84`) still had nested journal frames
+capable of exceeding the Game-thread stack. Probe-only scan/load/store
+buffers now live in cold-overlay BSS, owned by the non-reentrant synchronous
+SCLD invocation and discarded at unload. The non-probe pure implementation
+retains automatic buffers. Target scan/load/store frames fall from
+760/1,536/3,056 bytes to 88/48/64 bytes. Cold RAM grows to 173,456 bytes
+(ROM plus relocations 170,960); hot residency is unchanged. Full target
+call-stack/high-water and cold allocation peaks remain runtime proof tasks.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
