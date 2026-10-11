@@ -130,7 +130,8 @@ def foreign_note(data, base, full=False):
 
 def phase(args):
     directory = Path(args.out)
-    options = {"mupen64plus-pak1": "none" if args.phase == "missing" else "memory"}
+    options = {"mupen64plus-pak1": "none" if args.phase == "missing" else "memory",
+               "mupen64plus-angrylion-multithread": "4"}
     with Frontend(args.core, args.rom, args.map, directory / args.phase,
                   options=options, timeout=900) as emu:
         pointer, initial = save_ram(emu)
@@ -250,7 +251,8 @@ def main():
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")
-    args.core = args.core or str(find_core("mupen64plus"))
+    args.core = args.core or find_core()
+    require(args.core is not None, "No installed software-rendering N64 core found")
     Path(args.out).mkdir(parents=True, exist_ok=True)
     if args.phase:
         phase(args)
