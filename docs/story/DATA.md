@@ -1158,6 +1158,23 @@ Compiled nested stack reservations include constructor736 + `sc_new`720 +
 cold entry88 =1544 bytes before other callees/outer callers; the older
 1340-byte written margin proves neither sufficiency nor exhaustive SP safety.
 
+The separately granted `d850681` entry-only run returned successfully and
+released the emulator process. Frozen evidence is at
+`.local/rltest/story-ember-entry-d850681/`, including recursive SHA256 manifest,
+raw party/state/save/native/machine/progress/memory, provenance and release.
+Captured ticks2 / logic1 / presentation1 establish an initialized entry,
+not zero prior native updates. Both canonical singleton CPU teams retained
+full HP/PP, status0 and all stages7; story XP338/L8 remained unchanged.
+KO/learning/injection/resume/terminal/error counters were0. Required
+allocation attempts100 / failures0, cold pool2956480 before/after, cleared
+direct cold map and written stack margin1340 / new bottom writes0 passed
+the strict entry checks. The entry/prebattle saves share SHA256
+`fe28483cd665c0915406fa1c43bbb275bb34bb5362b84630ebd428751ff17525`;
+the source save remains `ca483ab3...726d2`. No postcapture step, natural wait,
+input, resume or retry ran. These are submitted entry/resource observations,
+not exhaustive SP safety, natural KO, learning, WIN, terminal or reload
+acceptance. Full combat still requires a separate grant.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
