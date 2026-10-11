@@ -157,7 +157,46 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
         require(trigger in nodes and identifiers <= by_id.keys(),
                 "Dangling graph retirement")
     return {"nodes": nodes, "retires": retires, "encounters": by_id,
-            "reviewed": False, "fossil_offer": "CinnabarLabFossilRoom/gift-fossil"}
+            "reviewed": False, "fossil_offer": "CinnabarLabFossilRoom/gift-fossil",
+            "healing": healing_permissions(data, version, bosses)}
+
+
+def healing_permissions(data, version, bosses):
+    gates = {
+        "ViridianPokecenter": (), "RedsHouse1F": (),
+        "PewterPokecenter": ("OaksLab/rival-lab",),
+        "MtMoonPokecenter": (bosses["PewterGym"],),
+        "CeruleanPokecenter": ("travel:moon-exit",),
+        "VermilionPokecenter": ("travel:bill",),
+        "RockTunnelPokecenter": ("field:cut",),
+        "LavenderPokecenter": ("field:cut",), "CeladonPokecenter": ("field:cut",),
+        "SaffronPokecenter": ("travel:saffron",),
+        "FuchsiaPokecenter": ("travel:fuchsia",),
+        "CinnabarPokecenter": ("field:surf",),
+        "PokemonTower5F": ("field:cut",),
+        "SilphCo9F": ("travel:silph", "travel:card-key"),
+        "IndigoPlateauLobby": ("travel:league",),
+    }
+    permissions = {}
+    for fact in data["healing_fact_audit"][version]:
+        area = fact["id"][5:]
+        require(area in gates and fact["id"] not in permissions, "Unknown healing permission")
+        permissions[fact["id"]] = {"required": gates[area], "retires_after": fact["retires_after"]}
+    require(len(permissions) == len(gates), "Missing healing permission")
+    return permissions
+
+
+def healing_available(graph, completed, identifier, preset, used=()):
+    require(identifier in graph["healing"] and preset in ("standard", "limited", "brutal"),
+            "Invalid healing permission request")
+    permission = graph["healing"][identifier]
+    league_active = any(identifier.startswith(("LoreleisRoom/", "BrunosRoom/",
+                                               "AgathasRoom/", "LancesRoom/"))
+                        for identifier in completed) and "ChampionsRoom/rival-champion" not in completed
+    return (preset != "brutal" and not league_active and
+            (preset != "limited" or identifier not in used) and
+            set(permission["required"]) <= completed and
+            permission["retires_after"] not in completed)
 
 
 def available(graph, completed, retired, identifier, destination_warp=None):

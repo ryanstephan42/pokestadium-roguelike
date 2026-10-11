@@ -13,7 +13,7 @@ from tools.story_data import (
     rival_branch_audit, ship_retirement,
     access_fact_audit,
 )
-from tools.story_graph import advance, available, candidate, traverse
+from tools.story_graph import advance, available, candidate, healing_available, traverse
 
 
 class ParserTests(unittest.TestCase):
@@ -336,6 +336,28 @@ class CanonicalInventoryTests(unittest.TestCase):
         self.assertFalse(available(graph, completed, retired,
                                    "SSAnne1FRooms/TEXT_SSANNE1FROOMS_YOUNGSTER"))
         self.assertNotIn("SSAnne2F/rival-ship", retired)
+
+    def test_healing_identity_access_and_retirement(self):
+        self.assertEqual(self.data["healing_fact_audit"]["red"],
+                         self.data["healing_fact_audit"]["blue"])
+        self.assertEqual(len(self.data["healing_fact_audit"]["red"]), 15)
+        graph = candidate(self.data, "red")
+        self.assertFalse(healing_available(graph, set(), "heal:SilphCo9F", "standard"))
+        completed = {"travel:silph", "travel:card-key"}
+        self.assertTrue(healing_available(graph, completed, "heal:SilphCo9F", "standard"))
+        self.assertFalse(healing_available(graph, completed, "heal:SilphCo9F", "brutal"))
+        self.assertFalse(healing_available(graph, completed, "heal:SilphCo9F", "limited",
+                                           {"heal:SilphCo9F"}))
+        completed.add("SilphCo11F/TEXT_SILPHCO11F_GIOVANNI")
+        self.assertFalse(healing_available(graph, completed, "heal:SilphCo9F", "standard"))
+        order, _ = traverse(graph)
+        completed = set(order)
+        self.assertTrue(healing_available(graph, completed, "heal:IndigoPlateauLobby", "standard"))
+        completed.remove("ChampionsRoom/rival-champion")
+        self.assertFalse(healing_available(graph, completed, "heal:IndigoPlateauLobby", "standard"))
+        self.assertFalse(healing_available(graph, completed, "heal:RedsHouse1F", "standard"))
+        with self.assertRaises(DataError):
+            healing_available(graph, set(), "heal:SSAnne1FRooms", "standard")
 
     def test_construct_every_species_level(self):
         for mon in self.data["species"]:

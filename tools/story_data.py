@@ -546,6 +546,38 @@ def access_fact_audit(source, version):
     return facts
 
 
+def healing_fact_audit(source, version):
+    result = []
+    centers = ("ViridianPokecenter", "PewterPokecenter", "CeruleanPokecenter",
+               "VermilionPokecenter", "LavenderPokecenter", "CeladonPokecenter",
+               "SaffronPokecenter", "FuchsiaPokecenter", "CinnabarPokecenter",
+               "MtMoonPokecenter", "RockTunnelPokecenter", "IndigoPlateauLobby")
+    for area in centers:
+        path = f"scripts/{area}.asm"
+        rows = list(clean(source.get(path), version))
+        lines = [line for line, code in rows if code == "script_pokecenter_nurse"]
+        require(len(lines) == 1, f"Changed nurse identity: {area}")
+        result.append({"id": f"heal:{area}", "source": path, "line": lines[0],
+                       "retires_after": None})
+    for area in ("RedsHouse1F", "PokemonTower5F", "SilphCo9F"):
+        path = f"scripts/{area}.asm"
+        rows = list(clean(source.get(path), version))
+        lines = [line for line, code in rows if code == "predef HealParty"]
+        require(len(lines) == 1, f"Changed healing identity: {area}")
+        if area == "SilphCo9F":
+            codes = [code for _, code in rows]
+            start = codes.index("SilphCo9FNurseText:")
+            require(codes[start + 1:start + 7] ==
+                    ["text_asm", "CheckEvent EVENT_BEAT_SILPH_CO_GIOVANNI",
+                     "jr nz, .beat_giovanni", "ld hl, .YouLookTiredText",
+                     "call PrintText", "predef HealParty"],
+                    "Changed Silph nurse retirement condition")
+        result.append({"id": f"heal:{area}", "source": path, "line": lines[0],
+                       "retires_after": "SilphCo11F/TEXT_SILPHCO11F_GIOVANNI"
+                       if area == "SilphCo9F" else None})
+    return result
+
+
 def retirement_audit(encounters, scripts, version):
     """Check bounded retirement facts, not general assembly control flow."""
     rules = []
@@ -742,6 +774,8 @@ def audit(source):
                 for version, entries in encounters.items()},
             "access_fact_audit": {version: access_fact_audit(source, version)
                                   for version in encounters},
+            "healing_fact_audit": {version: healing_fact_audit(source, version)
+                                   for version in encounters},
             "availability_audit_complete": False,
             "availability_note": "Map/script encounter inventory is not a verified traversal/retirement graph.",
             "sources": dict(sorted(source.provenance.items()))}

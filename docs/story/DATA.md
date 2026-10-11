@@ -162,6 +162,24 @@ prerequisites require a clearly documented no-economy adaptation.
 The candidate remains `reviewed = False`; it is not emitted into either ROM
 or used to bypass `SC_UNREVIEWED`.
 
+### Healing permission evidence
+
+The importer identifies 15 distinct canon healing locations: twelve Pokemon
+Centers (including Mt. Moon, Rock Tunnel and Indigo), home, Tower 5F's purified
+zone and the Silph 9F nurse. Each has a checked nurse macro or `HealParty` call
+and source line. No S.S. Anne healer is invented from later remakes.
+The Silph nurse is **not permanently available**: her script tests
+`EVENT_BEAT_SILPH_CO_GIOVANNI` and branches around `HealParty` after that win.
+[`SilphCo9F.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/SilphCo9F.asm#L144-L161)
+is the exact expiration evidence.
+
+The host candidate attaches access clauses to these stable identities, applies
+the locked Standard/Limited/Brutal rules, and prevents all healing during the
+League sequence. Tests cover unavailable-before-access, once-per-location use,
+Brutal denial, Silph retirement and League lock. These permissions are not yet
+wired into pure C/native UI; topology review still governs actual location
+access and return travel.
+
 ## Isolated C89 progression
 
 `src/story/sc_core.c` and `sc_progression.c` use `RlMon` as a boundary record,
