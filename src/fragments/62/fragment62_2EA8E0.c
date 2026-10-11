@@ -734,11 +734,11 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     func_80005E40(0x20000, 0);
     sp24 = func_80007444(0, 1, 3, 1, 2, 1);
 #ifdef STORY_NATIVE_PROBE
-    if (gScProbeActive) gScProbe.stage = 8;
+    gScProbe.stage = 8;
 #endif
     func_84301430(sp24);
 #ifdef STORY_NATIVE_PROBE
-    if (gScProbeActive && gScProbe.stage == 13) {
+    if (gScProbe.stage == 13) {
         func_80005EAC();
         main_pool_pop_state('BATL');
         return -1;

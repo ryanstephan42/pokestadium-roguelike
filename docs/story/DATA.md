@@ -356,7 +356,8 @@ Transform keeps its copied live stats/moves/PP while original party PP
 remains authoritative. These are source/host assertions, **not proof of every
 native stat recalculation, action ordering or Transform execution path**.
 
-The authenticated catalog remains exact, not a truncated probe catalog.
+At accepted diagnostic head `777e7b6`, the authenticated catalog remained exact,
+not a truncated probe catalog.
 Its 141-KiB native image cannot fit in the remaining retail ROM gap.
 Probe-only linker support places it at ROM `0x02040000` and reserves fixed
 resident RAM before the main heap; checked synchronous cartridge DMA loads
@@ -364,7 +365,8 @@ and validates it before any story API. The linker rejects overlap with the
 existing late RL overlay. Story state/bridge/mailbox also remain in fixed
 main BSS, not fragment/BATL allocations. The harness compares catalog RAM
 with its linked ROM image and verifies it survives pool release; actual
-DMA, heap re-anchoring and residency still require runtime review.
+DMA, heap re-anchoring and residency still required runtime review. The
+source/host hot/cold stage below supersedes this fixed-resident layout.
 
 `tools/rltest/story_probe.py` requires explicit `--execute`; **do not run it
 until the exclusive emulator slot is granted**. It prepares separate-process
@@ -437,6 +439,60 @@ identity must remain behaviorally equivalent, with separate differential
 tests. This broader redesign is a **proposal, not an implemented or proven
 memory solution**; pointer lifetime, paused learning, error retries, code
 residency and six-party peaks all require another bounded review/proof.
+
+#### Retail hot/cold source/host redesign (native proof pending)
+
+The probe now links `fragmentSC` at relocatable address window `0x8F900000`
+and ROM `0x02040000`. It uses the existing fragment header, generated two-pass
+relocations, loader/free callback and owned `SCLD` pool state. The entire
+authenticated catalog, graph, team materialization, campaign transitions,
+codec/journal and SC01 Pak backend are cold. No canonical encounters, species,
+moves, graph nodes or provenance identity were dropped or regenerated with
+different data. Default vanilla/RL builds do not compile or load this overlay.
+
+Resident orchestration calls cold prepare synchronously, waits for it to
+return, then pops SCLD before invoking native battle. `ScCombat` is 732 bytes:
+copied species records for the six party members and six enemies, move PP,
+the current enemy team and value identity/kind/variant fields. It has **no
+pointers**, including no `ScEncounter.id`. All party/opponent native records,
+state, frame hooks, XP/stat calculation and learning remain resident.
+The full-catalog APIs delegate to the same hot calculations; all emitted
+encounters/variants are differentially exercised with six participants.
+
+Cold loading preflights the larger of ROM/RAM images, the retail loader's
+temporary 0x18 header, SCLD state and allocation block headers. Reentrancy and
+cold calls during an active battle are rejected. The loader returns fully
+out of cold code before popping SCLD, whose existing fragment free callback
+clears the memmap. Diagnostics record the before/after pool balance and clear
+the transient overlay address/busy flag after unload. An ELF check rejects
+any resident relocation into the cold code/data/BSS window.
+
+Only after native BATL/RLBT cleanup and active-flag reset may resident code
+reload the full cold image, validate it, apply a result to a scratch snapshot
+and commit SC01. Cold-load/validation/store failure retains the durable
+prebattle checkpoint and leaves reward/state publication pending; commit
+retry is still deterministic. A draw remains unresolved and cannot commit;
+successful checkpoint load invalidates the previous combat view. The SC01
+backend uses the resident SI event queue and synchronous completed transfers;
+its temporary callback/context pointers do not survive the cold invocation.
+
+The source-stage map places the pool at `0x8011eae0`, 13,712 bytes after
+the integrated default RL pool start, versus 178,352 bytes at `777e7b6`.
+The cold RAM image is 168,256 bytes; ROM plus relocation table is 170,736
+bytes. These are **layout measurements, not proof of retail peak headroom**.
+The previously measured default frame-boundary minimum was only 13,264 raw
+free bytes; six-party/native setup peaks, cold-load stack high-water and
+actual overlay relocation/ownership must still be measured. No Expansion
+Pak requirement or pool-end extension is introduced.
+
+Host tests cover loader exact-threshold refusal, nested-call rejection,
+load/entry failure cleanup and retry, immutable value inputs, all
+encounters/variants with six participants, duplicate KO rollback, learning
+pause, draw refusal, cold-reload failure before commit and successful retry.
+The watchdog no longer reads core/RDRAM from its Timer thread: it records
+only a best-effort Python frame counter and terminates on deadline.
+The old `777e7b6` checkpoint-only/refusal evidence stays separate; no emulator
+was run for this new hot/cold stage before explicit slot reacquisition.
 
 ## Verification scope and remaining review
 

@@ -18,12 +18,12 @@ story-test:
 	cd .. && python3 tools/story_data.py
 	cd .. && python3 -m unittest host_tests.test_story_data
 	mkdir -p ../build/story
-	$(CC) $(CFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_graph.c ../src/story/sc_progression.c \
-		../src/story/sc_save.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
+	$(CC) $(CFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c ../src/story/sc_graph.c ../src/story/sc_progression.c \
+		../src/story/sc_save.c ../src/story/sc_crc.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
 		../build/story/sc_data.c -o ../build/story/test_story
 	../build/story/test_story
-	$(CC) $(SANFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_graph.c ../src/story/sc_progression.c \
-		../src/story/sc_save.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
+	$(CC) $(SANFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c ../src/story/sc_graph.c ../src/story/sc_progression.c \
+		../src/story/sc_save.c ../src/story/sc_crc.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
 		../build/story/sc_data.c -o ../build/story/test_story_san
 	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_san
 	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
@@ -38,6 +38,8 @@ story-test:
 		../src/story/sc_bridge.c -o ../build/story/sc_bridge.o
 	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
 		../src/story/sc_progression.c -o ../build/story/sc_progression.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_combat.c -o ../build/story/sc_combat.o
 	cd .. && bash host_tests/run_story_native.sh
 
 test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test

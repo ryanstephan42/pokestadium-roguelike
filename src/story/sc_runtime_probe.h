@@ -15,6 +15,8 @@ typedef struct ScProbeMailbox {
     RlU32 native_max_hp, native_dvs, live_dvs;
     RlU32 stage;
     RlU32 pool_free, arena_archive, arena_count, arena_index, arena_required;
+    RlU32 cold_before, cold_after, cold_address, cold_size, cold_busy, cold_calls;
+    RlU32 combat_address, combat_size, combat_crc;
 } ScProbeMailbox;
 extern volatile ScProbeMailbox gScProbe;
 extern int gScProbeActive;

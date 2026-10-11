@@ -27,7 +27,9 @@ FIELDS = (
     "phase exp level hp max_hp dvs live_hp live_max_hp live_attack live_base_attack "
     "attack_stage state_address state_size completed_crc interrupted post_pool_crc "
     "logic_steps presentation_steps native_max_hp native_dvs live_dvs stage "
-    "pool_free arena_archive arena_count arena_index arena_required"
+    "pool_free arena_archive arena_count arena_index arena_required "
+    "cold_before cold_after cold_address cold_size cold_busy cold_calls "
+    "combat_address combat_size combat_crc"
 ).split()
 
 
@@ -90,9 +92,7 @@ def wait_probe(emu, predicate, frames, description):
                            f"badvaddr={emu.read_u32(thread + 292):08x}") from error
 
 def stalled_probe(emu, directory):
-    evidence = {"frame": emu.frame, "probe": read_probe(emu),
-                "game_state": emu.read_u32("gCurrentGameState"),
-                "launch_stage": emu.read_u32("gRlBattleLaunchStage")}
+    evidence = {"frame": emu.frame, "diagnostic": "watchdog timeout; no concurrent core reads"}
     (directory / "stall.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print(f"Native probe watchdog: {evidence}", file=sys.stderr, flush=True)
     os.kill(os.getpid(), signal.SIGTERM)
@@ -224,6 +224,9 @@ def phase(args):
             result = read_probe(emu)
             require(result["phase"] == 1 and result["level"] == 6,
                     f"Battle already advanced before interruption fixture: {result}")
+            require(not result["cold_busy"] and not result["cold_address"] and
+                    result["cold_calls"] == 1 and result["cold_before"] == result["cold_after"],
+                    f"Cold preparation is still owned during battle: {result}")
             after = save_ram(emu)[1]
             story_owned_changes(before, after, base)
             (directory / "save-ram.bin").write_bytes(after)
@@ -250,25 +253,30 @@ def phase(args):
             require(0x80000000 <= address < address + size <= map_value(args.map, "heap_BSS_START"),
                     "Story state is not in fixed resident memory before the main pool")
             resident = emu.read(address, size)
-            catalog_start = map_value(args.map, "sc_probe_catalog_VRAM")
-            catalog_size = map_value(args.map, "sc_probe_catalog_VRAM_END") - catalog_start
-            catalog = emu.read(catalog_start, catalog_size)
-            with open(args.rom, "rb") as rom:
-                rom.seek(map_value(args.map, "sc_probe_catalog_ROM_START"))
-                require(rom.read(catalog_size) == catalog, "Resident catalog differs from linked ROM")
+            combat_start, combat_size = paused["combat_address"], paused["combat_size"]
+            require(0x80000000 <= combat_start < combat_start + combat_size <=
+                    map_value(args.map, "heap_BSS_START") and combat_size < 1024,
+                    "Combat view is not small fixed resident value data")
+            combat = emu.read(combat_start, combat_size)
+            require(not paused["cold_busy"] and not paused["cold_address"] and
+                    paused["cold_calls"] == 1 and paused["cold_before"] == paused["cold_after"],
+                    f"Cold preparation did not return/unload before battle: {paused}")
             emu.step(60)
             held = read_probe(emu)
             require(held["pause_ticks"] > paused["pause_ticks"], "Learning pause did not pump frames")
             require(emu.read(address, size) == resident and
+                    emu.read(combat_start, combat_size) == combat and
                     all(held[key] == paused[key] for key in (
-                        "exp", "ko_count", "logic_steps", "presentation_steps")),
+                        "exp", "ko_count", "logic_steps", "presentation_steps", "cold_calls")),
                     "Learning advanced state, XP, presentation or battle actions")
             set_field(emu, "resume", 1)
             result = finish_command(emu)
             require(result["status"] == 0 and result["ko_count"] == 1 and result["phase"] == 3 and
                     result["post_pool_crc"] == result["completed_crc"],
                     f"Battle result was not durably committed after pool return: {result}")
-            require(emu.read(catalog_start, catalog_size) == catalog, "Battle pool altered resident catalog")
+            require(result["cold_calls"] == 2 and not result["cold_busy"] and
+                    not result["cold_address"] and result["cold_before"] == result["cold_after"],
+                    f"Postbattle cold reload/commit ownership failed: {result}")
             after = save_ram(emu)[1]
             story_owned_changes(before, after, base)
             (directory / "save-ram.bin").write_bytes(after)

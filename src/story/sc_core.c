@@ -1,5 +1,6 @@
 /* PURE */
 #include "sc_graph.h"
+#include "sc_combat.h"
 
 static int bit(const RlU8 *bits, unsigned index) {
     return (bits[index / 8] >> (index % 8)) & 1;
@@ -246,11 +247,8 @@ int sc_begin(ScState *state, const ScCatalog *catalog, unsigned encounter,
 
 int sc_on_ko(ScState *state, const ScCatalog *catalog, unsigned enemy_slot,
              RlU8 participants, unsigned variant) {
-    ScState next;
     const ScEncounter *entry;
-    const ScSpecies *enemy;
-    RlU32 award, value;
-    unsigned n, i, j;
+    ScCombat combat;
     if (!state || !catalog || !catalog->species || !catalog->encounters ||
         catalog->count > SC_ENCOUNTER_CAPACITY ||
         state->encounter >= catalog->count || state->party_count < 1 ||
@@ -260,35 +258,42 @@ int sc_on_ko(ScState *state, const ScCatalog *catalog, unsigned enemy_slot,
     if (!variant_valid(state, entry, variant) || enemy_slot >= entry->teams[variant].count ||
         enemy_slot >= 6 || !participants || (participants >> state->party_count))
         return SC_INVALID;
-    if (state->defeated_mask & (1U << enemy_slot)) return SC_DUPLICATE;
-    i = entry->teams[variant].mons[enemy_slot].species;
-    if (!i || i > 151) return SC_INVALID;
-    enemy = &catalog->species[i];
-    n = 0;
-    for (i = 0; i < state->party_count; i++) n += (participants >> i) & 1;
-    award = (RlU32)(enemy->yield / n) * entry->teams[variant].mons[enemy_slot].level / 7;
-    if (entry->kind == SC_TRAINER || entry->kind == SC_RIVAL) award += award / 2;
-    next = *state;
+    if (sc_combat_prepare(&combat, state, catalog) != SC_OK) return SC_INVALID;
+    return sc_ko_values(state, combat.party_species, combat.enemy_species,
+                        &entry->teams[variant], entry->kind,
+                        enemy_slot, participants);
+}
+
+int sc_combat_prepare(ScCombat *combat, const ScState *state, const ScCatalog *catalog) {
+    const ScEncounter *entry;
+    unsigned i;
+    if (!combat || !state || state->phase != SC_BATTLE ||
+        !state->party_count || state->party_count > 6 ||
+        !sc_catalog_valid(catalog) || state->encounter >= catalog->count) return SC_INVALID;
+    entry = &catalog->encounters[state->encounter];
+    if (!variant_valid(state, entry, state->encounter_variant)) return SC_INVALID;
     for (i = 0; i < state->party_count; i++) {
-        unsigned old_level;
-        if (!(participants & (1U << i)) || !next.party[i].cur_hp) continue;
-        for (j = 0; j < 5; j++) {
-            value = (RlU32)next.party[i].stat_exp[j] + enemy->base[j] / n;
-            next.party[i].stat_exp[j] = (RlU16)(value > 65535U ? 65535U : value);
-        }
-        old_level = next.party[i].level;
-        if (sc_add_xp(&next.party[i], award, &next.learn_moves[i], catalog) != SC_OK)
-            return SC_INVALID;
-        if (next.party[i].level > old_level) next.evolution_mask |= (RlU8)(1U << i);
-        if (next.learn_moves[i]) next.learn_mask |= (RlU8)(1U << i);
+        if (!state->party[i].species || state->party[i].species > 151) return SC_INVALID;
     }
-    next.defeated_mask |= (RlU8)(1U << enemy_slot);
-    if (next.learn_mask) {
-        next.phase = SC_LEARNING;
-        next.return_phase = SC_BATTLE;
+    for (i = 0; i < 6; i++) {
+        combat->party_ids[i] = i < state->party_count ? state->party[i].species : 0;
+        combat->party_species[i] = catalog->species[combat->party_ids[i]];
+        combat->enemy_species[i] = catalog->species[i < entry->teams[state->encounter_variant].count ?
+            entry->teams[state->encounter_variant].mons[i].species : 0];
     }
-    *state = next;
+    for (i = 0; i < 166; i++) combat->pp[i] = catalog->pp[i];
+    combat->team = entry->teams[state->encounter_variant];
+    combat->encounter = state->encounter;
+    combat->variant = state->encounter_variant;
+    combat->kind = entry->kind;
+    combat->ready = 1;
     return SC_OK;
+}
+
+int sc_add_xp(RlMon *mon, RlU32 award, RlU8 *learn_move, const ScCatalog *catalog) {
+    if (!mon || mon->species < 1 || mon->species > 151 || !catalog || !catalog->species)
+        return SC_INVALID;
+    return sc_add_xp_species(mon, award, learn_move, &catalog->species[mon->species]);
 }
 
 static void retire(ScState *state, const ScCatalog *catalog) {
@@ -423,25 +428,8 @@ int sc_heal(ScState *state, const ScCatalog *catalog, unsigned location,
 
 int sc_learn(ScState *state, const ScCatalog *catalog, unsigned party_slot,
              unsigned move_slot, int accept) {
-    unsigned move, i;
-    if (!state || !catalog || !catalog->pp || state->phase != SC_LEARNING ||
-        state->party_count > 6 || party_slot >= state->party_count ||
-        move_slot >= 4 || !(state->learn_mask & (1U << party_slot)) ||
-        (accept != 0 && accept != 1)) return SC_INVALID;
-    move = state->learn_moves[party_slot];
-    if (!move || move > 165 || !catalog->pp[move]) return SC_INVALID;
-    if (accept) {
-        for (i = 0; i < 4; i++) if (state->party[party_slot].moves[i] == move) return SC_DUPLICATE;
-        state->party[party_slot].moves[move_slot] = (RlU8)move;
-        state->party[party_slot].pp[move_slot] = state->party[party_slot].max_pp[move_slot] = catalog->pp[move];
-    }
-    state->learn_mask &= (RlU8)~(1U << party_slot);
-    state->learn_moves[party_slot] = 0;
-    if (!state->learn_mask) {
-        state->phase = state->return_phase;
-        state->return_phase = SC_ROUTE;
-    }
-    return SC_OK;
+    if (!catalog) return SC_INVALID;
+    return sc_learn_pp(state, catalog->pp, party_slot, move_slot, accept);
 }
 
 int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,

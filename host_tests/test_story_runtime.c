@@ -14,7 +14,17 @@ static unk_D_800AE540_0004 teams[2];
 #define check(condition) do { if (!(condition)) { failure = __LINE__; return -1; } } while (0)
 
 void osSyncPrintf(const char *format, ...) { (void)format; }
-int sc_runtime_catalog_load(void) { return SC_OK; }
+static int cold_calls, cold_active;
+static int fail_cold;
+int sc_cold_call(ScColdRequest *request) {
+    int status;
+    if (cold_active || gScProbeActive || fail_cold) return 0x100 + SC_INVALID;
+    cold_active = 1;
+    cold_calls++;
+    status = sc_cold_entry(0, request);
+    cold_active = 0;
+    return status;
+}
 
 int sc_pak_probe_load(unsigned controller, const ScCatalog *catalog, ScSnapshot *snapshot) {
     RlU32 generation;
@@ -36,10 +46,11 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
     RlBattleMon *live;
     RlU32 xp;
     RlU32 generation;
-    unsigned i, j, base;
+    unsigned i, j, base, calls_before = cold_calls;
     int terminal = 0;
     (void)rules; (void)return_state;
     check(party_n == 1 && enemy_n == 1);
+    check(!cold_active && combat.ready && cold_calls > 0);
     check(party->max_hp == 22 && party->dvs == 0x8889);
     check(sc_save_decode(&checkpoint, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK);
     check(checkpoint.interrupted && checkpoint.state.phase == SC_ROUTE);
@@ -87,6 +98,7 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
     check(teams[0].unk_01C[0].unk_09[3] == resident.party[0].moves[3]);
     check(live->unk_1F[3] == resident.party[0].moves[3]);
     check(live->unk_5C[0] == 8 && live->unk_38 == base);
+    check(cold_calls == calls_before && !cold_active);
     check(gScProbe.ko_count == 1 && resident.party[0].exp == xp);
     /* Duplicate KO frames still carry later HP/PP; they never re-award XP. */
     rl_battle_hp(live)--;
@@ -112,7 +124,7 @@ int main(void) {
     ScSnapshot snapshot;
     RlU32 before;
     RlU32 generation;
-    check(sizeof(ScProbeMailbox) == 38 * 4);
+    check(sizeof(ScProbeMailbox) == 47 * 4);
     gScProbe.command = 3; gScProbe.seed = 42; gScProbe.create = 1;
     if (!sc_runtime_probe_poll() || failure || gScProbe.status != SC_SAVE_OK) {
         printf("story runtime host failure: line %u, status %u\n", failure, gScProbe.status);
@@ -136,6 +148,11 @@ int main(void) {
     check(sc_save_decode(&snapshot, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK);
     check(snapshot.interrupted && snapshot.state.phase == SC_ROUTE &&
            snapshot.state.party[0].level == 6);
+    before = resident.party[0].exp;
+    fail_cold = 1; gScProbe.command = 4;
+    check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
+           resident.party[0].exp == before && resident.phase == SC_BATTLE && writes == 2);
+    fail_cold = 0;
     gScProbe.command = 4;
     check(sc_runtime_probe_poll() && gScProbe.status == SC_SAVE_OK &&
            resident.phase == SC_REWARD && writes == 3);

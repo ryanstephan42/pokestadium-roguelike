@@ -1,5 +1,6 @@
 #ifdef STORY_NATIVE_PROBE
 #include "sc_runtime_probe.h"
+#include "sc_cold.h"
 #include "src/roguelike/rl_battle.h"
 #include "src/29BA0.h"
 
@@ -7,6 +8,7 @@ volatile ScProbeMailbox gScProbe;
 int gScProbeActive;
 static ScState resident;
 static ScBridge bridge;
+static ScCombat combat;
 static RlMon opponents[6];
 static RlU8 mapping[6];
 static unsigned last_active = 255;
@@ -33,6 +35,9 @@ static void report(void) {
     gScProbe.state_address = (RlU32)&resident;
     gScProbe.state_size = sizeof(resident);
     gScProbe.completed_crc = sc_save_crc(resident.completed, SC_BITS);
+    gScProbe.combat_address = (RlU32)&combat;
+    gScProbe.combat_size = sizeof(combat);
+    gScProbe.combat_crc = sc_save_crc((const RlU8 *)&combat, sizeof(combat));
 }
 
 static int publish_live(RlBattleSide *side) {
@@ -93,7 +98,8 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
         gScProbe.resume = 0;
         for (i = 0; i < resident.party_count; i++)
             if (resident.learn_mask & (1U << i))
-                if (sc_learn(&resident, &sc_catalog, i, 3, 1) != SC_OK) goto invalid;
+                if (!combat.ready || sc_learn_pp(&resident, combat.pp, i, 3, 1) != SC_OK)
+                    goto invalid;
         if (publish_live(player) != SC_OK) goto invalid;
     }
     if (gScProbe.force_ko) {
@@ -106,7 +112,7 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
     rl_battle_party_status(rl_battle_party_mon(player, active)) = rl_battle_status(live);
     {
         unsigned already = resident.defeated_mask & (1U << opponent);
-        status = sc_native_observe(&resident, &bridge, &sc_catalog,
+        status = sc_native_observe_combat(&resident, &bridge, &combat,
                                    player->unk_724->unk_01C, count, mapping,
                                    active, opponent, already ? 1 : rl_battle_hp(foe));
         if (status != SC_OK) goto invalid;
@@ -158,70 +164,49 @@ int sc_runtime_probe_paused(void) {
 }
 
 static int commit_result(void) {
-    static ScSnapshot next;
+    ScColdRequest request = {0};
     int status;
     if (pending_outcome > SC_WIN) return 0x100 + SC_INVALID;
-    next.state = resident;
-    next.interrupted = 0;
-    status = sc_finish(&next.state, &sc_catalog, pending_outcome, resident.encounter_variant);
-    if (status != SC_OK) return 0x100 + status;
-    status = sc_pak_probe_store(gScProbe.controller, &sc_catalog, &next, 0);
-    if (status == SC_SAVE_OK) {
-        resident = next.state;
-        pending_outcome = 255;
-    }
+    request.state = &resident;
+    request.command = SC_COLD_COMMIT;
+    request.controller = gScProbe.controller;
+    request.outcome = pending_outcome;
+    status = sc_cold_call(&request);
+    if (status == SC_SAVE_OK) pending_outcome = 255;
     return status;
 }
 
 int sc_runtime_probe_poll(void) {
-    static ScSnapshot snapshot;
-    ScOptions options = {0, SC_STANDARD, SC_STARTER_TRIO, 1};
+    ScColdRequest request = {0};
     RlBattleRules rules = {3,0,0x20,0,1,0,1,0};
     static RlLaunchResult result;
-    unsigned command = gScProbe.command, i, lab = SC_NO_ENCOUNTER, count;
+    unsigned command = gScProbe.command, i;
     int status;
     if (!command) return 0;
     gScProbe.stage = 1;
-    {
-        extern int sc_runtime_catalog_load(void);
-        status = sc_runtime_catalog_load();
-        if (status != SC_OK) { status += 0x100; goto end; }
-    }
-    gScProbe.stage = 2;
+    request.state = &resident;
+    request.controller = gScProbe.controller;
+    request.create = gScProbe.create;
+    request.seed = gScProbe.seed;
     if (command == 1) {
-        status = sc_pak_probe_load(gScProbe.controller, &sc_catalog, &snapshot);
+        request.command = SC_COLD_LOAD;
+        status = sc_cold_call(&request);
         if (status == SC_SAVE_OK || status == SC_SAVE_RECOVERED) {
-            resident = snapshot.state;
             pending_outcome = 255;
-            gScProbe.interrupted = snapshot.interrupted;
+            combat.ready = 0;
+            gScProbe.interrupted = request.interrupted;
         }
     } else if (command == 2 || command == 3) {
         if (pending_outcome != 255) { status = 0x100 + SC_PENDING; goto end; }
-        status = sc_new(&resident, &sc_catalog, &options, gScProbe.seed);
-        gScProbe.stage = 3;
-        if (status != SC_OK) { status += 0x100; goto end; }
-        if (command == 3) {
-            resident.party[0].dvs = 0x8889;
-            resident.party[0].level = 6;
-            resident.party[0].exp = sc_xp(7, resident.party[0].growth) - 1;
-            sc_recalculate(&resident.party[0], 0);
-        }
-        snapshot.state = resident; snapshot.interrupted = command == 3;
-        gScProbe.stage = 4;
-        status = sc_pak_probe_store(gScProbe.controller, &sc_catalog, &snapshot, gScProbe.create);
+        combat.ready = 0;
+        request.command = command == 2 ? SC_COLD_NEW : SC_COLD_PREPARE;
+        request.combat = &combat;
+        request.opponents = opponents;
+        status = sc_cold_call(&request);
         gScProbe.stage = 5;
         if (status != SC_SAVE_OK || command == 2) goto end;
-        for (i = 0; i < sc_catalog.count; i++) {
-            const char *a = sc_encounters[i].id, *b = "OaksLab/rival-lab";
-            while (*a && *a == *b) { a++; b++; }
-            if (*a == *b) lab = i;
-        }
-        if (sc_begin(&resident, &sc_catalog, lab, resident.rival_branch) != SC_OK ||
-            sc_team(&resident, &sc_catalog, lab, resident.rival_branch, opponents, &count) != SC_OK) {
-            status = 0x100 + SC_INVALID; goto end;
-        }
         for (i = 0; i < 6; i++) { mapping[i] = (RlU8)i; bridge.participants[i] = 0; }
-        bridge.enemy_count = count;
+        bridge.enemy_count = request.enemy_count;
         gScProbe.stage = 6;
         last_active = 255;
         deferred_result = deferred_frame = failed = 0;
@@ -229,9 +214,10 @@ int sc_runtime_probe_poll(void) {
         gScProbe.ticks = gScProbe.ko_count = gScProbe.pause_ticks = 0;
         gScProbe.logic_steps = gScProbe.presentation_steps = 0;
         gScProbeActive = 1; gScProbe.active = 1;
-        status = rl_start_battle(resident.party, resident.party_count, opponents, count,
+        status = rl_start_battle(resident.party, resident.party_count, opponents, request.enemy_count,
                                  &rules, STATE_MENU_SELECT, &result);
         gScProbeActive = 0; gScProbe.active = 0;
+        combat.ready = 0;
         if (status < 0) { status = 0x100 + SC_INVALID; goto end; }
         if (result.outcome == RL_LAUNCH_DRAW) {
             pending_outcome = SC_DRAW;

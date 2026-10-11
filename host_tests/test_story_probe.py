@@ -14,7 +14,7 @@ from tools.rltest.story_probe import (
 
 class StoryHarnessTests(unittest.TestCase):
     def test_mailbox_and_execution_hold(self):
-        self.assertEqual(len(FIELDS), 38)
+        self.assertEqual(len(FIELDS), 47)
         self.assertEqual(len(set(FIELDS)), len(FIELDS))
         result = subprocess.run([sys.executable, "tools/rltest/story_probe.py"],
                                 capture_output=True, text=True)

@@ -1,5 +1,6 @@
 /* PURE. No native pool pointers survive a call. */
 #include "sc_bridge.h"
+#include "sc_combat.h"
 
 int sc_bridge_begin(ScState *state, ScBridge *bridge, const ScCatalog *catalog,
                     const ScSaveDevice *device, unsigned encounter, unsigned variant,
@@ -33,32 +34,18 @@ int sc_bridge_paused(const ScState *state) {
 int sc_bridge_observe(ScState *state, ScBridge *bridge, const ScCatalog *catalog,
                       const ScBattleSnapshot party[6], unsigned active_slot,
                       unsigned enemy_slot, unsigned enemy_hp) {
-    ScState next;
-    RlU8 participants;
-    unsigned i, j;
-    int status;
+    ScCombat combat;
     if (!state || !bridge || !catalog || !party || state->party_count > 6 ||
         active_slot >= state->party_count || enemy_slot >= bridge->enemy_count ||
         bridge->enemy_count > 6 || enemy_hp > 999) return SC_INVALID;
     if (state->phase == SC_LEARNING) return SC_PENDING;
     if (state->phase != SC_BATTLE) return SC_INVALID;
-    next = *state;
-    for (i = 0; i < state->party_count; i++) {
-        if (party[i].hp > next.party[i].max_hp) return SC_INVALID;
-        for (j = 0; j < 4; j++) if (party[i].pp[j] > next.party[i].max_pp[j]) return SC_INVALID;
-        next.party[i].cur_hp = party[i].hp;
-        next.party[i].fainted = party[i].hp == 0;
-        next.party[i].status = party[i].status;
-        for (j = 0; j < 4; j++) next.party[i].pp[j] = party[i].pp[j];
-    }
-    participants = bridge->participants[enemy_slot] | (RlU8)(1U << active_slot);
-    if (!enemy_hp) {
-        status = sc_on_ko(&next, catalog, enemy_slot, participants, next.encounter_variant);
-        if (status != SC_OK) return status;
-    }
-    bridge->participants[enemy_slot] = participants;
-    *state = next;
-    return SC_OK;
+    if (!catalog->encounters || !catalog->species || state->encounter >= catalog->count ||
+        state->encounter_variant >= 3) return SC_INVALID;
+    if (sc_combat_prepare(&combat, state, catalog) != SC_OK) return SC_INVALID;
+    return sc_observe_values(state, bridge, combat.party_species, combat.enemy_species,
+                             &combat.team, combat.kind,
+                             party, active_slot, enemy_slot, enemy_hp);
 }
 
 int sc_bridge_commit(ScState *state, const ScCatalog *catalog,

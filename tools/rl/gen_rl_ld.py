@@ -90,13 +90,13 @@ def find_main_bounds(lines):
     return start, end
 
 
-def fragment_block(header_obj, frag_objs, relocs_obj):
+def fragment_block(header_obj, frag_objs, relocs_obj, name="fragmentRL", vram=RL_FRAGMENT_VRAM):
     objs = [header_obj] + frag_objs
     b = ["", "    /* ---- roguelike overlay fragment (ROGUELIKE build only) ---- */"]
     b += [
         "    fragmentRL_ROM_START = __romPos;",
         "    fragmentRL_VRAM = ADDR(.fragmentRL);",
-        f"    .fragmentRL 0x{RL_FRAGMENT_VRAM:08X} : AT(fragmentRL_ROM_START) SUBALIGN(16)",
+        f"    .fragmentRL 0x{vram:08X} : AT(fragmentRL_ROM_START) SUBALIGN(16)",
         "    {",
         "        FILL(0x00000000);",
         "        fragmentRL_TEXT_START = .;",
@@ -142,7 +142,7 @@ def fragment_block(header_obj, frag_objs, relocs_obj):
         '    __rl_assert_bss = ASSERT(fragmentRL_bss_VRAM == fragmentRL_VRAM + SIZEOF(.fragmentRL), "rl fragment bss must follow data");',
         "",
     ]
-    return b
+    return [line.replace("fragmentRL", name) for line in b]
 
 
 def gen(args):
@@ -208,7 +208,7 @@ def gen(args):
                         out.append("        . = ALIGN(8); /* rl_entry clears 8 bytes per iteration */")
         if idx == main_hi:
             in_main = False
-        if args.story_catalog and re.match(r"^\s*text_VRAM_END = \.;", l):
+        if args.story_catalog and not args.story_header and re.match(r"^\s*text_VRAM_END = \.;", l):
             out.extend([
                 "    /* Probe-only fixed resident data; leaves retail ROM anchors intact. */",
                 "    sc_probe_catalog_ROM_START = 0x02040000;",
@@ -230,7 +230,13 @@ def gen(args):
 
         if re.match(r"^\s*/DISCARD/\s*:", l):
             out.extend(fragment_block(args.frag_header, [o for o in args.frag_objs if o], args.frag_relocs))
-            if args.story_catalog:
+            if args.story_header:
+                out.append('    __sc_assert_rom = ASSERT(fragmentRL_relocs_ROM_END <= 0x02040000, "story overlay overlaps RL overlay ROM");')
+                out.append("    __romPos = 0x02040000;")
+                out.extend(fragment_block(args.story_header, args.story_objs, args.story_relocs,
+                                          "fragmentSC", 0x8F900000))
+                out.append('    __sc_assert_size = ASSERT(fragmentSC_HDR_SIZE_IN_RAM < 0x100000, "story overlay exceeds fragment address window");')
+            elif args.story_catalog:
                 out.append('    __sc_assert_rom = ASSERT(fragmentRL_relocs_ROM_END <= sc_probe_catalog_ROM_START, "story catalog overlaps RL overlay ROM");')
         out.append(l)
 
@@ -287,6 +293,9 @@ def main():
     p.add_argument("--frag-relocs", required=True)
     p.add_argument("--main-objs", nargs="*", default=[])
     p.add_argument("--story-catalog", help="Opt-in probe catalog placed outside retail ROM range")
+    p.add_argument("--story-header")
+    p.add_argument("--story-relocs")
+    p.add_argument("--story-objs", nargs="*", default=[])
     p.add_argument("--frag-objs", nargs="*", default=[])
     p.add_argument("--sym-files", nargs="*", default=[])
     p.add_argument("--regen-fragments", nargs="*", type=int, default=[])

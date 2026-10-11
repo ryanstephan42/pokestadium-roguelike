@@ -4,6 +4,7 @@
 #include "../src/story/sc_core.h"
 #include "../src/story/sc_save.h"
 #include "../src/story/sc_bridge.h"
+#include "../src/story/sc_combat.h"
 
 static ScState state, before;
 static ScEncounter fixtures[4];
@@ -660,6 +661,73 @@ static void test_ko_bridge_checkpoint_pause(void) {
     assert(memcmp(&loaded.state, &state, sizeof(state)) == 0);
 }
 
+static void test_hot_combat_values(void) {
+    ScCombat hot, copied;
+    ScState full, live, saved_state;
+    ScBridge full_bridge, hot_bridge, saved_bridge;
+    ScBattleSnapshot party[6];
+    ScOptions options = {0, SC_STANDARD, SC_STARTER_TRIO, 1};
+    unsigned encounter, variant, slot, i, j;
+    int a, b;
+    for (encounter = 0; encounter < sc_catalog.count; encounter++) {
+        const ScEncounter *entry = &sc_catalog.encounters[encounter];
+        for (variant = 0; variant < entry->variants; variant++) {
+            assert(sc_new(&full, &sc_catalog, &options, 42) == SC_OK);
+            full.phase = SC_BATTLE;
+            full.encounter = encounter;
+            full.encounter_variant = variant;
+            if (entry->kind == SC_RIVAL) full.rival_branch = variant;
+            full.party_count = 6;
+            for (i = 1; i < 6; i++) full.party[i] = full.party[0];
+            full.party[0].level = 6;
+            full.party[0].exp = sc_xp(7, full.party[0].growth) - 1;
+            sc_recalculate(&full.party[0], 0);
+            assert(sc_combat_prepare(&hot, &full, &sc_catalog) == SC_OK);
+            copied = hot;
+            assert(sizeof(hot) < 1024);
+            live = full;
+            memset(&full_bridge, 0, sizeof(full_bridge));
+            memset(&hot_bridge, 0, sizeof(hot_bridge));
+            full_bridge.enemy_count = hot_bridge.enemy_count = entry->teams[variant].count;
+            for (slot = 0; slot < entry->teams[variant].count; slot++) {
+                for (i = 0; i < 6; i++) {
+                    party[i].hp = full.party[i].cur_hp;
+                    party[i].status = full.party[i].status;
+                    for (j = 0; j < 4; j++) party[i].pp[j] = full.party[i].pp[j];
+                }
+                for (i = 0; i < 6; i++) {
+                    a = sc_bridge_observe(&full, &full_bridge, &sc_catalog, party, i, slot, 1);
+                    b = sc_combat_observe(&live, &hot_bridge, &hot, party, i, slot, 1);
+                    assert(a == b && a == SC_OK);
+                }
+                a = sc_bridge_observe(&full, &full_bridge, &sc_catalog, party, 0, slot, 0);
+                b = sc_combat_observe(&live, &hot_bridge, &hot, party, 0, slot, 0);
+                assert(a == b && a == SC_OK);
+                assert(memcmp(&live, &full, sizeof(full)) == 0);
+                assert(memcmp(&hot_bridge, &full_bridge, sizeof(full_bridge)) == 0);
+                while (full.learn_mask) {
+                    for (i = 0; i < 6; i++) {
+                        if (!(full.learn_mask & (1U << i))) continue;
+                        a = sc_learn(&full, &sc_catalog, i, 3, 0);
+                        b = sc_learn_pp(&live, hot.pp, i, 3, 0);
+                        assert(a == b && a == SC_OK);
+                    }
+                }
+                saved_state = live; saved_bridge = hot_bridge;
+                assert(sc_combat_observe(&live, &hot_bridge, &hot, party, 0, slot, 0) == SC_DUPLICATE);
+                assert(memcmp(&live, &saved_state, sizeof(live)) == 0);
+                assert(memcmp(&hot_bridge, &saved_bridge, sizeof(hot_bridge)) == 0);
+            }
+            assert(memcmp(&hot, &copied, sizeof(hot)) == 0);
+            hot.ready = 0;
+            assert(sc_combat_observe(&live, &hot_bridge, &hot, party, 0, 0, 1) == SC_INVALID);
+            hot = copied;
+            live.encounter_variant ^= 1;
+            assert(sc_combat_observe(&live, &hot_bridge, &hot, party, 0, 0, 1) == SC_INVALID);
+        }
+    }
+}
+
 int main(void) {
     assert(sc_catalog_valid(&sc_catalog));
     test_starters();
@@ -675,6 +743,7 @@ int main(void) {
     test_full_installed_graph();
     test_story_save();
     test_ko_bridge_checkpoint_pause();
+    test_hot_combat_values();
     puts("Story reviewed graph/progression/save: OK (native/Pak/UI not wired)");
     return 0;
 }

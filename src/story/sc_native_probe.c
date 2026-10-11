@@ -68,11 +68,9 @@ static int mapping_valid(const ScState *state, unsigned count, const RlU8 mappin
     return 1;
 }
 
-int sc_native_observe(ScState *state, ScBridge *bridge, const ScCatalog *catalog,
-                      const unk_func_80026268_arg0 *party, unsigned count,
-                      const RlU8 mapping[6], unsigned active, unsigned enemy,
-                      unsigned live_enemy_hp) {
-    ScBattleSnapshot snapshots[6];
+int sc_native_capture(const ScState *state, const unk_func_80026268_arg0 *party,
+                    unsigned count, const RlU8 mapping[6], unsigned active,
+                    ScBattleSnapshot snapshots[6]) {
     unsigned i, j;
     if (!party || active >= count || !mapping_valid(state, count, mapping)) return SC_INVALID;
     for (i = 0; i < state->party_count; i++) {
@@ -83,10 +81,18 @@ int sc_native_observe(ScState *state, ScBridge *bridge, const ScCatalog *catalog
     for (i = 0; i < count; i++)
         if (sc_native_snapshot(&party[i], &state->party[mapping[i]],
                                &snapshots[mapping[i]]) != SC_OK) return SC_INVALID;
-    return sc_bridge_observe(state, bridge, catalog, snapshots, mapping[active],
-                             enemy, live_enemy_hp);
+    return SC_OK;
 }
 
+int sc_native_observe_combat(ScState *state, ScBridge *bridge, const ScCombat *combat,
+                             const unk_func_80026268_arg0 *party, unsigned count,
+                             const RlU8 mapping[6], unsigned active, unsigned enemy,
+                             unsigned live_enemy_hp) {
+    ScBattleSnapshot snapshots[6];
+    if (sc_native_capture(state, party, count, mapping, active, snapshots) != SC_OK) return SC_INVALID;
+    return sc_combat_observe(state, bridge, combat, snapshots, mapping[active],
+                             enemy, live_enemy_hp);
+}
 int sc_native_publish(const ScState *state, unk_func_80026268_arg0 *party,
                       unsigned count, const RlU8 mapping[6]) {
     unk_func_80026268_arg0 next[6];
