@@ -86,8 +86,14 @@ class TestProgressionProbes(unittest.TestCase):
                 "save_sha256": hashlib.sha256(b"fixture").hexdigest(),
                 "rom_sha256": "not-current-rom",
             }))
-            with self.assertRaises(HarnessError):
-                restore_checkpoint(None, path)
+            original_read = Path.read_bytes
+            def fixture_read(candidate):
+                if candidate == Path("build_rl/pokestadium-rl.z64"):
+                    return b"mock current ROM"
+                return original_read(candidate)
+            with patch.object(Path, "read_bytes", fixture_read):
+                with self.assertRaises(HarnessError):
+                    restore_checkpoint(None, path)
 
 
 if __name__ == "__main__":

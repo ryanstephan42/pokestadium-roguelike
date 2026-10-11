@@ -18,6 +18,13 @@ or consume another receipt. An unresolved edit offers only retry/back, and
 blocks New Run and settings. Terminal recording still uses its original
 once-only resident candidate, never the profile-edit path. Returning from an
 unsaved summary retains its candidate rather than discarding an uncertain write.
+If the Pak is exchanged while a candidate is pending, `DEVICE_CHANGED` blocks
+retry until the original unchanged Pak is reinserted. There is deliberately no
+abandon action for an uncertain commit: abandoning and repeating a skip or
+terminal payout could consume or award twice. Returning to Menu Select retains
+the candidate; restarting the game loses the resident retry state, so load the
+original Pak to inspect its committed profile before continuing. A genuinely
+different profile requires restarting and explicitly selecting that profile.
 
 Ordinary drafts use `rl_meta_choose_species` over base plus registered species
 in the selected canonical rental pool. Both formerly inverted eligibility
