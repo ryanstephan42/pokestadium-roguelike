@@ -1234,6 +1234,35 @@ Natural99XP/first Ember learning,60-frame hold, one resume/publication and
 WIN/native RESULT/terminal SC01 commit remain untested. No production fix
 is supported and no further execution or budget change is authorized.
 
+### User-approved separate 18000-frame end-to-end budget (source only)
+
+The user subsequently approved a distinct `ko_ember_e2e` test phase, not a
+change or rerun of the failed `ko_ember`6000-each test. It uses the same
+frozen Ember target, checkpoint, CPU/RNG/party and all canonical progression,
+learning, native publication, terminal/save and strict resource assertions.
+There are no native/production changes or fixture tuning.
+
+One `EmberCombatBudget` starts at initialized entry capture. The single
+18000-frame ceiling is shared by prelearning and postresume waits; the latter
+receives only the remaining allowance. Pending-resume and transition steps
+are charged. Only the existing exact60-frame render-only learning hold is
+excluded, once, with its own explicit accounting and unchanged state/save/
+native/progress hold assertions. Every passive history row records used and
+remaining combat frames plus excluded hold frames; both wait boundaries,
+including timeout, persist budget JSON. Completion at the exact cap may pass;
+unmet readiness at that cap fails without another step.
+
+The new phase does not call the older `finish_command` title-wait/180-frame
+cleanup: after observing command0 it reads the result, releases the existing
+launch button without stepping, captures/checks terminal evidence and closes
+the Frontend. No combat or cleanup frames are hidden beyond the ceiling.
+The old phases retain their6000-each budgets and cleanup behavior; their
+failed immutable evidence remains failed. Source regressions cover shared
+remaining allowance, exact-cap success, timeout/final row, one60-frame hold,
+pending resume, early loss/error/injection refusal, and no hidden finish
+steps or gameplay inputs. This budget approval is not an emulator grant;
+exact delta review and separate execution authorization remain required.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

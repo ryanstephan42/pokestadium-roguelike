@@ -182,6 +182,34 @@ def require_ko_progress(evidence, synthetic, terminal=False):
 
 
 EMBER_SCOPE = "pure-host-prehistory-not-native-wins; target-natural-native-battle"
+EMBER_PHASES = ("ko_ember", "ko_ember_e2e", "ember_entry")
+
+
+class EmberCombatBudget:
+    def __init__(self, frame):
+        self.start = frame
+        self.hold = 0
+
+    def evidence(self, frame):
+        used = frame - self.start - self.hold
+        require(0 <= used <= 18000, "Ember shared combat budget exceeded")
+        return dict(start_frame=self.start, frame=frame, combat_used=used,
+                    combat_remaining=18000 - used, combat_limit=18000,
+                    render_hold_used=self.hold, render_hold_limit=60)
+
+    def exclude_hold(self, start, end):
+        require(not self.hold and end - start == 60,
+                "Ember budget excludes only one exact 60-frame render hold")
+        self.hold = 60
+        self.evidence(end)
+
+
+def finish_ember_budget_command(emu, budget):
+    budget.evidence(emu.frame)
+    result = read_probe(emu)
+    require(result["command"] == 0, "Ember end-to-end command still pending")
+    emu.release("L")
+    return result
 
 
 def require_ember_progress(evidence, terminal=False):
@@ -280,7 +308,7 @@ def capture_progress(emu, directory, label):
     result = read_probe(emu)
     memory = memory_evidence(emu, result)
     for name, data in (("result", result), ("memory", memory)):
-        if name == "result" and label.startswith(("ko_ember-", "ember_entry-")):
+        if name == "result" and label.startswith(("ko_ember-", "ko_ember_e2e-", "ember_entry-")):
             data = {**data, "coverage_scope": EMBER_SCOPE}
         (directory / f"{label}-{name}.json").write_text(json.dumps(data, indent=2) + "\n")
     progress = read_progress(emu)
@@ -448,7 +476,7 @@ def finish_synthetic_command(emu, directory):
     return finish_command(emu)
 
 
-def wait_natural_probe(emu, directory, learning, phase_name="ko_natural"):
+def wait_natural_probe(emu, directory, learning, phase_name="ko_natural", budget=None):
     label = "prelearning" if learning else "postresume"
     description = "per-KO learning pause" if learning else "story probe native command"
     with (directory / f"{phase_name}-{label}-machine-history.jsonl").open("w") as history:
@@ -457,9 +485,12 @@ def wait_natural_probe(emu, directory, learning, phase_name="ko_natural"):
             progress = read_progress(instance)
             machine = read_native_machine(instance) if probe["active"] else None
             history_probe = ({**probe, "coverage_scope": EMBER_SCOPE}
-                             if phase_name == "ko_ember" else probe)
-            history.write(json.dumps({"frame": instance.frame, "probe": history_probe,
-                                      "progress": progress, "machine": machine}) + "\n")
+                             if phase_name in EMBER_PHASES else probe)
+            row = {"frame": instance.frame, "probe": history_probe,
+                   "progress": progress, "machine": machine}
+            if budget is not None:
+                row["budget"] = budget.evidence(instance.frame)
+            history.write(json.dumps(row) + "\n")
             history.flush()
             require(not probe["force_ko"] and not progress["injected"],
                     "Natural KO observed a synthetic force request or injection")
@@ -472,7 +503,13 @@ def wait_natural_probe(emu, directory, learning, phase_name="ko_natural"):
                 return probe["phase"] == 2
             return probe["command"] == 0
 
-        emu.wait(ready, frames=6000, description=description)
+        frames = budget.evidence(emu.frame)["combat_remaining"] if budget is not None else 6000
+        try:
+            emu.wait(ready, frames=frames, description=description)
+        finally:
+            if budget is not None:
+                (directory / f"{phase_name}-{label}-budget.json").write_text(
+                    json.dumps(budget.evidence(emu.frame), indent=2) + "\n")
 
 
 def require_learning_storage(prebattle, paused, held):
@@ -482,7 +519,7 @@ def require_learning_storage(prebattle, paused, held):
 
 def require_probe_profile(map_path, phase):
     contents = Path(map_path).read_text()
-    require(("gScProbeEmberProfile" in contents) == (phase in ("ko_ember", "ember_entry")),
+    require(("gScProbeEmberProfile" in contents) == (phase in EMBER_PHASES),
             "Ember scenario requires its separate profile; original scenarios refuse it")
     if phase in ("bridge_init", "bridge_carry"):
         require("gScProbeKoProfile" not in contents,
@@ -767,7 +804,7 @@ def phase(args):
         "map_sha256": hashlib.sha256(Path(args.map).read_bytes()).hexdigest(),
         "core_sha256": hashlib.sha256(Path(args.core).read_bytes()).hexdigest(),
     }
-    if args.phase in ("ko_ember", "ember_entry"):
+    if args.phase in EMBER_PHASES:
         provenance["coverage_scope"] = EMBER_SCOPE
         provenance["fixture"] = {
             "seed": 42, "pure_wins": [57, 349], "declined_rewards": [57, 349],
@@ -775,6 +812,11 @@ def phase(args):
             "prelearning_budget": 6000, "postresume_budget": 6000, "hold_frames": 60,
             "expected_win_is_assertion_not_prediction": True,
         }
+        if args.phase == "ko_ember_e2e":
+            provenance["fixture"].pop("prelearning_budget")
+            provenance["fixture"].pop("postresume_budget")
+            provenance["fixture"]["shared_combat_budget"] = 18000
+            provenance["fixture"]["budget_scope"] = "entry capture through terminal, excluding exact render hold"
         provenance["save_source_sha256"] = hashlib.sha256(
             (directory / "save-ram.bin").read_bytes()).hexdigest()
         provenance["core_options"] = {"mupen64plus-pak1": "memory",
@@ -793,7 +835,7 @@ def phase(args):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
                           "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ember_entry"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e", "ember_entry"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -876,9 +918,9 @@ def phase(args):
             after = save_ram(emu)[1]
             story_owned_changes(before, after, base)
             (directory / "save-ram.bin").write_bytes(after)
-        elif args.phase in ("battle", "natural", "ko_synthetic", "ko_natural", "ko_ember"):
+        elif args.phase in ("battle", "natural", "ko_synthetic", "ko_natural", "ko_ember", "ko_ember_e2e"):
             synthetic = args.phase in ("battle", "ko_synthetic")
-            ember = args.phase == "ko_ember"
+            ember = args.phase in ("ko_ember", "ko_ember_e2e")
             base = find_pak(before)
             start_command(emu, 3)
             try:
@@ -893,12 +935,13 @@ def phase(args):
             validate_memory(initial_memory, initial_result)
             if ember:
                 require_ember_entry(initial_result, entry_state, entry_party)
+            budget = EmberCombatBudget(emu.frame) if args.phase == "ko_ember_e2e" else None
             if synthetic:
                 require(initial_result["max_hp"] == 22, "GB HP-DV fixture did not start at HP22")
                 set_field(emu, "force_ko", 1)
             try:
-                if args.phase in ("ko_natural", "ko_ember"):
-                    wait_natural_probe(emu, directory, learning=True, phase_name=args.phase)
+                if args.phase in ("ko_natural", "ko_ember", "ko_ember_e2e"):
+                    wait_natural_probe(emu, directory, learning=True, phase_name=args.phase, budget=budget)
                 else:
                     wait_probe(emu, lambda result: result["phase"] == 2, 6000, "per-KO learning pause")
             except HarnessError:
@@ -939,7 +982,12 @@ def phase(args):
             require(not paused["cold_busy"] and not paused["cold_address"] and
                     paused["cold_calls"] == 1 and paused["cold_before"] == paused["cold_after"],
                     f"Cold preparation did not return/unload before battle: {paused}")
+            hold_start = emu.frame
             emu.step(60)
+            if budget is not None:
+                budget.exclude_hold(hold_start, emu.frame)
+                (directory / f"{args.phase}-hold-budget.json").write_text(
+                    json.dumps(budget.evidence(emu.frame), indent=2) + "\n")
             held, held_progress, held_state, held_party, held_memory = capture_progress(
                 emu, directory, f"{args.phase}-held")
             held_save = save_ram(emu)[1]
@@ -961,9 +1009,12 @@ def phase(args):
                 if args.phase == "ko_synthetic":
                     result = finish_synthetic_command(emu, directory)
                 else:
-                    if args.phase in ("ko_natural", "ko_ember"):
-                        wait_natural_probe(emu, directory, learning=False, phase_name=args.phase)
-                    result = finish_command(emu)
+                    if args.phase in ("ko_natural", "ko_ember", "ko_ember_e2e"):
+                        wait_natural_probe(emu, directory, learning=False, phase_name=args.phase, budget=budget)
+                    if budget is not None:
+                        result = finish_ember_budget_command(emu, budget)
+                    else:
+                        result = finish_command(emu)
             except HarnessError:
                 capture_progress(emu, directory, f"{args.phase}-failure")
                 raise
@@ -1018,11 +1069,11 @@ def phase(args):
                 story_owned_changes(fixture, after, base)
                 require(native_command(emu, 1)[4] == 42, "SC01 changed RL01 meta")
                 (directory / "save-ram.bin").write_bytes(save_ram(emu)[1])
-        recorded_result = {**result, "coverage_scope": EMBER_SCOPE} if args.phase == "ko_ember" else result
+        recorded_result = {**result, "coverage_scope": EMBER_SCOPE} if args.phase in EMBER_PHASES else result
         (directory / f"{args.phase}-result.json").write_text(json.dumps(recorded_result, indent=2) + "\n")
         if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload",
                           "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e"):
             evidence = memory_evidence(emu, result)
             (directory / f"{args.phase}-memory.json").write_text(json.dumps(evidence, indent=2) + "\n")
             raw, party = decode_party(emu, result)
@@ -1083,7 +1134,7 @@ def main():
                                           "battle", "natural", "reload", "missing", "full",
                                           "allocation", "checkpoint", "checkpoint_reload",
                                           "bridge_init", "bridge_carry",
-                                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember",
+                                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e",
                                           "ember_entry"))
     args = parser.parse_args()
     if not args.execute:

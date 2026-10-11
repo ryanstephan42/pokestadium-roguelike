@@ -37,6 +37,92 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_ember_budget_finish_has_no_hidden_steps(self):
+        from tools.rltest import story_probe
+        emu = Mock(frame=18060)
+        budget = story_probe.EmberCombatBudget(0)
+        budget.exclude_hold(9000, 9060)
+        with patch.object(story_probe, "read_probe", return_value=dict(command=0)) as read:
+            self.assertEqual(story_probe.finish_ember_budget_command(emu, budget), dict(command=0))
+            read.assert_called_once_with(emu)
+            emu.release.assert_called_once_with("L")
+            emu.step.assert_not_called()
+            emu.wait.assert_not_called()
+            emu.wait_state.assert_not_called()
+            read.return_value = dict(command=3)
+            with self.assertRaises(HarnessError):
+                story_probe.finish_ember_budget_command(emu, budget)
+            emu.wait_state.assert_not_called()
+
+    def test_ember_shared_budget_exact_cap_and_hold_exclusion(self):
+        from tools.rltest import story_probe
+        from tools.rltest.frontend import Frontend
+        emu = Mock(frame=100)
+        budget = story_probe.EmberCombatBudget(emu.frame)
+        emu.wait.side_effect = lambda predicate, **kwargs: Frontend.wait(emu, predicate, **kwargs)
+        emu.step.side_effect = lambda frames=1: setattr(emu, "frame", emu.frame + frames)
+        def probe(instance):
+            if instance.frame <= 7100:
+                return dict(command=3, phase=2 if instance.frame == 7100 else 1,
+                            active=0, force_ko=0, status=0xFFFFFFFF)
+            return dict(command=0 if instance.frame == 18160 else 3, phase=1,
+                        active=0, force_ko=0, status=0xFFFFFFFF, resume=1)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe", side_effect=probe), \
+                patch.object(story_probe, "read_progress", return_value=dict(error=0, injected=0)), \
+                patch.object(story_probe, "read_native_machine") as native, \
+                patch.object(story_probe, "synthetic_selector_input") as selector:
+            directory = Path(temporary)
+            wait_natural_probe(emu, directory, True, "ko_ember_e2e", budget)
+            self.assertEqual(emu.frame, 7100)
+            self.assertEqual(budget.evidence(emu.frame)["combat_remaining"], 11000)
+            start = emu.frame
+            emu.step(60)
+            budget.exclude_hold(start, emu.frame)
+            wait_natural_probe(emu, directory, False, "ko_ember_e2e", budget)
+            self.assertEqual(emu.frame, 18160)
+            self.assertEqual(budget.evidence(emu.frame)["combat_used"], 18000)
+            rows = (directory / "ko_ember_e2e-postresume-machine-history.jsonl").read_text().splitlines()
+            self.assertEqual(len(rows), 11001)
+            self.assertEqual(json.loads(rows[-1])["budget"]["combat_remaining"], 0)
+            self.assertEqual(json.loads(rows[-1])["budget"]["render_hold_used"], 60)
+            native.assert_not_called()
+            selector.assert_not_called()
+            emu.set_input.assert_not_called()
+            emu.write_u32.assert_not_called()
+        with self.assertRaises(HarnessError):
+            budget.exclude_hold(18160, 18220)
+
+    def test_ember_shared_budget_timeout_remaining_and_early_refusals(self):
+        from tools.rltest import story_probe
+        from tools.rltest.frontend import Frontend
+        for overrides, progress, expected_frame in (
+                ({}, dict(error=0, injected=0), 18000),
+                (dict(command=0), dict(error=0, injected=0), 17998),
+                (dict(status=0x101), dict(error=0, injected=0), 17998),
+                ({}, dict(error=1, injected=0), 17998),
+                ({}, dict(error=0, injected=1), 17998)):
+            emu = Mock(frame=17998)
+            budget = story_probe.EmberCombatBudget(0)
+            emu.wait.side_effect = lambda predicate, **kwargs: Frontend.wait(emu, predicate, **kwargs)
+            emu.step.side_effect = lambda frames=1: setattr(emu, "frame", emu.frame + frames)
+            probe = dict(command=3, phase=1, active=0, force_ko=0, status=0xFFFFFFFF)
+            probe.update(overrides)
+            with tempfile.TemporaryDirectory() as temporary, \
+                    patch.object(story_probe, "read_probe", return_value=probe), \
+                    patch.object(story_probe, "read_progress", return_value=progress):
+                directory = Path(temporary)
+                with self.assertRaises(HarnessError):
+                    wait_natural_probe(emu, directory, True, "ko_ember_e2e", budget)
+                self.assertEqual(emu.frame, expected_frame)
+                rows = (directory / "ko_ember_e2e-prelearning-machine-history.jsonl").read_text().splitlines()
+                self.assertEqual(json.loads(rows[-1])["frame"], expected_frame)
+                self.assertTrue((directory / "ko_ember_e2e-prelearning-budget.json").exists())
+                emu.set_input.assert_not_called()
+                emu.write_u32.assert_not_called()
+        with self.assertRaises(HarnessError):
+            story_probe.EmberCombatBudget(0).exclude_hold(0, 61)
+
     def test_ember_entry_only_stops_without_combat_or_resume(self):
         from tools.rltest import story_probe
         emu = Mock()
@@ -155,12 +241,15 @@ class StoryHarnessTests(unittest.TestCase):
             path = Path(temporary) / "probe.map"
             path.write_text("gScProbeKoProfile\ngScProbeEmberProfile\n")
             require_probe_profile(path, "ko_ember")
+            require_probe_profile(path, "ko_ember_e2e")
             for phase in ("ko_natural", "ko_synthetic", "bridge_init", "create", "ko_reload"):
                 with self.assertRaises(HarnessError):
                     require_probe_profile(path, phase)
             path.write_text("gScProbeKoProfile\n")
             with self.assertRaises(HarnessError):
                 require_probe_profile(path, "ko_ember")
+            with self.assertRaises(HarnessError):
+                require_probe_profile(path, "ko_ember_e2e")
 
     def test_ember_passive_wait_preserves_budget_scope_and_no_writes(self):
         from tools.rltest import story_probe
