@@ -352,7 +352,11 @@ u32* func_80003D64(u8* arg0, s32 arg1, u32 arg2, s32 arg3) {
 void* func_80003DC4(u8* romStart, u8* romEnd, s32 arg2, s32 arg3) {
     u32* addr;
     u32* newaddr;
+#ifdef STORY_NATIVE_UI
+    u32* ret = NULL;
+#else
     u32* ret;
+#endif
     UNUSED s32 pad;
     int side;
 
