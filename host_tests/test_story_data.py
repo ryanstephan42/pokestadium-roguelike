@@ -13,7 +13,7 @@ from tools.story_data import (
     rival_branch_audit, ship_retirement,
     access_fact_audit,
 )
-from tools.story_graph import advance, available, candidate, healing_available, traverse
+from tools.story_graph import advance, available, candidate, healing_available, traverse, reviewed_graph
 
 
 class ParserTests(unittest.TestCase):
@@ -267,6 +267,23 @@ class CanonicalInventoryTests(unittest.TestCase):
             candidate(self.data, "yellow")
         with self.assertRaises(DataError):
             candidate(self.data, "red", 3)
+
+    def test_exact_review_identity(self):
+        import copy
+        self.assertEqual(reviewed_graph(self.data), candidate(self.data, "red"))
+        altered = copy.deepcopy(self.data)
+        altered["species"][0]["base"][1] += 1
+        with self.assertRaisesRegex(DataError, "accepted review identity"):
+            reviewed_graph(altered)
+        altered = copy.deepcopy(self.data)
+        altered["revision"] = "0" * 40
+        with self.assertRaisesRegex(DataError, "accepted review identity"):
+            reviewed_graph(altered)
+        graph = candidate(self.data, "red")
+        graph["nodes"]["travel:ship-departure"]["clauses"] = [["travel:bill"]]
+        with patch("tools.story_graph.candidate", return_value=graph):
+            with self.assertRaisesRegex(DataError, "accepted review identity"):
+                reviewed_graph(self.data)
 
     def test_access_fact_evidence(self):
         facts = self.data["access_fact_audit"]["red"]

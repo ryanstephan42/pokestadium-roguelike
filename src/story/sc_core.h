@@ -22,6 +22,7 @@ typedef struct ScState {
     ScOptions options;
     RlU8 phase, party_count, rival_branch, defeated_mask, evolution_mask, encounter_variant;
     RlU8 learn_mask, learn_moves[6], return_phase, offered_slot;
+    RlU8 fossil_choice;
     RlU16 encounter;
     RlU8 completed[SC_BITS], retired[SC_BITS];
     RlMon party[6], offer;
@@ -31,6 +32,9 @@ int sc_catalog_valid(const ScCatalog *catalog);
 int sc_new(ScState *state, const ScCatalog *catalog, const ScOptions *options,
            RlU32 seed);
 int sc_available(const ScState *state, const ScCatalog *catalog, unsigned encounter);
+int sc_action(ScState *state, const ScCatalog *catalog, unsigned node,
+              unsigned choice, unsigned destination_warp);
+int sc_location_heal(ScState *state, const ScCatalog *catalog, unsigned location);
 int sc_team(const ScState *state, const ScCatalog *catalog, unsigned encounter,
             unsigned variant, RlMon output[6], unsigned *count);
 int sc_begin(ScState *state, const ScCatalog *catalog, unsigned encounter,

@@ -1,5 +1,5 @@
 /* PURE */
-#include "sc_core.h"
+#include "sc_graph.h"
 
 static int bit(const RlU8 *bits, unsigned index) {
     return (bits[index / 8] >> (index % 8)) & 1;
@@ -111,7 +111,7 @@ int sc_catalog_valid(const ScCatalog *catalog) {
             }
         }
     }
-    return 1;
+    return sc_graph_valid(catalog);
 }
 
 int sc_new(ScState *state, const ScCatalog *catalog, const ScOptions *options,
@@ -135,6 +135,7 @@ int sc_new(ScState *state, const ScCatalog *catalog, const ScOptions *options,
     next.rng = seed ? seed : 0x73633031U;
     next.encounter = SC_NO_ENCOUNTER;
     next.offered_slot = RL_NO_SLOT;
+    next.fossil_choice = RL_NO_SLOT;
     species = options->starter;
     if (!species && options->starter_pool == SC_STARTER_TRIO)
         species = starters[sc_random_bounded(&next.rng, 3)];
@@ -176,7 +177,8 @@ int sc_available(const ScState *state, const ScCatalog *catalog, unsigned encoun
     return gate_valid(&entry->gate, catalog->count) &&
         !bit(state->completed, encounter) && !bit(state->retired, encounter) &&
         !(entry->retires_at & state->milestones) &&
-        gate_open(state, &entry->gate);
+        gate_open(state, &entry->gate) &&
+        (!catalog->graph || sc_graph_open(state, catalog, encounter));
 }
 
 static int variant_valid(const ScState *state, const ScEncounter *entry, unsigned variant) {
@@ -193,6 +195,8 @@ int sc_team(const ScState *state, const ScCatalog *catalog, unsigned encounter,
     if (!state || !catalog || !catalog->encounters || !output || !count ||
         catalog->count > SC_ENCOUNTER_CAPACITY || encounter >= catalog->count) return SC_INVALID;
     entry = &catalog->encounters[encounter];
+    if (catalog->graph && encounter == catalog->graph->fossil_offer &&
+        variant != state->fossil_choice) return SC_INVALID;
     if (!variant_valid(state, entry, variant) || !entry->teams[variant].count ||
         entry->teams[variant].count > 6) return SC_INVALID;
     rng = state->seed ^ ((RlU32)(encounter + 1) * 0x9e3779b9U) ^ variant;
@@ -282,11 +286,12 @@ static void retire(ScState *state, const ScCatalog *catalog) {
     unsigned i;
     for (i = 0; i < catalog->count; i++)
         if (catalog->encounters[i].retires_at & state->milestones) set_bit(state->retired, i);
+    sc_graph_retire(state, catalog);
 }
 
 int sc_grant(ScState *state, const ScCatalog *catalog, RlU32 milestones) {
     if (!state || !catalog || !catalog->encounters || !catalog->graph_reviewed ||
-        catalog->count > SC_ENCOUNTER_CAPACITY || state->phase != SC_ROUTE)
+        catalog->count > SC_ENCOUNTER_CAPACITY || state->phase != SC_ROUTE || catalog->graph)
         return SC_INVALID;
     state->milestones |= milestones;
     retire(state, catalog);
@@ -381,13 +386,12 @@ int sc_decline(ScState *state, const ScCatalog *catalog) {
     return resolve_offer(state, catalog);
 }
 
-int sc_heal(ScState *state, const ScCatalog *catalog, unsigned location,
-            const ScGate *gate) {
+int sc_apply_heal(ScState *state, unsigned location) {
     unsigned i, j;
-    if (!state || !catalog || location >= 32 || !gate_valid(gate, catalog->count) ||
+    if (!state || location >= 32 ||
         state->party_count < 1 || state->party_count > 6 || state->phase != SC_ROUTE ||
         state->options.difficulty > SC_BRUTAL) return SC_INVALID;
-    if (!gate_open(state, gate) || state->options.difficulty == SC_BRUTAL ||
+    if (state->options.difficulty == SC_BRUTAL ||
         (state->options.difficulty == SC_LIMITED && (state->healing_used & (1U << location))))
         return SC_UNAVAILABLE;
     for (i = 0; i < state->party_count; i++) {
@@ -397,6 +401,15 @@ int sc_heal(ScState *state, const ScCatalog *catalog, unsigned location,
     }
     state->healing_used |= 1U << location;
     return SC_OK;
+}
+
+int sc_heal(ScState *state, const ScCatalog *catalog, unsigned location,
+            const ScGate *gate) {
+    if (!state || !catalog) return SC_INVALID;
+    if (catalog->graph) return sc_location_heal(state, catalog, location);
+    if (!gate_valid(gate, catalog->count)) return SC_INVALID;
+    if (!gate_open(state, gate)) return SC_UNAVAILABLE;
+    return sc_apply_heal(state, location);
 }
 
 int sc_learn(ScState *state, const ScCatalog *catalog, unsigned party_slot,

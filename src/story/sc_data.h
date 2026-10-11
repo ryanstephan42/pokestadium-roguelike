@@ -42,12 +42,36 @@ typedef struct ScEncounter {
     RlU32 grants, retires_at;
 } ScEncounter;
 
+typedef struct ScClause {
+    RlU16 prior[12];
+    RlU8 count;
+} ScClause;
+typedef struct ScNode {
+    const char *id;
+    ScClause clauses[2];
+    RlU16 retires_after[2];
+    RlU8 clause_count, retirement_count, variants, destination_warp;
+} ScNode;
+typedef struct ScHealing {
+    const char *id;
+    ScClause required;
+    RlU16 retires_after;
+} ScHealing;
+typedef struct ScGraph {
+    const ScNode *nodes;
+    const ScHealing *healing;
+    const char *review_identity;
+    RlU16 count, fossil_action, fossil_offer, champion, league[4];
+    RlU8 healing_count;
+} ScGraph;
+
 typedef struct ScCatalog {
     const ScSpecies *species; /* Dummy zero entry, followed by national dex IDs. */
     const RlU8 *pp;           /* Dummy zero entry and 165 canonical moves. */
     const ScEncounter *encounters;
     RlU16 count;
     RlU8 graph_reviewed;
+    const ScGraph *graph;
 } ScCatalog;
 
 extern const ScSpecies sc_species[SC_SPECIES_COUNT + 1];

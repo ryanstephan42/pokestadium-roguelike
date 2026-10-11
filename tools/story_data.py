@@ -815,6 +815,11 @@ def c_array(values):
 
 
 def emit_c(data, path):
+    if __package__ in (None, ""):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tools.story_graph import reviewed_graph, REVIEWED_DIGEST
+    graph = reviewed_graph(data)
     lines = ['#include "src/story/sc_data.h"', "",
              "const RlU8 sc_pp[166] = " + c_array(data["pp"]) + ";",
              "const ScSpecies sc_species[152] = {",
@@ -839,9 +844,43 @@ def emit_c(data, path):
             teams.append("{%d, {%s}}" % (len(team), ", ".join(mons)))
         lines.append("    {%s, %d, %d, {%s}, {0, 0, 0, {0}, 0}, 0, 0}," %
                      (json.dumps(entry["id"]), kinds[entry["kind"]], len(teams), ", ".join(teams)))
-    lines.extend(["};", "", "const ScCatalog sc_catalog = {",
+    lines.extend(["};", ""])
+    identifiers = list(graph["nodes"])
+    indices = {identifier: i for i, identifier in enumerate(identifiers)}
+    require(identifiers[:len(data["encounters"]["red"])] ==
+            [e["id"] for e in data["encounters"]["red"]], "Changed graph encounter order")
+
+    def clause_c(clause):
+        require(len(clause) <= 12, "Graph clause exceeds C capacity")
+        return "{%s, %d}" % (c_array([indices[value] for value in clause] or [0]), len(clause))
+
+    lines.append("static const ScNode sc_nodes[] = {")
+    for identifier, node in graph["nodes"].items():
+        retirement = [indices[trigger] for trigger, affected in graph["retires"].items()
+                      if identifier in affected]
+        require(len(retirement) <= 2 and len(node["clauses"]) <= 2, "Graph exceeds C capacity")
+        lines.append("    {%s, {%s}, %s, %d, %d, %d, %d}," %
+                     (json.dumps(identifier), ", ".join(clause_c(c) for c in node["clauses"]),
+                      c_array(retirement or [0]), len(node["clauses"]), len(retirement),
+                      node["variants"], node.get("destination_warp", 0)))
+    lines.extend(["};", "static const ScHealing sc_healing[] = {"])
+    for identifier, permission in graph["healing"].items():
+        lines.append("    {%s, %s, %d}," % (
+            json.dumps(identifier), clause_c(permission["required"]),
+            indices[permission["retires_after"]] if permission["retires_after"] else 65535))
+    league = []
+    for area in ("LoreleisRoom", "BrunosRoom", "AgathasRoom", "LancesRoom"):
+        matches = [indices[e["id"]] for e in data["encounters"]["red"] if e["area"] == area]
+        require(len(matches) == 1, "Ambiguous League lock ID")
+        league.append(matches[0])
+    lines.extend(["};", "static const ScGraph sc_graph = {",
+                  '    sc_nodes, sc_healing, "%s",' % REVIEWED_DIGEST,
+                  "    %d, %d, %d, %d, %s, 15" % (
+                      len(identifiers), indices["travel:fossil"], indices[graph["fossil_offer"]],
+                      indices["ChampionsRoom/rival-champion"], c_array(league)),
+                  "};", "", "const ScCatalog sc_catalog = {",
                   "    sc_species, sc_pp, sc_encounters,",
-                  "    sizeof(sc_encounters) / sizeof(sc_encounters[0]), 0", "};", ""])
+                  "    sizeof(sc_encounters) / sizeof(sc_encounters[0]), 1, &sc_graph", "};", ""])
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text("\n".join(lines), encoding="ascii")
@@ -867,7 +906,7 @@ def main():
                   for kind in ("trainer", "rival", "static", "gift", "ghost")}
         print(f"{version}: {len(entries)} encounter instances: {counts}")
     print(f"151 species; 391 stored parties; {len(data['unreferenced_parties'])} unreferenced parties")
-    print("Availability/retirement graph review remains required.")
+    print("Exact reviewed region graph installed; native/save/UI integration remains required.")
 
 
 if __name__ == "__main__":

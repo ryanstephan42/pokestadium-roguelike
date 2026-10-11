@@ -9,6 +9,20 @@ GYMS = {
     "CinnabarGym": "BLAINE", "ViridianGym": "GIOVANNI",
 }
 REGION_SCOPE = "Optional regional trainers; required rivals, gyms and story battles."
+REVIEWED_HEAD = "973fbd4507e2f104a8c12575207afe6702182316"
+REVIEWED_DIGEST = "42abbcfced4b4e824b8495b0579b0b443d14715001e85d5700588b7a534eb42e"
+
+
+def reviewed_graph(data):
+    import hashlib
+    import json
+    graphs = [candidate(data, version) for version in ("red", "blue")]
+    identity = hashlib.sha256(json.dumps(
+        {"data": data, "graphs": graphs}, default=lambda value: sorted(value),
+        sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    require(identity == REVIEWED_DIGEST, "Catalog/graph differs from accepted review identity")
+    require(graphs[0] == graphs[1], "Version-specific graph needs separate installation")
+    return graphs[0]
 
 
 def candidate(data, version, rival_branch=0, fossil_choice=0):

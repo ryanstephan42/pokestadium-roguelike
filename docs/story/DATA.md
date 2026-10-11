@@ -1,11 +1,15 @@
 # Red/Blue campaign data milestone
 
 **This is not a playable story mode yet.** The importer and platform-independent
-progression are implemented for review. The canonical traversal/retirement graph,
-native per-KO callbacks, Controller Pak codec and UI remain unwired.
+progression and the accepted region graph are installed in pure C. The isolated
+save codec/journal and KO transaction contract have host proofs. Guarded native
+record/Pak backends compile but are excluded from ROMs; live per-KO callbacks,
+physical Controller Pak runtime proof and UI remain unwired.
 `Makefile` explicitly excludes `src/story/` from both ROM builds at this stage.
-The generated catalog has `graph_reviewed = 0`; `sc_new` rejects it with
-`SC_UNREVIEWED` rather than silently exposing every trainer in arbitrary order.
+The generated catalog has `graph_reviewed = 1` only after the importer checks
+the exact accepted graph/provenance digest. Unreviewed catalogs still return
+`SC_UNREVIEWED`; changed facts or policy fail generation instead of inheriting
+review approval.
 
 ## Reproducing the source audit
 
@@ -78,7 +82,7 @@ Static inventory is two Snorlax 30, six Voltorb 40, two Electrode 43, three
 legendary birds 50, and Mewtwo 70. Gifts are Magikarp 5, Eevee 25, one Dojo
 choice 30, Lapras 15, one Mt. Moon fossil revival 30 and Old Amber revival 30.
 Ghost Marowak 30 advances the story without a recruit/transfer reward.
-Access/fossil-choice/expiration policy is deliberately deferred to graph review.
+Access/fossil-choice/expiration policy is installed from the accepted regional graph.
 
 ### Bounded retirement audit
 
@@ -115,8 +119,8 @@ jumps/team loads (including Route 22's starter table lookup), not merely the
 presence of an `OPP_RIVAL` operand. Their source party index order is
 STARTER2/STARTER3/STARTER1, consistently Squirtle/Bulbasaur/Charmander.
 Rival prerequisites, static permissions, route access and
-full branch/version traversals remain under review. The C emitter deliberately
-does not install these partial rules or change `graph_reviewed = 0`.
+full branch/version traversals were accepted at exact review head
+`973fbd4507e2f104a8c12575207afe6702182316` under the user-approved scope.
 
 ### Access facts and candidate traversals
 
@@ -139,8 +143,8 @@ Important references:
 Battle core source has a separately bounded 256 KiB download allowance; all
 other allowlisted source files retain the 128 KiB limit.
 
-`tools/story_graph.py` is a **host-only review policy**, separate from the C
-catalog. It gives all 361 inventory IDs explicit region/dependency clauses and
+`tools/story_graph.py` describes the **reviewed region policy**. It gives all
+361 inventory IDs explicit region/dependency clauses and
 22 nonbattle milestone nodes. Full sweeps cover both versions, all three
 locked rival branches and both fossil choices (12 traversals), without
 duplicate encounters or dangling edges. Destructive milestones are postponed
@@ -186,8 +190,13 @@ No shops, repeated item purchases or additional wild battles are introduced.
 Route 19's two shore trainers remain accessible before Surf, while sea
 trainers require Surf. Exact original tile-path proof is no longer an
 acceptance requirement under the explicit user scope.
-The candidate remains `reviewed = False`; it is not emitted into either ROM
-or used to bypass `SC_UNREVIEWED` pending independent milestone acceptance.
+The bare candidate constructor does not grant approval. `reviewed_graph`
+authenticates both version graphs plus all numerical/source audit data against
+SHA256 `42abbcfced4b4e824b8495b0579b0b443d14715001e85d5700588b7a534eb42e`
+(accepted head above), then emits the C graph. Factual, provenance or dependency
+changes require a new review identity. C nodes preserve alternative all-of
+clauses, explicit retirement triggers, fossil locking and dock warp checks.
+Caller-supplied milestone grants cannot bypass installed canonical actions.
 
 ### Healing permission evidence
 
@@ -204,7 +213,8 @@ The host candidate attaches access clauses to these stable identities, applies
 the locked Standard/Limited/Brutal rules, and prevents all healing during the
 League sequence. Tests cover unavailable-before-access, once-per-location use,
 Brutal denial, Silph retirement and League lock. These permissions are not yet
-wired into pure C/native UI. Access uses unlocked regions rather than current
+wired into native UI. Pure C healing uses the same installed permissions,
+including calls through the original `sc_heal` entry point. Access uses unlocked regions rather than current
 tile position: returning to an unlocked healing location is free, except for
 the explicit League lock and Silph nurse expiry. Standard never consumes a
 healing location; Limited consumes each identity once and Brutal denies all.
@@ -251,8 +261,57 @@ The existing Stadium/roguelike helper uses the reversed weights for its native
 layout. Consequently the existing native adapter cannot be assumed to preserve
 canonical story HP when it recalculates stats. Story's independent stat helper
 matches GB mechanics: Brock's Geodude 12 has HP 33 and Onix 14 has HP 36.
-The later story bridge must explicitly preserve verified story stats in both
-expanded and live native records without changing the rogue helper.
+The guarded `sc_native_probe` writes canonical stats/DVs directly into the
+actual expanded native record layout without calling `rl_prepare_mon` or
+Stadium stat calculation. Its 32-bit host probe confirms Geodude's HP 33 and
+all stat fields survive this boundary. This is **not** proof that subsequent
+live initialization/stage recalculation preserves them.
+
+## Isolated saves and KO boundary
+
+`sc_save.c` uses an explicit little-endian 736-byte version-1 record, not a
+dump of `ScState` or compiler padding. The header binds the exact accepted
+graph identity; CRC32 covers header and payload. A different graph identity
+or unknown version is rejected without migration or mutation of outputs.
+Validation includes canonical base/growth/PP and bounded Gen I stats, starter
+rival consistency, completed dependency clauses, exact retirement bits,
+locked fossil choice and an authentic pending donor offer.
+
+`sc_storage.c` is a two-slot, 1536-byte isolated note backend behind checked
+device callbacks. The native note identity is company `0x524c`, game `SC01`,
+name `STADIUM STORY`, extension `V1`, never `STADIUM RL`/`RL01`. Creation is
+explicit. The inactive slot is invalidated, its payload written/read back,
+then its header committed/read back. The previous valid generation survives
+torn writes. Device, CRC, version and data errors are distinct results;
+`SC_SAVE_RECOVERED` explicitly reports fallback to the surviving record.
+No EEPROM, cartridge, Transfer Pak or rogue meta data is touched.
+`sc_pak_probe.c`, behind `STORY_NATIVE_PROBE`, implements physical discovery,
+allocation and 32-byte I/O using the existing checked raw-Pak approach. It
+reuses a parameterized read-only filesystem validator and the stock libultra
+allocator, not rogue saves/meta. The original RL identity wrapper remains;
+tests verify simultaneous disjoint RL01/SC01 notes and wrong-name/page-count
+rejection. A note with the requested company/game but an incompatible name
+or extension fails closed instead of being treated as a creatable absence.
+No formatting or automatic filesystem repair occurs. Device identity is
+checked before/after transfers; SI access is serialized. The guarded backend
+has target IDO compilation, **not physical/emulator I/O proof** yet.
+
+`sc_bridge_begin` persists the route state as an interrupted prebattle
+checkpoint before admitting a battle. `sc_bridge_commit` publishes its win,
+reward or terminal defeat only after durable storage succeeds. Storage errors
+are returned through the required `storage_status` output; callers must display
+them and block advancement. A failed commit leaves the in-memory precommit
+state retryable, including its RNG and finite reward selection.
+
+The pure bridge copies HP/status/PP snapshots, tracks participant flags per
+enemy, and delegates exactly-once XP to `sc_on_ko`. `SC_LEARNING` blocks further
+observations until the prompt resolves. No native pool pointer is retained.
+`STORY_NATIVE_PROBE` guards the expanded-record stat and snapshot feasibility
+adapter; it is excluded from both ROM builds. A real native caller must map
+compacted living-team indices back to party slots, use original party PP for
+Transform, stop before next action/switch on learning, and refresh canonical
+stats/HP/learned moves after each KO. Fragment-62 scheduling, live-stage handling,
+resident storage and post-pool lifetime still need runtime proof before UI.
 
 ## Verification scope and remaining review
 
@@ -264,9 +323,21 @@ transfer, participant/rounding/learning behavior, healing, loss and evolution.
 The C suite runs strict C89, ASan/UBSan and IDO 7.1 compilation. Generated data
 also participates in strict C89 compilation.
 
-The tested graph is explicitly a four-encounter synthetic fixture. **There is
-no claim of native KO timing, durable save behavior, campaign balance or full
-campaign reachability yet.** No emulator runs were made during the coordinator's
+The C suite now also activates the accepted 383-node canonical region graph,
+fully consumes all nodes and separately traverses minimally to Champion for
+both versions, all rival branches and both fossils.
+It checks wrong-warp rejection, optional ship retirement, fossil
+locking and reusable healing. Save tests exercise every byte's corruption,
+graph/version mismatch, malformed state, torn writes at all three commit
+steps, checkpoint replay and persisted terminal defeat. KO bridge tests prove
+learning pause, duplicate rejection and save-error retry without mutation.
+The actual native record layout has a guarded 32-bit host stat/copy/KO probe
+and target IDO compilation. It tests compacted party-index mapping, a level
+change, pause before repeat observation, learned-move publication and canonical
+stat preservation. Assertions remain active despite the decomp headers'
+disabled `assert` macro.
+**There is no claim of native KO timing, physical Pak durability, campaign
+balance or emulator-proven residency yet.** No emulator runs were made during the coordinator's
 exclusive runtime slot. The full `scripts/rl-gate.sh` is still required before
 the complete story feature can be declared finished; it must not be weakened
 or described as passed based on host-only tests.
