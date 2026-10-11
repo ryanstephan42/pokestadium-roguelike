@@ -10,6 +10,8 @@ enum ScNativeEventKind {
 };
 typedef struct ScNativeCampaignEvent {
     ScBattleSnapshot party[6];
+    /* generation is the nonzero, strictly increasing event serial within this
+       operation, NOT a BATL scope/module/allocator generation. */
     RlU32 operation_id, generation;
     unsigned kind, active_slot, enemy_slot, enemy_hp, outcome;
     int error;
@@ -27,12 +29,23 @@ typedef struct ScNativeCampaignBacking {
     RlU32 seed, lease_id;
 } ScNativeCampaignBacking;
 
-/* All callbacks validate the exact live lease/backing tuple. Submission copies
-   values only. Activation, exit and release happen outside the Pak input session.
-   DRAINED means workers/service/permit retired and BATL scope already popped.
-   A learning event is held before presentation; resume copies settled values.
-   Return SC_OK, SC_PENDING or an explicit ScStatus refusal, never a Boolean.
-   poll writes only caller-admitted event backing; NONE has no operation identity. */
+/* All callbacks validate the exact live lease/backing tuple and return SC_OK,
+   SC_PENDING or an explicit ScStatus refusal, never a Boolean.
+   acquire publishes a complete usable tuple only on SC_OK; otherwise clears it.
+   submit copies values only on SC_OK; PENDING/refusal owns NO request/work.
+   Activation, exit and release happen outside the Pak input session.
+   poll requires event == backing->event. SC_OK delivers each event once, in
+   strictly increasing serial order; NONE/PENDING/refusal zero the full payload.
+   LEARNING contains a held KO observation, already paused before presentation.
+   After observe it must actually require learning; resume is allowed only after
+   presentation/settlement to SC_BATTLE with no learn_mask. Resume validates the
+   same operation/held serial, party order and progression, copies values (never
+   retains pointers), and consumes the hold once on SC_OK. PENDING retains it.
+   DRAINED follows all final observations and settled learning, exactly once,
+   after workers/service/permit retire and BATL scope pops. Dispatch finish once;
+   save-error retries must not replay that event, battle or reward.
+   release PENDING retains the entire lease/backing; SC_OK retires it once, only
+   after graphics resources and submitted tasks have already retired. */
 typedef struct ScNativeCampaignOwner {
     void *context;
     int (*acquire)(void *context, ScNativeCampaignBacking *backing);
