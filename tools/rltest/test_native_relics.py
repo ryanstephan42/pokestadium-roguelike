@@ -8,6 +8,7 @@ import argparse
 import ctypes
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -20,6 +21,15 @@ from tools.rltest.test_custom_battle import BattleRules, Mon, Result
 
 
 TRACE_CAPACITY = 256
+
+
+def require_relic_trace_build(map_path):
+    text = Path(map_path).read_text()
+    if re.search(r"\bgScProbeCompiledSize\b", text):
+        raise HarnessError("Relic trace acceptance does not support STORY_NATIVE_PROBE")
+    if not re.search(r"\bgRlRelicTrace\b", text):
+        raise HarnessError("Relic trace symbol missing from normal RL build")
+
 STAT_HP, STAT_ATTACK, STAT_DEFENSE, STAT_SPEED, STAT_SPECIAL = range(5)
 RELIC = {
     "boulder": 0,
@@ -341,6 +351,7 @@ def _verify(name, case, events, result, outcome):
 
 
 def run_one(name, core, rom, map_path, output, timeout):
+    require_relic_trace_build(map_path)
     case = _scenario(name)
     output = Path(output) / name
     output.mkdir(parents=True, exist_ok=True)

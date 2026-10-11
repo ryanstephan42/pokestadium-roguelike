@@ -609,6 +609,22 @@ stage 13, and returns through the existing BATL/RLBT cleanup without ticking
 or committing. The vanilla/default-RL path retains its original behavior.
 This preserves failure semantics, not a residency fix.
 
+The dedicated `STORY_NATIVE_PROBE` build now excludes the unrelated RL
+relic trace ring (8,200 bytes including count/dropped) and trace writes.
+Relic calculations, battle hooks and public entrypoints remain intact;
+normal RL compilation keeps the original trace code and byte-identical ROM
+SHA256 `a4fab9f9a4979e7782ca8e1fce69fe3f6f92adec25342d36e14ad94d165a125d`.
+Neither story nor its harness consumes that trace. Both native-relic and
+relic-cadence acceptance harnesses reject a story-probe map before starting
+an emulator; the normal host relic test remains unchanged and passing.
+The story ELF contains no `gRlRelicTrace` symbol/import. Pool start moves
+from `0x8011ED00` to `0x8011CCA0`, recovering 8,288 bytes including coupled
+code/alignment changes; cold RAM/preflight and exact canonical/native assets
+are unchanged. This measured recovery exceeds the observed 2,288-byte
+PRS shortage but does not prove later allocations or six-party peaks.
+The required-resource NULL guard remains active; another independently
+reviewed, explicitly authorized native run must prove the asset actually loads.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

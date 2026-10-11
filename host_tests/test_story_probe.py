@@ -44,6 +44,19 @@ class StoryHarnessTests(unittest.TestCase):
         emu.symbols.address.side_effect = [0x80110000, 0x80110000 + len(FIELDS) * 4]
         verify_mailbox_abi(emu)
 
+    def test_relic_harnesses_reject_story_before_startup(self):
+        from tools.rltest import test_native_relics, test_relic_cadence
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "probe.map"
+            path.write_text("0x80001000 gScProbeCompiledSize\n0x80002000 gRlRelicTrace\n")
+            for module in (test_native_relics, test_relic_cadence):
+                with patch.object(module, "Frontend") as frontend:
+                    with self.assertRaisesRegex(HarnessError, "STORY_NATIVE_PROBE"):
+                        module.run_one("unused", "unused", "unused", path, temporary, 1)
+                    frontend.assert_not_called()
+            path.write_text("0x80002000 gRlRelicTrace\n")
+            test_native_relics.require_relic_trace_build(path)
+
     def test_actual_fragment_map_and_allocation_diagnostics(self):
         emu = Mock()
         emu.story_stack_before = b"\xA5" * 96 + b"\0" * (0x18E0 - 96)

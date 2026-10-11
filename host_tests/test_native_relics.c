@@ -1,5 +1,8 @@
 #include "src/roguelike/rl_native_relics.h"
 #include "src/roguelike/rl_battle.h"
+#ifdef STORY_NATIVE_PROBE
+#error Native relic trace acceptance requires the normal RL build, not STORY_NATIVE_PROBE
+#endif
 
 #define CHECK(condition) do { if (!(condition)) return __LINE__; } while (0)
 
