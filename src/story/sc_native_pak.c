@@ -175,7 +175,9 @@ static int native_open(void *context, unsigned company, RlU32 game,
 }
 
 int sc_native_pak_bind(ScNativePak *pak, unsigned controller) {
-    if (!pak || pak->bound || controller >= 4) return SC_SAVE_INVALID;
+    if (!pak || pak->bound || controller >= 4 || pak->binding_id == 0xFFFFFFFFU)
+        return SC_SAVE_INVALID;
+    pak->binding_id++;
     pak->controller = controller;
     pak->device.context = pak;
     pak->device.open = native_open;

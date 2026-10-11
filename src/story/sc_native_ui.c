@@ -15,6 +15,7 @@ static int report(ScUi *ui, int status, const char *message) {
 
 static int ready(const ScNativeUi *native) {
     return native && sResources == native && native->acquired && native->pak && native->pak->bound &&
+        native->pak_binding_id == native->pak->binding_id &&
         main_pool_get_pool()->mainState == native->resource_scope;
 }
 
@@ -36,7 +37,9 @@ int sc_native_ui_acquire(ScNativeUi *native, ScNativePak *bound_pak) {
         return report(NULL, SC_UNAVAILABLE, "Story native UI: font/icon/name acquisition failed");
     }
     native->pak = bound_pak;
+    native->pak_binding_id = bound_pak->binding_id;
     native->prepared = NULL;
+    native->driver = NULL;
     native->acquired = 1;
     sResources = native;
     return SC_OK;
@@ -67,9 +70,11 @@ int sc_native_ui_draw(ScNativeUi *native, const ScUi *ui) {
 int sc_native_ui_input(ScNativeUi *native, ScUiDriver *driver) {
     int status, ended;
     if (!ready(native) || !driver || !driver->bound || !gPlayer1Controller ||
+        (native->driver && native->driver != driver) ||
         driver->ui != native->prepared || driver->ui->device != &native->pak->device)
         return report(driver ? driver->ui : NULL, SC_UNAVAILABLE,
                       "Story native UI: input/backing/Pak binding unavailable");
+    native->driver = driver;
     status = sc_native_pak_begin(native->pak);
     if (status != SC_SAVE_OK)
         return report(driver->ui, SC_UNAVAILABLE, "Story native UI: Pak session acquisition failed");
@@ -83,6 +88,7 @@ int sc_native_ui_input(ScNativeUi *native, ScUiDriver *driver) {
 int sc_native_ui_finish(ScNativeUi *native, ScUiDriver *driver, RlU32 operation_id, unsigned outcome) {
     int status, ended;
     if (!ready(native) || !driver || !driver->bound ||
+        native->driver != driver ||
         driver->ui != native->prepared || driver->ui->device != &native->pak->device)
         return report(driver ? driver->ui : NULL, SC_UNAVAILABLE,
                       "Story native UI: result/backing/Pak binding unavailable");
@@ -99,7 +105,7 @@ int sc_native_ui_finish(ScNativeUi *native, ScUiDriver *driver, RlU32 operation_
 int sc_native_ui_release(ScNativeUi *native, const ScUiDriver *driver, int tasks_retired) {
     if (!ready(native) || native->pak->session)
         return report(NULL, SC_INVALID, "Story native UI: resource release order mismatch");
-    if (driver && (!driver->bound || driver->ui != native->prepared ||
+    if (driver && (native->driver != driver || !driver->bound || driver->ui != native->prepared ||
         !driver->ui || driver->ui->device != &native->pak->device))
         return report(NULL, SC_INVALID, "Story native UI: resource release identity mismatch");
     if (!tasks_retired || (native->prepared && !driver) ||
@@ -111,6 +117,8 @@ int sc_native_ui_release(ScNativeUi *native, const ScUiDriver *driver, int tasks
     native->resource_scope = NULL;
     native->pak = NULL;
     native->prepared = NULL;
+    native->driver = NULL;
+    native->pak_binding_id = 0;
     native->acquired = 0;
     sResources = NULL;
     return SC_OK;

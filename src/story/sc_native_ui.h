@@ -10,6 +10,8 @@ typedef struct ScNativeUi {
     MainPoolState *resource_scope;
     ScNativePak *pak;
     ScUi *prepared;
+    ScUiDriver *driver;
+    RlU32 pak_binding_id;
     int acquired;
 } ScNativeUi;
 

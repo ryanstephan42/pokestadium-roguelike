@@ -367,6 +367,15 @@ int main(void) {
     assert(sc_native_ui_input(&native, &driver) == SC_OK && ui.screen == SC_UI_MENU);
     controller.buttonPressed = RL_UI_DOWN;
     assert(sc_native_ui_input(&native, &driver) == SC_OK && ui.list.cursor == 1);
+    unrelated_driver = driver;
+    unrelated_driver.exit_requested = 1;
+    assert(sc_native_ui_release(&native, &unrelated_driver, 1) == SC_INVALID);
+    assert(native.driver == &driver && native.prepared == &ui && depth == 1);
+    pak.binding_id++;
+    assert(sc_native_ui_input(&native, &driver) == SC_UNAVAILABLE);
+    assert(sc_native_ui_release(&native, &driver, 1) == SC_INVALID);
+    assert(native.driver == &driver && native.prepared == &ui && depth == 1);
+    pak.binding_id--;
     assert(sc_native_ui_finish(&native, &driver, 1, SC_WIN) == SC_INVALID);
     assert(sc_native_ui_release(&native, &driver, 0) == SC_PENDING && depth == 1);
     assert(sc_native_ui_release(&native, &driver, 1) == SC_PENDING && depth == 1);
@@ -379,6 +388,7 @@ int main(void) {
     controller.buttonPressed = RL_UI_A;
     assert(sc_native_ui_input(&native, &driver) == SC_OK && driver.exit_requested);
     assert(sc_native_ui_release(&native, &driver, 1) == SC_OK && !depth);
+    assert(sc_native_ui_release(&native, &driver, 1) == SC_INVALID && !depth);
     assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE);
     assert(sc_native_pak_release(&pak) == SC_SAVE_OK);
     assert(locks == unlocks && frames == 3 && logs);

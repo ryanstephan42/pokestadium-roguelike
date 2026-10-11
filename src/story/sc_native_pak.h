@@ -13,6 +13,7 @@ typedef struct ScNativePak {
     RlPakLayout layout;
     OSPfs pfs;
     ScSaveDevice device;
+    RlU32 binding_id;
     int bound, session, opened, identified, note_seen;
 } ScNativePak;
 
