@@ -3049,6 +3049,9 @@ void func_84370ADC(unk_D_84390010* arg0);
 void func_84370B0C(unk_D_84390010* arg0);
 void func_84370B44(unk_D_84390010* arg0);
 void func_84370B7C(unk_D_84390010* arg0);
+#ifdef ROGUELIKE
+void rl_func_84370B7C(unk_D_84390010* arg0);
+#endif
 s32 func_84370E30(unk_D_84390010* arg0);
 void func_84370E70(void);
 void func_84370E78(void);

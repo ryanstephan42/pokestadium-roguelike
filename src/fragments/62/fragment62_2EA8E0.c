@@ -1,5 +1,8 @@
 #include "fragment62.h"
 #ifdef ROGUELIKE
+#include "src/roguelike/rl_native_relics.h"
+#endif
+#ifdef ROGUELIKE
 #include "include/rl_battle.h"
 #endif
 #ifdef STORY_NATIVE_PROBE
@@ -671,6 +674,7 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
                 rl_battle_party_hp(original) = rl_battle_hp(live);
                 rl_battle_party_status(original) = rl_battle_status(live);
             }
+            rl_native_relics_end(rl_battle_result());
         }
     }
 #endif

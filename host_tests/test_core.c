@@ -298,6 +298,9 @@ static void test_relics(void) {
     assert(rl_relic_status_blocked(all, 0));
     assert(!rl_relic_status_blocked(all, 2));
     assert(rl_relic_pp_max(all, 10) == 12);
+    assert(rl_relic_pp_max(all, 40) == 47);
+    assert(rl_relic_pp_max(all, 5) == 6);
+    assert(rl_relic_pp_max(0, 40) == 40);
     mon = rl_placeholder_pool.mons[0];
     mon.cur_hp = 0;
     memset(&hooks, 0, sizeof(hooks));
@@ -454,7 +457,8 @@ static void test_small_shop_catalog(void) {
     moves.count = 1;
     eligible = (1U << RL_POTION) | (1U << RL_SUPER_POTION) |
         (1U << RL_HYPER_POTION) | (1U << RL_FULL_RESTORE) |
-        (1U << RL_REVIVE) | (1U << RL_ETHER) | (1U << RL_CANDY) |
+        (1U << RL_REVIVE) | (1U << RL_ETHER) | (1U << RL_ELIXIR) |
+        (1U << RL_FULL_HEAL) | (1U << RL_CANDY) |
         (1U << RL_VITAMIN) | (1U << RL_RELIC_ITEM) | (1U << RL_TM);
     for (capacity = 1; capacity <= 3; capacity++) {
         seen = 0;
@@ -529,22 +533,29 @@ static void test_save(void) {
     run.money = 777;
     run.bag[RL_CANDY] = 2;
     run.relics = 1U << RL_LEFTOVERS;
+    run.relics |= 1U << RL_PP_POUCH;
+    run.consumed_relics = 1U << RL_PP_POUCH;
+    run.party[0].max_pp[0] = 12;
+    run.party[0].pp[0] = 7;
     run.stats.battles = 5;
     run.tm_count = 1;
     run.tm_moves[0] = 85;
     assert(rl_save_encode(&meta, 0, buffer, sizeof(buffer), &length) == RL_OK);
-    assert(length == 361);
+    assert(length == 416);
     assert(length <= RL_META_MAX_SIZE);
     assert(rl_save_decode(&loaded, 0, &has_run, buffer, length) == RL_OK);
     assert(!has_run && loaded.runs == meta.runs);
     assert(loaded.hall[0].species == meta.hall[0].species);
     assert(rl_save_encode(&meta, &run, buffer, sizeof(buffer), &length) == RL_OK);
-    assert(length == 917);
+    assert(length == 972);
     assert(rl_save_decode(&loaded, &restored, &has_run, buffer, length) == RL_OK);
     assert(has_run && restored.seed == run.seed);
     assert(restored.party_count == 1 && restored.party[0].species == run.party[0].species);
     assert(restored.money == 777 && restored.bag[RL_CANDY] == 2);
     assert(restored.tm_count == 1 && restored.tm_moves[0] == 85);
+    assert(restored.relics == run.relics);
+    assert(restored.consumed_relics == (1U << RL_PP_POUCH));
+    assert(restored.party[0].max_pp[0] == 12 && restored.party[0].pp[0] == 7);
     assert(restored.party[0].current_stats[RL_HP] == restored.party[0].max_hp);
     run.party[0].pp[0] = (RlU8)(run.party[0].max_pp[0] + 1);
     assert(rl_save_encode(&meta, &run, buffer, sizeof(buffer), &length) ==

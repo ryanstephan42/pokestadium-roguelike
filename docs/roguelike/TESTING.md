@@ -6,6 +6,43 @@ US ROM headlessly. It prefers RetroArch's user core directory and then
 software renderer; the frontend requests Angrylion and explicitly rejects a
 core that asks for a hardware video context.
 
+## Concurrent emulator slots
+
+On the shared 4-core/8-thread test host, reserve at most **two headless
+processes**, each with `RLTEST_ANGRYLION_THREADS=4`. Coordinate slot ownership
+before starting; visible play and full integration gates remain exclusive.
+Do not extend test deadlines to compensate for competing workloads.
+
+```sh
+RLTEST_ANGRYLION_THREADS=4 RLTEST_OUTPUT=.local/rltest/slot-a \
+  python3 -m tools.rltest.run smoke
+# In a second reserved slot, use a distinct output/save/log directory:
+RLTEST_ANGRYLION_THREADS=4 RLTEST_OUTPUT=.local/rltest/slot-b \
+  python3 -m tools.rltest.run smoke
+```
+
+The environment variable sets the process-local Mupen64Plus-Next core option
+`mupen64plus-angrylion-multithread`. It accepts only decimal strings `1` through
+`64`; empty, malformed, out-of-range or core-unsupported values raise
+`HarnessError`. It overrides the same key in `Frontend(options=...)`.
+When unset, renderer selection and all core defaults remain unchanged,
+including Angrylion's `all threads` default. No global RetroArch settings are
+read or written. Other cores without this option require the variable unset.
+
+Each process must receive a distinct `Frontend(output=...)` directory (the CLI
+uses `RLTEST_OUTPUT` or `--output`), plus distinct explicit screenshot,
+savestate and log paths. This isolates core system/assets/save directories;
+the thread cap does not allocate slots or rename scenario artifact paths.
+Scenarios that hardcode output paths must not run concurrently without
+isolating those paths.
+
+Compare exact frame/RAM/screenshot evidence only with the same thread count,
+ROM, core and input sequence. Changing the cap can change rendered animation
+phase; savestate metadata already includes the effective options and rejects
+cross-option loads. Prior capped-four measurements found roughly 160-172
+aggregate FPS for two processes versus about 108 FPS solo, but external host
+load makes these throughput measurements noisy, not a timing guarantee.
+
 ## Requirements and quick checks
 
 The worktree must contain the local, ignored ROM and normal build map. Setup a
@@ -14,6 +51,7 @@ new worktree with `scripts/rl-worktree-setup.sh`, then run:
 ```sh
 tools/rltest/run_smoke.sh
 python3 -m unittest tools.rltest.tests.test_helpers
+python3 -m unittest tools.rltest.tests.test_frontend_options
 python3 -m tools.rltest.run battle-fixture
 python3 -m tools.rltest.test_play_run
 ```
@@ -28,7 +66,7 @@ Select (4). On success it writes the menu PNG under `.local/rltest/`. Set
 `make -C host_tests test` includes strict C89 and ASan/UBSan content/meta
 tests, standalone IDO 7.1 compilation of every pure core module, the native
 roster/battle-adapter fixture, and extraction/balance-tool regressions.
-Content sweeps cover seeds 0–9999 across every act, matching v3 917-byte
+Content sweeps cover seeds 0–9999 across every act, matching v4 972-byte
 suspend encode/decode, node-local encounter determinism, reachable lanes and
 Centers, all boss transitions and 22-node completion at ascensions 0–10.
 The native adapter checks both rounds, all act bosses, real one-mon VS Mewtwo,
@@ -173,13 +211,11 @@ Mupen64Plus-Next's libretro core; the complete run reached frame 51937 and
 reported three native wins plus the separate native loss summary. The
 all-fainted UI-only fixture remains separate from that native-loss result.
 
-The current playable milestone intentionally exposes only the first three map
-rows, with reachable trainer-battle routes. Other node types are not presented
-as selectable choices: event, shop, center, elite, and boss scenes/content
-remain follow-on work. The generic map and save invariants are preserved, and
-unreachable lanes are disabled. Recruit rewards come from the defeated
-trainer's canonical roster; other rewards use the existing core generator.
-The summary marks the three-battle route as the current milestone.
+Normal play exposes the complete canonical map and dispatches every node kind.
+The first-three-row trainer route is now restricted to the guarded regression
+test mode. Nonbattle scene controls and real-input node scenarios are documented
+in [SCENES.md](SCENES.md). Recruit rewards come from the defeated trainer's
+canonical roster; other rewards use the existing core generator.
 
 For a visible test, build with `make rl` and run `scripts/rl-preview.sh`.
 This uses isolated Angrylion/Parallel-RSP options, X11/XWayland keyboard input,
@@ -188,7 +224,9 @@ RetroArch profile. See [PREVIEW.md](PREVIEW.md) for the renderer comparison,
 local evidence paths and physical-controller checklist. At the title, press N64 Start and
 pass Game Pak Check with N64 A. In Menu Select, hold L and press N64 A to open
 Roguelike. N64 A confirms, N64 B backs out, the D-pad moves through lists, and
-the C-buttons (right stick on the configured preview controller) navigate
+the C-buttons (D-pad on the configured Xbox preview controller) navigate
 battle moves. With the preview script, keyboard Enter is Start, Z is N64 A,
 X is N64 B and Q is L (hold Q through the Menu Select fade while pressing Z).
 Arrow keys navigate; I/K/J/L are C-up/down/left/right.
+On Xbox, the left stick handles directional/menu navigation; the right stick
+is not bound to C-buttons.

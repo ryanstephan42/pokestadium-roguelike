@@ -7,6 +7,7 @@
 typedef struct RlSaveProbe {
     RlU32 command, status, controller, create;
     RlU32 runs, wins, best_floor, suspended, seed;
+    RlU32 pools, relics, events, ascension;
 } RlSaveProbe;
 
 extern volatile RlSaveProbe gRlSaveProbe;

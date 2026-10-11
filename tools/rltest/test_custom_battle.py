@@ -22,6 +22,27 @@ class Mon(ctypes.BigEndianStructure):
     ]
 
 
+class BattleRules(ctypes.BigEndianStructure):
+    _fields_ = [
+        ("stadium", ctypes.c_uint8), ("gym", ctypes.c_uint8),
+        ("ai_level", ctypes.c_uint8), ("player_count", ctypes.c_uint8),
+        ("player_cpu", ctypes.c_uint8), ("show_intro", ctypes.c_uint8),
+        ("use_state", ctypes.c_uint8), ("pad", ctypes.c_uint8),
+        ("relics", ctypes.c_uint32),
+    ]
+
+
+class PendingBattle(ctypes.BigEndianStructure):
+    _fields_ = [
+        ("player", Mon * 3), ("enemy", Mon * 6), ("trainer", Mon * 6),
+        ("rules", BattleRules), ("player_slots", ctypes.c_uint8 * 3),
+        ("player_count", ctypes.c_uint8), ("enemy_count", ctypes.c_uint8),
+        ("trainer_count", ctypes.c_uint8), ("pending", ctypes.c_uint8),
+        ("post_battle", ctypes.c_uint8), ("error", ctypes.c_uint8),
+        ("outcome", ctypes.c_uint8),
+    ]
+
+
 class Result(ctypes.BigEndianStructure):
     _fields_ = [("outcome", ctypes.c_uint8), ("player_count", ctypes.c_uint8),
                 ("enemy_count", ctypes.c_uint8), ("indices", ctypes.c_uint8 * 6),

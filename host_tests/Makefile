@@ -12,7 +12,7 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test story-test clean
+.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test story-test clean
 
 story-test:
 	cd .. && python3 tools/story_data.py
@@ -40,12 +40,13 @@ story-test:
 		../src/story/sc_progression.c -o ../build/story/sc_progression.o
 	cd .. && bash host_tests/run_story_native.sh
 
-test: core-test content-test meta-test ido-test battle-adapter-test ui-test save-test native-import-test
-	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance
+test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test
+	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance host_tests.test_progression_probes
 
 ido-test:
 	mkdir -p ../build/host_tests
-	@set -e; for source in $(CORE) ../src/roguelike/rl_meta.c; do \
+	@set -e; for source in $(CORE) ../src/roguelike/rl_meta.c \
+		../src/roguelike/rl_meta_content.c; do \
 		../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared \
 		$(INCLUDES) $$source -o ../build/host_tests/ido-$$(basename $$source .c).o; \
 	done
@@ -63,12 +64,56 @@ meta-test:
 	../src/roguelike/rl_meta.c -o test_meta_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_meta_san
 
+meta-content-test:
+	@set -e; trap 'rm -f test_meta_content test_meta_content_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_meta_content.c $(CORE) \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_meta_content.c \
+	-o test_meta_content; \
+	./test_meta_content; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_meta_content.c $(CORE) \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_meta_content.c \
+	-o test_meta_content_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_meta_content_san
+
+.PHONY: scene-nodes-test
+scene-nodes-test:
+	@set -e; trap 'rm -f test_scene_nodes test_scene_nodes_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) -I.. -iquote ../include -Wno-endif-labels \
+	-include scene_nodes_stubs.h test_scene_nodes.c \
+	../src/fragments/rl/rl_scene_nodes.c ../src/fragments/rl/rl_ui_mon.c ../src/roguelike/rl_ui_model.c \
+	$(CORE) ../src/roguelike/rl_meta.c -o test_scene_nodes; \
+	./test_scene_nodes; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) -I.. -iquote ../include -Wno-endif-labels \
+	-include scene_nodes_stubs.h test_scene_nodes.c \
+	../src/fragments/rl/rl_scene_nodes.c ../src/fragments/rl/rl_ui_mon.c ../src/roguelike/rl_ui_model.c \
+	$(CORE) ../src/roguelike/rl_meta.c -o test_scene_nodes_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_scene_nodes_san
+
+.PHONY: nodes-test
+nodes-test:
+	@set -e; trap 'rm -f test_nodes test_nodes_san' EXIT; \
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_nodes.c $(CORE) ../src/roguelike/rl_meta.c -o test_nodes; \
+	./test_nodes; \
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_nodes.c $(CORE) ../src/roguelike/rl_meta.c -o test_nodes_san; \
+	ASAN_OPTIONS=detect_leaks=1 ./test_nodes_san
 content-test:
 	@set -e; trap 'rm -f test_content test_content_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_content.c $(CORE) -o test_content; \
 	./test_content; \
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_content.c $(CORE) -o test_content_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_content_san
+
+native-relic-test:
+	mkdir -p ../build/host_tests
+	$(CC) -std=gnu89 -m32 -funsigned-char -fno-builtin \
+	    -DROGUELIKE -DCC_CHECK -DNON_MATCHING -DAVOID_UB -D_LANGUAGE_C -DLANGUAGE_C \
+	    -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 \
+	    -I../include -I../src -I.. -I../build -I../assets/us \
+	    -I../lib/ultralib/include -I../lib/ultralib/include/PR \
+	    -I../lib/ultralib/include/ido \
+	    test_native_relics.c ../src/roguelike/rl_native_relics.c $(CORE) \
+	    -o ../build/host_tests/native-relics
+	../build/host_tests/native-relics
 
 native-import-test:
 	mkdir -p ../build/host_tests
@@ -78,10 +123,12 @@ native-import-test:
 save-test:
 	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \
-	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save; \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_save.c \
+	../src/roguelike/rl_pak.c -o test_save; \
 	./test_save; \
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) test_save.c $(CORE) \
-	../src/roguelike/rl_save.c ../src/roguelike/rl_pak.c -o test_save_san; \
+	../src/roguelike/rl_meta.c ../src/roguelike/rl_save.c \
+	../src/roguelike/rl_pak.c -o test_save_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_save_san
 
 core-test:

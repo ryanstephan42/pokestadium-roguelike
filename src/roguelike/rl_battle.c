@@ -5,6 +5,7 @@
 #include "src/2C1C0.h"
 #include "src/373A0.h"
 #include "src/memory.h"
+#include "rl_native_relics.h"
 #ifdef STORY_NATIVE_PROBE
 #include "src/story/sc_native_probe.h"
 extern int gScProbeActive;
@@ -15,6 +16,11 @@ volatile unsigned int gRlBattleCount;
 int gRlBattleActive;
 volatile int gRlBattleTestRequest;
 const unsigned int gRlBattleTestMonSize = sizeof(RlMon);
+RlMon gRlRelicTestParty[6], gRlRelicTestEnemy[6];
+RlBattleRules gRlRelicTestRules;
+unsigned int gRlRelicTestPartyCount, gRlRelicTestEnemyCount, gRlRelicTestMask;
+unsigned int gRlRelicTestConsumed;
+volatile unsigned int gRlBattleLaunchStage;
 
 static int rl_valid_team(const RlMon* team, int count) {
     int i;
@@ -184,6 +190,46 @@ int rl_prepare_mon(RlMon* mon, int full_heal) {
     return 0;
 }
 
+int rl_battle_apply_pp_pouch(RunState* run) {
+    unsigned int i;
+    unsigned int j;
+    unsigned int base;
+    unsigned int step;
+    unsigned int maximum;
+    unsigned int ups;
+    if (run == NULL || run->party_count > RL_PARTY) {
+        osSyncPrintf("rl PP Pouch: invalid party\n");
+        return -1;
+    }
+    if (!(run->relics & (1U << RL_PP_POUCH)) ||
+        (run->consumed_relics & (1U << RL_PP_POUCH))) {
+        return 0;
+    }
+    if (!rl_valid_team(run->party, run->party_count)) {
+        osSyncPrintf("rl PP Pouch: invalid Pokemon\n");
+        return -1;
+    }
+    for (i = 0; i < run->party_count; i++) {
+        for (j = 0; j < 4; j++) {
+            if (run->party[i].moves[j] == 0) {
+                continue;
+            }
+            base = D_80072B00[run->party[i].moves[j] - 1].unk_05;
+            step = rl_relic_pp_max(1U << RL_PP_POUCH, base) - base;
+            maximum = base;
+            for (ups = 0; ups < 3 && maximum < run->party[i].max_pp[j]; ups++) {
+                maximum += step;
+            }
+            if (ups < 3) {
+                maximum += step;
+            }
+            run->party[i].max_pp[j] = maximum;
+        }
+    }
+    run->consumed_relics |= 1U << RL_PP_POUCH;
+    return 1;
+}
+
 int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int enemy_n,
                    const RlBattleRules* rules, int return_state, RlLaunchResult* out) {
     unk_D_800AE540_0004* player;
@@ -245,13 +291,19 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
         func_8002B888(opponent, &native);
     }
     gRlBattleActive = 1;
+    rl_native_relics_reset(rules->relics);
+    gRlBattleLaunchStage = 1;
     main_pool_push_state(0x524C4254);
+    gRlBattleLaunchStage = 2;
     if (rules->show_intro) {
         FRAGMENT_LOAD_AND_CALL(fragment63, 0, 0);
     }
     func_800367A0(0xA0, 0xA, 0);
+    gRlBattleLaunchStage = 3;
     FRAGMENT_LOAD(fragment34);
+    gRlBattleLaunchStage = 4;
     FRAGMENT_LOAD_AND_CALL(fragment62, 0, (u32)&D_800AE540);
+    gRlBattleLaunchStage = 5;
     main_pool_pop_state(0x524C4254);
     result->outcome = RL_LAUNCH_DRAW;
     if (D_800AE540.unk_1194[0].unk_1C != D_800AE540.unk_1194[1].unk_1C) {
@@ -280,7 +332,47 @@ void rl_battle_test_entry(void) {
     RlBattleRules rules;
     int i;
     int repeat = gRlBattleTestRequest == 2;
+    RunState pouch_run;
 
+    if (gRlBattleTestRequest == 3) {
+        gRlBattleTestRequest = 0;
+        if (!rl_valid_team(gRlRelicTestParty, gRlRelicTestPartyCount) ||
+            !rl_valid_team(gRlRelicTestEnemy, gRlRelicTestEnemyCount)) {
+            osSyncPrintf("rl relic test: invalid teams\n");
+            gCurrentGameState = STATE_TITLE_SCREEN;
+            return;
+        }
+        for (i = 0; i < gRlRelicTestPartyCount; i++) {
+            rl_prepare_mon(&gRlRelicTestParty[i], 0);
+        }
+        if (gRlRelicTestMask & (1U << RL_PP_POUCH)) {
+            bzero(&pouch_run, sizeof(pouch_run));
+            pouch_run.relics = gRlRelicTestMask;
+            pouch_run.consumed_relics = gRlRelicTestConsumed;
+            pouch_run.party_count = gRlRelicTestPartyCount;
+            for (i = 0; i < gRlRelicTestPartyCount; i++) {
+                pouch_run.party[i] = gRlRelicTestParty[i];
+            }
+            rl_battle_apply_pp_pouch(&pouch_run);
+            if (rl_battle_apply_pp_pouch(&pouch_run) != 0) {
+                osSyncPrintf("rl PP Pouch: applied twice\n");
+                gCurrentGameState = STATE_TITLE_SCREEN;
+                return;
+            }
+            for (i = 0; i < gRlRelicTestPartyCount; i++) {
+                gRlRelicTestParty[i] = pouch_run.party[i];
+            }
+            gRlRelicTestConsumed = pouch_run.consumed_relics;
+        }
+        for (i = 0; i < gRlRelicTestEnemyCount; i++) {
+            rl_prepare_mon(&gRlRelicTestEnemy[i], 0);
+        }
+        gRlRelicTestRules.relics = gRlRelicTestMask;
+        rl_start_battle(gRlRelicTestParty, gRlRelicTestPartyCount,
+                        gRlRelicTestEnemy, gRlRelicTestEnemyCount,
+                        &gRlRelicTestRules, STATE_TITLE_SCREEN, NULL);
+        return;
+    }
     gRlBattleTestRequest = 0;
     bzero(party, sizeof(party));
     bzero(enemy, sizeof(enemy));

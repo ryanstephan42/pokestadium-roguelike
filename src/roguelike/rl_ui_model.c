@@ -2,6 +2,45 @@
 #ifdef ROGUELIKE
 #include "rl_ui_model.h"
 
+int rl_ui_order_index(const RlUiOrder* order, unsigned slot) {
+    unsigned i;
+    if (!order || order->count > 6 || slot >= 6) return RL_UI_INVALID;
+    for (i = 0; i < order->count; i++)
+        if (order->slots[i] == slot) return (int)i;
+    return RL_UI_NONE;
+}
+
+int rl_ui_order_toggle(RlUiOrder* order, unsigned slot, unsigned limit) {
+    int index;
+    unsigned i;
+    index = rl_ui_order_index(order, slot);
+    if (index == RL_UI_INVALID || limit == 0 || limit > 6 ||
+        order->count > limit) return RL_UI_INVALID;
+    if (index >= 0) {
+        for (i = (unsigned)index; i + 1 < order->count; i++)
+            order->slots[i] = order->slots[i + 1];
+        order->count--;
+    } else {
+        if (order->count == limit) return RL_UI_DISABLED;
+        order->slots[order->count++] = (unsigned char)slot;
+    }
+    return RL_UI_NONE;
+}
+
+int rl_ui_order_move(RlUiOrder* order, unsigned slot, int direction) {
+    int index;
+    int next;
+    unsigned char other;
+    index = rl_ui_order_index(order, slot);
+    if (index < 0 || (direction != -1 && direction != 1)) return RL_UI_INVALID;
+    next = index + direction;
+    if (next < 0 || next >= order->count) return RL_UI_DISABLED;
+    other = order->slots[next];
+    order->slots[next] = order->slots[index];
+    order->slots[index] = other;
+    return RL_UI_NONE;
+}
+
 int rl_ui_list_valid(const RlUiList* list) {
     int i;
     int max_scroll;

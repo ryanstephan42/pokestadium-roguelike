@@ -52,7 +52,8 @@ static RlSaveStatus read_slot(const RlSaveDevice *d, unsigned index, RlSlot *s) 
     if (result != RL_SAVE_OK) return result;
     if (get32(s->header + 16) != rl_save_crc32(s->payload, s->length))
         return RL_SAVE_BAD_CRC;
-    if (s->payload[4] != RL_SAVE_VERSION || s->payload[5])
+    if ((s->payload[4] != RL_SAVE_VERSION &&
+         s->payload[4] != RL_SAVE_LEGACY_VERSION) || s->payload[5])
         return RL_SAVE_BAD_VERSION;
     if (rl_save_decode(&meta, &run, &suspended, s->payload, s->length) != RL_OK)
         return RL_SAVE_BAD_DATA;

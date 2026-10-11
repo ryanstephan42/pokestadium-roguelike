@@ -89,12 +89,35 @@ hardware command cannot be made atomic; do not remove the Pak during saving.
 
 ## Framing and update protocol
 
-The canonical W5 payload is `rl_save_format` version 3: explicit little-endian
-encoding, inner IEEE CRC32, 361 bytes meta-only or 917 bytes including a run.
-Neither C structures nor padding are passed to its decoder.
+The current `rl_save_format` payload is version 4: explicit little-endian
+encoding, inner IEEE CRC32, 416 bytes meta-only or 972 bytes including a run.
+Neither C structures nor padding are passed to its decoder. The decoder also
+accepts version 3 (361/917 bytes) and migrates its saved fields unchanged;
+new-profile currency/options/species fields start empty. Re-encoding writes
+version 4. The maximum padded payload is 992 bytes, within the existing
+1280-byte slot; the Controller Pak allocation and ownership do not change.
 
-`rl_meta.c` owns progression policy without changing this v3 layout. A new
-profile unlocks starter-pool bit 0, relic bits 0–7, and event bits 0–7.
+`rl_meta.c` owns progression policy. A new profile unlocks starter-pool bit 0,
+relic bits 0–7, event bits 0–7, and the curated first-stage species whose Gen 1
+base-stat totals are at most 320. This cutoff is a conservative implementation
+proposal, not a user-selected threshold. Their species IDs are
+1, 4, 7, 10, 13, 16, 19, 21, 23, 25, 27, 29, 32, 37, 39, 41, 43, 46, 48, 50,
+52, 56, 60, 63, 66, 69, 74, 79, 84, 90, 104, 116, 118, and 129. Terminal saves
+persist pending eligible species atomically with run statistics and currency,
+so choices survive a cold reload. Player-facing rule: a terminal run earns
+one registration choice only if its final team includes at least one eligible
+species that is neither already registered nor already in the pending pool. A
+repeat run containing only already-registered or already-pending eligible
+species earns no additional choice, but still records run statistics and
+currency. When a run adds a new eligible species, the profile accumulates the
+union of those species plus one receipt for that run. Registering one species
+from the union or explicitly skipping consumes exactly one receipt;
+already-registered species are idempotent and cannot consume another receipt.
+The final receipt clears the remaining union. Receipt count is bounded by the
+151 distinct species IDs; capacity is checked before profile mutation. Species
+registration unlocks species only; the draft integrator must build the selected
+Pokémon from its canonical legal rental loadout.
+
 Successful wins unlock Prime Cup starters on the first win and Little Cup
 starters on the fifth; each win also unlocks the next relic and event bit,
 starting at bit 8 and stopping at the end of each catalog. `meta.ascension` is
@@ -115,10 +138,29 @@ calls with the same state and unlocks produce the same choice. No unlocked
 events yields `RL_EMPTY` without consuming RNG or changing the output.
 
 The recording API accepts only terminal won/lost states and refuses invalid
-or not-yet-unlocked ascensions. Version 3 has no run identifier or recorded
-flag, so the integration caller owns exactly-once recording; repeated calls
-for the same terminal run cannot be reliably deduplicated without changing the
-save layout.
+or not-yet-unlocked ascensions. The terminal-summary integration owns
+exactly-once recording: it prepares and caches a candidate `RlMeta`, saves it
+atomically without a terminal suspend, and retains that candidate across an
+uncertain write until reload confirms whether it committed. Currency and the
+pending species choices are part of that same candidate, so neither can be
+awarded twice or detached from the final team on retry/reentry.
+
+The current economy constants are conservative implementation proposals,
+not user-approved balance values: 10 coins per completed won encounter, 5 per
+other completed encounter, and a 25-coin bonus for a full run clear. Payout is
+granted only when the run reaches a terminal won/lost state, so abandoning a
+run cannot farm currency. The implemented option price proposals are 30 coins
+for each of four canonical rental move-set sources, and 50 for each of four
+starter themes or the Potion Cache sidegrade. The sidegrade converts 200 of the
+existing 300 starting coins (the proposed Act-0 Potion price) into one Potion;
+it does not add starting value. Event-pack, challenge-contract, and cosmetic
+IDs remain reserved and cannot be purchased until they have implemented
+content. The saved option bitfield preserves room for those future IDs, but
+they are not presented as available options. These options do not add
+permanent combat stats, unbudgeted consumables, or reward odds. Species
+selection weights are proposed as `max(1, 1000 / BST)` over distinct species
+in the supplied legal loadout catalog, making higher-BST species rarer. Revisit
+all values after native UI integration and balance playtesting.
 
 The note holds two 1280-byte slots. Each begins with a 32-byte little-endian
 commit header: `RLPK` magic (offset 0), framing version 1 (4), sequence (8),
@@ -139,11 +181,19 @@ Committed corrupted bytes are never overwritten, including with `create=1`.
 
 ## Verification and integration
 
+The runtime's separate permanent-profile edit transaction compares full encoded
+old/candidate records, including the retained suspension, before uncertain
+purchase/register/skip retries. See [PERMANENT-UI.md](PERMANENT-UI.md) for controls,
+ordinary draft effects and reproducible native migration/repeated-loss checks.
+
 `make -C host_tests save-test` runs strict C89 and ASan/UBSan memory fixtures:
-roundtrips, suspension, exact lengths, all 449 byte-level cuts across a meta
-update, read failures at all seven update reads, retained prior records,
-generation wrap/ambiguity, CRC/version errors, no-device/full-storage adapter
-errors, and read-only Pak validation/cross-links/loops.
+roundtrips, suspension, exact v3/v4 lengths, v3-to-v4 migration through the
+storage wrapper with active-run RNG/map/party/HP/PP/status preservation, all
+481 byte-level cuts across a meta update, read failures at all seven update
+reads, terminal pending-species/currency cold reload and uncertain-commit
+retry, retained prior records, generation wrap/ambiguity, CRC/version errors,
+no-device/full-storage adapter errors, and read-only Pak validation/
+cross-links/loops.
 
 `python3 tools/rltest/save_roundtrip.py` uses the installed software Mupen core
 and a newly isolated save directory. It executes **the runtime native API**

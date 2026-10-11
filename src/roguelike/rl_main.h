@@ -9,6 +9,7 @@
 
 #include "ultra64.h"
 #include "rl_battle.h"
+#include "rl_save_format.h"
 
 #define RL_FRAGMENT_VRAM 0x8F800000
 
@@ -40,6 +41,15 @@ typedef struct RlPendingBattle {
 
 extern RlMainState gRlMain;
 extern RunState gRlRun;
+typedef struct RlPlayProfile {
+    RlMeta meta, next_meta;
+    RlU8 summary_prepared, summary_saved, ascension, starter_pool, unsaved;
+    RlMeta edit_base, edit_candidate;
+    RunState edit_run;
+    RlU8 edit_pending, edit_has_run;
+    RlU8 theme, kit, options_initialized;
+} RlPlayProfile;
+extern RlPlayProfile gRlPlayProfile;
 extern RlPendingBattle gRlPendingBattle;
 extern volatile u32 gRlPlayScene;
 extern volatile u32 gRlPlayExit;

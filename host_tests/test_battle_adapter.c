@@ -1,7 +1,11 @@
 #include <string.h>
+#include <stddef.h>
 #define ROGUELIKE
 #include "src/roguelike/rl_battle.c"
 #include "src/roguelike/rl_rosters.c"
+
+typedef char rules_size_check[(sizeof(RlBattleRules) == 12) ? 1 : -1];
+typedef char rules_relic_offset_check[(offsetof(RlBattleRules, relics) == 8) ? 1 : -1];
 
 #undef assert
 #define assert(condition) do { if (!(condition)) return __LINE__; } while (0)
@@ -50,8 +54,19 @@ int main(void) {
     RlMon returned;
     unk_func_80026268_arg0 native;
     RlMon team[6];
+    RlMetaRentalLoadout meta_catalog[2][RL_META_MAX_CATALOG_RECORDS];
+    RlMetaMoveVariant variants[RL_META_MAX_CATALOG_RECORDS];
+    RlMeta meta;
     RunState run;
-    int act, lane, round, count, i;
+    static const unsigned int meta_sets[RL_META_RENTAL_SOURCE_COUNT] = {
+        RL_RENTAL_SET_POKE, RL_RENTAL_SET_PRIME,
+        RL_RENTAL_SET_PETIT, RL_RENTAL_SET_PRIME_R2
+    };
+    static const unsigned int meta_options[RL_META_RENTAL_SOURCE_COUNT] = {
+        RL_META_MOVESET_1, RL_META_MOVESET_2,
+        RL_META_MOVESET_3, RL_META_MOVESET_4
+    };
+    int act, lane, round, count, i, source_index;
     unsigned char ai;
 
     memset(&run, 0, sizeof(run));
@@ -158,5 +173,64 @@ int main(void) {
     assert(rl_load_trainer(RL_NUM_TRAINER_SETS, 0, team, 6, &ai) == -1);
     assert(rl_load_trainer(RL_TRAINER_SET_ELITE_FOUR, 0, team, 1, &ai) == -1);
     assert(rl_load_rental_pool(RL_RENTAL_SET_POKE, team, 6) == -1);
+    rl_meta_init(&meta);
+    meta.currency = 1000;
+    for (source_index = 0; source_index < RL_META_RENTAL_SOURCE_COUNT;
+         source_index++) {
+        count = rl_load_meta_rental_catalog(source_index, meta_catalog[0],
+                                            RL_META_MAX_CATALOG_RECORDS);
+        assert(count > 0 && (unsigned)count ==
+               gRlRentalSets[meta_sets[source_index]].count);
+        assert(rl_meta_purchase_option(&meta, meta_options[source_index]) ==
+               RL_OK);
+        for (i = 0; i < count; i++) {
+            assert(meta_catalog[0][i].species ==
+                   gRlRentalSets[meta_sets[source_index]].mons[i].species);
+            assert(meta_catalog[0][i].source == source_index);
+            assert(!memcmp(meta_catalog[0][i].moves,
+                gRlRentalSets[meta_sets[source_index]].mons[i].moves, 4));
+        }
+    }
+    assert(rl_load_meta_rental_catalog(RL_META_RENTAL_SOURCE_COUNT,
+        meta_catalog[0], RL_META_MAX_CATALOG_RECORDS) == -1);
+    for (source_index = 0; source_index < RL_META_RENTAL_SOURCE_COUNT;
+         source_index++) {
+        int target_count, current_count, current_source, found;
+        target_count = rl_load_meta_rental_catalog(source_index,
+            meta_catalog[0], RL_META_MAX_CATALOG_RECORDS);
+        found = 0;
+        for (current_source = 0;
+             current_source < RL_META_RENTAL_SOURCE_COUNT && !found;
+             current_source++) {
+            if (current_source == source_index) continue;
+            current_count = rl_load_meta_rental_catalog(current_source,
+                meta_catalog[1], RL_META_MAX_CATALOG_RECORDS);
+            for (i = 0; i < current_count && !found; i++) {
+                int j;
+                for (j = 0; j < target_count; j++) {
+                    int variant_count, k, matching;
+                    if (meta_catalog[1][i].species !=
+                        meta_catalog[0][j].species ||
+                        !memcmp(meta_catalog[1][i].moves,
+                                meta_catalog[0][j].moves, 4)) continue;
+                    variant_count = rl_meta_list_move_variants(&meta,
+                        meta_options[source_index],
+                        meta_catalog[1][i].species,
+                        meta_catalog[1][i].moves, meta_catalog[0],
+                        target_count, variants, RL_META_MAX_CATALOG_RECORDS);
+                    assert(variant_count > 0);
+                    matching = 0;
+                    for (k = 0; k < variant_count; k++)
+                        if (!memcmp(variants[k].moves,
+                                    meta_catalog[0][j].moves, 4))
+                            matching = 1;
+                    assert(matching);
+                    found = 1;
+                    break;
+                }
+            }
+        }
+        assert(found);
+    }
     return 0;
 }

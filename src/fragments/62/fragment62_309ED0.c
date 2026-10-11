@@ -1,4 +1,7 @@
 #include "fragment62.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_native_relics.h"
+#endif
 #include "src/17300.h"
 #include "src/1C720.h"
 #include "src/373A0.h"
@@ -388,6 +391,9 @@ void func_84320108(void) {
 
     temp_s0 = &D_84390010[0]->unk_654;
     temp_s1 = &D_84390010[1]->unk_654;
+#ifdef ROGUELIKE
+    rl_native_relics_open_round(D_84390010[1]);
+#endif
     func_8431AFE4(1, 1);
 
     sp2C = D_84390240.unk_00->unk_2C;
@@ -428,6 +434,9 @@ void func_843202A0(void) {
 
     sp28 = &D_84390010[0]->unk_654;
     sp24 = &D_84390010[1]->unk_654;
+#ifdef ROGUELIKE
+    rl_native_relics_open_round(D_84390010[1]);
+#endif
     func_8431AFE4(1, 1);
 
     sp2C = D_84390240.unk_00->unk_2C;
@@ -3457,6 +3466,16 @@ void func_84328250(unk_D_86002F34_00C* arg0) {
 }
 
 void func_84328734(unk_D_86002F34_00C* arg0) {
+#ifdef ROGUELIKE
+    if (D_84390240.unk_00->unk_38 == 4 &&
+        rl_native_relics_finish_round(D_84390240.unk_00->unk_34)) {
+        func_84373018(D_84390010[0]);
+        D_84390240.unk_00->unk_2C = 1;
+        D_84390240.unk_00->unk_38 = 5;
+        D_84390240.unk_00->unk_20 = 0;
+        D_84390240.unk_00->unk_14 = 0;
+    }
+#endif
     func_8432113C();
 
     switch (D_84390240.unk_00->unk_38) {

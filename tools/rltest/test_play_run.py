@@ -2,11 +2,12 @@
 
 import argparse
 import ctypes
+import json
 from pathlib import Path
 
 from tools.rltest.frontend import Frontend, HarnessError
 from tools.rltest.run import default_core
-from tools.rltest.test_custom_battle import Mon, Result
+from tools.rltest.test_custom_battle import Mon, PendingBattle, Result
 
 
 class Node(ctypes.BigEndianStructure):
@@ -37,6 +38,10 @@ class Run(ctypes.BigEndianStructure):
         ("daycare_nodes", ctypes.c_uint8), ("daycare_active", ctypes.c_uint8),
     ]
 
+class Reward(ctypes.BigEndianStructure):
+    _fields_ = [("kind", ctypes.c_uint8), ("detail", ctypes.c_uint8),
+                ("amount", ctypes.c_uint16), ("mon", Mon)]
+
 
 SCENE_MENU = 0
 SCENE_DRAFT = 1
@@ -61,8 +66,47 @@ def wait_scene(emu, expected, frames=1200):
              description=f"roguelike scene {expected}")
 
 
+def wait_draft(emu):
+    emu.wait(lambda runner: scene(runner) in (SCENE_DRAFT, 9), frames=1200,
+             description="draft or explicit new-profile choice")
+    if scene(emu) == 9:
+        emu.step(30)
+        press(emu, "N64_A")
+    wait_scene(emu, SCENE_DRAFT)
+
+
 def press(emu, button, after=4):
     emu.press(button, frames=4, after=after)
+
+def capture_choices(emu, count, label):
+    """Browse only through controller input, leaving the cursor/run unchanged."""
+    before = emu.read("gRlRun", ctypes.sizeof(Run))
+    for index in range(count):
+        emu.step(20)
+        emu.screenshot(emu.output / f"{label}-{index + 1}.png")
+        if index + 1 < count:
+            press(emu, "DOWN")
+    for _ in range(count - 1):
+        press(emu, "UP")
+    require(emu.read("gRlRun", ctypes.sizeof(Run)) == before,
+            f"{label}: browsing changed persistent run state")
+
+
+def capture_reward_details(emu, battle_index):
+    count = emu.read_u32("gRlPlayRewardCount")
+    require(1 <= count <= 4, "invalid native reward count")
+    rewards = (Reward * count).from_buffer_copy(
+        emu.read("gRlPlayRewards", ctypes.sizeof(Reward) * count))
+    capture_choices(emu, count, f"reward-details-battle-{battle_index}")
+    evidence = [
+        {"choice": i + 1, "species": reward.mon.species,
+         "level": reward.mon.level, "hp": reward.mon.cur_hp,
+         "max_hp": reward.mon.max_hp, "moves": list(reward.mon.moves),
+         "pp": list(reward.mon.pp), "max_pp": list(reward.mon.max_pp)}
+        for i, reward in enumerate(rewards) if reward.kind == 0
+    ]
+    (emu.output / f"reward-recruits-battle-{battle_index}.json").write_text(
+        json.dumps(evidence, indent=2) + "\n")
 
 
 def submit_first_move(emu):
@@ -147,7 +191,7 @@ def choose_active_and_battle(emu, battle_index):
             f"native battle used the wrong lead: {live[0]} vs {active.species}")
     pending_addr = emu.resolve("gRlPendingBattle")
     queued = Mon.from_buffer_copy(emu.read(pending_addr, ctypes.sizeof(Mon)))
-    player_slots_offset = ctypes.sizeof(Mon) * 15 + 8
+    player_slots_offset = PendingBattle.player_slots.offset
     require(emu.read_u8(pending_addr + player_slots_offset) == 2,
             "damaged carry-over lead did not retain party-slot identity")
     if battle_index > 1:
@@ -170,6 +214,17 @@ def choose_active_and_battle(emu, battle_index):
     after_first_move = emu.battle_mons()
     require(after_first_move[0]["pp"][0] < live[0]["pp"][0],
             f"native move command was not accepted: {live[0]} -> {after_first_move[0]}")
+    if battle_index == 1:
+        # The native opponent may choose status moves first. Keep using the
+        # fixture's Growl until real damage exists before sweeping with Psychic.
+        for _ in range(12):
+            if after_first_move[0]["hp"] < queued.cur_hp:
+                break
+            submit_first_move(emu)
+            emu.step(1200)
+            after_first_move = emu.battle_mons()
+        require(after_first_move[0]["hp"] < queued.cur_hp,
+                "native opponent never damaged the Growl fixture lead")
     for _ in range(24):
         if emu.read_u32("gRlBattleActive") == 0:
             break
@@ -180,11 +235,15 @@ def choose_active_and_battle(emu, battle_index):
     require(emu.read_u32("gRlBattleActive") == 0, "battle-active flag was not cleared")
     after = read_run(emu)
     require(after.stats.battles == battle_index, "battle result was not recorded")
+    require(scene(emu) == SCENE_REWARD,
+            f"battle {battle_index} did not produce a reward screen")
+    capture_reward_details(emu, battle_index)
     if battle_index < 3:
         require(scene(emu) == SCENE_REWARD,
                 f"test battle {battle_index} did not win into the reward scene: {scene(emu)}")
         require(after.party[2].cur_hp < queued.cur_hp,
-                "native battle did not damage the selected lead")
+                f"native battle did not damage lead species={queued.species}: "
+                f"queued HP={queued.cur_hp}, result HP={after.party[2].cur_hp}")
         if battle_index == 1:
             require(after.party[2].cur_hp > 0,
                     "first-battle carry lead fainted before the next battle")
@@ -207,6 +266,7 @@ def choose_active_and_battle(emu, battle_index):
 
 def verify_loss_summary(emu):
     """Exercise summary UI with a synthetic all-fainted party fixture."""
+    emu.write_u32("gRlPlayTestMode", 2)
     press(emu, "N64_A")
     wait_scene(emu, SCENE_DRAFT)
     emu.step(30)
@@ -235,8 +295,9 @@ def start_new_run(emu, seed, test_mode):
     emu.write_u32("gRlPlayTestMode", test_mode)
     emu.write_u32("gRlPlayTestSeed", seed)
     press(emu, "N64_A")
-    wait_scene(emu, SCENE_DRAFT)
+    wait_draft(emu)
     emu.step(30)
+    emu.screenshot(emu.output / f"draft-moves-{seed:08x}.png")
     for button in ("N64_A", "DOWN", "N64_A", "DOWN", "N64_A"):
         emu.press(button, frames=4, after=16)
     for _ in range(5):
@@ -248,6 +309,10 @@ def start_new_run(emu, seed, test_mode):
 def reenter_roguelike(emu):
     emu.press("N64_A", frames=6, after=120)
     emu.step(120)
+    enter_roguelike_from_menu(emu)
+
+
+def enter_roguelike_from_menu(emu):
     emu.hold("L")
     emu.press("N64_A", frames=6, after=120)
     emu.wait_state(0x30, frames=600)
@@ -276,20 +341,20 @@ def verify_seed8_suspend_resume(emu):
             "Controller Pak resume did not restore the seed-8 route")
 
 
-def verify_native_loss(emu):
+def verify_native_loss(emu, expected_party=3):
     emu.step(30)
     press(emu, "N64_A")
     wait_scene(emu, SCENE_PARTY)
     emu.step(30)
     run = read_run(emu)
-    require(run.party_count == 3, "native-loss fixture needs three starters")
-    for _ in range(3):
+    require(run.party_count == expected_party, "native-loss party count mismatch")
+    for _ in range(min(3, expected_party)):
         press(emu, "DOWN")
     press(emu, "N64_A")
     wait_scene(emu, SCENE_BATTLE)
     emu.wait(lambda runner: runner.read_u32("gRlBattleActive") == 1,
              frames=600, description="human native-loss battle launch")
-    trainer_count_offset = ctypes.sizeof(Mon) * 15 + 13
+    trainer_count_offset = PendingBattle.trainer_count.offset
     trainer_count = emu.read_u8(emu.resolve("gRlPendingBattle") +
                                 trainer_count_offset)
     require(trainer_count >= 1, "native-loss battle has no trainer roster")
@@ -352,7 +417,7 @@ def verify_native_loss(emu):
     lost = read_run(emu)
     require(result.outcome == 0,
             f"expected a native human battle loss, got outcome {result.outcome}")
-    require(result.player_count == 3 and all(
+    require(result.player_count == min(3, expected_party) and all(
         result.player[i].fainted and result.player[i].cur_hp == 0
         for i in range(result.player_count)
     ), "native adapter did not return all three battle losses")
@@ -389,7 +454,7 @@ def run(emu, output):
     emu.screenshot(output / "run-menu.png")
 
     press(emu, "N64_A")
-    wait_scene(emu, SCENE_DRAFT)
+    wait_draft(emu)
     first_draft = emu.read("gRlPlayDraftSpecies", 6)
     press(emu, "N64_B")
     wait_scene(emu, SCENE_MENU)
@@ -437,7 +502,16 @@ def run(emu, output):
     emu.wait_state(4, frames=600)
     reenter_roguelike(emu)
     verify_seed8_suspend_resume(emu)
-    emu.write_u32("gRlPlayTestMode", 3)
+    # Production resumes the canonical seed-8 map, not the trainer-only route.
+    # Start a fresh guarded battle fixture for the distinct native-loss test.
+    resumed = read_run(emu)
+    row = 0 if resumed.row == 255 else resumed.row + 1
+    for _ in range(resumed.map.lanes[row]):
+        press(emu, "DOWN")
+    press(emu, "N64_A")
+    emu.wait_state(4, frames=600)
+    reenter_roguelike(emu)
+    start_new_run(emu, 0x13579BDF, 3)
     verify_native_loss(emu)
     press(emu, "N64_B")
     emu.wait_state(4, frames=600)
@@ -472,7 +546,8 @@ def main():
     parser.add_argument("--native-loss-only", action="store_true")
     args = parser.parse_args()
     output = Path(args.output)
-    with Frontend(args.core, args.rom, args.map_path, output, timeout=900) as emu:
+    with Frontend(args.core, args.rom, args.map_path, output, timeout=1800,
+                  options={"mupen64plus-pak1": "memory"}) as emu:
         try:
             if args.native_loss_only:
                 run_native_loss_only(emu)
