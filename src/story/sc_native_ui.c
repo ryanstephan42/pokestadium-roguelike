@@ -99,8 +99,11 @@ int sc_native_ui_finish(ScNativeUi *native, ScUiDriver *driver, RlU32 operation_
 int sc_native_ui_release(ScNativeUi *native, const ScUiDriver *driver, int tasks_retired) {
     if (!ready(native) || native->pak->session)
         return report(NULL, SC_INVALID, "Story native UI: resource release order mismatch");
+    if (driver && (!driver->bound || driver->ui != native->prepared ||
+        !driver->ui || driver->ui->device != &native->pak->device))
+        return report(NULL, SC_INVALID, "Story native UI: resource release identity mismatch");
     if (!tasks_retired || (native->prepared && !driver) ||
-        (driver && (!driver->bound || !driver->ui || !driver->exit_requested ||
+        (driver && (!driver->exit_requested ||
         driver->launched || driver->launch_pending ||
         driver->ui->request_ready || driver->ui->pending_save)))
         return report(NULL, SC_PENDING, "Story native UI: campaign/tasks/transactions have not retired");
