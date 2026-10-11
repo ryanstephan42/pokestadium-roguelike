@@ -15,6 +15,9 @@ volatile ScBridgeProbe gScBridgeProbe;
 ScProgressProbe gScProgressProbe;
 const RlU32 gScProgressProbeSize = sizeof(gScProgressProbe);
 const RlU32 gScProgressMonOffset = (RlU32)&((ScProgressProbe *)0)->before_ko;
+#ifdef STORY_KO_PROBE
+const RlU32 gScProbeKoProfile = 1;
+#endif
 static ScState resident;
 static ScBridge bridge;
 static ScCombat combat;
@@ -97,6 +100,7 @@ static void bridge_views(RlBattleSide *side, volatile ScBridgeView *party,
     for (i = 0; i < 6; i++) view->stages[i] = rl_battle_stage(live, i);
 }
 
+#ifndef STORY_KO_PROBE
 static int bridge_matches(const volatile ScBridgeView *party,
                            const volatile ScBridgeView *live) {
     const RlMon *mon = &resident.party[0];
@@ -123,6 +127,7 @@ static int bridge_matches(const volatile ScBridgeView *party,
     }
     return 1;
 }
+#endif
 
 static int bridge_view_equal(const volatile ScBridgeView *a, const volatile ScBridgeView *b) {
     unsigned i;
@@ -137,6 +142,7 @@ static int bridge_view_equal(const volatile ScBridgeView *a, const volatile ScBr
     return 1;
 }
 
+#ifndef STORY_KO_PROBE
 static int bridge_hold(RlBattleSide *player, RlBattleSide *enemy) {
     unsigned i, error = 1;
     if (!player || !enemy || !player->unk_724 || !enemy->unk_724 ||
@@ -197,6 +203,7 @@ invalid:
     report();
     return 1;
 }
+#endif
 
 static int publish_live(RlBattleSide *side) {
     RlBattleMon *live = rl_battle_mon(side);
@@ -239,7 +246,9 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
     int status;
     if (!gScProbeActive) return 0;
     if (failed) return 1;
+#ifndef STORY_KO_PROBE
     if (gScBridgeProbe.enabled) return bridge_hold(player, enemy);
+#endif
     gScProbe.ticks++;
     if (!player || !enemy || !player->unk_724 || !enemy->unk_724) goto invalid;
     active = rl_battle_active_index(player);
@@ -378,6 +387,14 @@ int sc_runtime_probe_poll(void) {
     unsigned command = gScProbe.command, i;
     int status;
     if (!command) return 0;
+#ifdef STORY_KO_PROBE
+    if (command == 6) {
+        osSyncPrintf("story probe: bridge command unavailable in KO profile\n");
+        gScProbe.status = 0x100 + SC_INVALID;
+        gScProbe.command = 0;
+        return 1;
+    }
+#endif
     gScProbe.stage = 1;
     request.state = &resident;
     request.controller = gScProbe.controller;

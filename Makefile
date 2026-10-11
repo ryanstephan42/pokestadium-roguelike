@@ -58,6 +58,12 @@ N64_EMULATOR ?=
 # Roguelike mod build (use `make rl`; never set this for the matching build)
 ROGUELIKE ?= 0
 STORY_PROBE ?= 0
+STORY_KO_PROBE ?= 0
+ifeq ($(STORY_KO_PROBE),1)
+  ifneq ($(STORY_PROBE),1)
+    $(error STORY_KO_PROBE=1 requires STORY_PROBE=1)
+  endif
+endif
 ifeq ($(STORY_PROBE),1)
   ifneq ($(ROGUELIKE),1)
     $(error STORY_PROBE=1 requires ROGUELIKE=1)
@@ -115,6 +121,9 @@ ifeq ($(ROGUELIKE),1)
   BUILD_DIR := build_rl
   ifeq ($(STORY_PROBE),1)
     BUILD_DIR := build_story_probe
+    ifeq ($(STORY_KO_PROBE),1)
+      BUILD_DIR := build_story_ko_probe
+    endif
   endif
   ROM       := $(BUILD_DIR)/$(TARGET)-rl.z64
 else
@@ -147,6 +156,9 @@ ifeq ($(ROGUELIKE),1)
   BUILD_DEFINES   += -DROGUELIKE
   ifeq ($(STORY_PROBE),1)
     BUILD_DEFINES += -DSTORY_NATIVE_PROBE
+    ifeq ($(STORY_KO_PROBE),1)
+      BUILD_DEFINES += -DSTORY_KO_PROBE
+    endif
   endif
   ifneq ($(wildcard src/fragments/rl/rl_ui.c),)
     BUILD_DEFINES += -DRL_HAVE_UI_DEMO
@@ -434,6 +446,11 @@ rl:
 story-probe:
 	$(V)$(MAKE) rom
 	$(V)$(MAKE) ROGUELIKE=1 STORY_PROBE=1 NON_MATCHING=0 COMPARE=0 rlrom
+
+.PHONY: story-ko-probe
+story-ko-probe:
+	$(V)$(MAKE) rom
+	$(V)$(MAKE) ROGUELIKE=1 STORY_PROBE=1 STORY_KO_PROBE=1 NON_MATCHING=0 COMPARE=0 rlrom
 
 rlclean:
 	$(V)$(RM) -r build_rl

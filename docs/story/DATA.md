@@ -844,6 +844,45 @@ written-stack, KO/learning, terminal-carry or save mismatch, preserve evidence
 and release the slot. Prior bounded proofs are not natural KO, terminal carry,
 six-party/Transform or full-gate acceptance.
 
+#### KO-only resident diagnostic profile (source/host candidate)
+
+Exact `743d2ef` synthetic-KO execution stopped before any tick or injection:
+the required animation destination requested 37,296 bytes/charged 37,312
+with only 37,168 raw bytes available (144-byte shortage). The required NULL
+guard refused initialization at stage 13/status 257; 85 allocations included
+one failure. Durable failure diagnostics and provenance remain in
+`.local/rltest/story-ko-synthetic-743d2ef/`. Map/pool cleanup and 1,340 written
+margin are not resource acceptance; no KO, learning or terminal commit ran.
+
+`make story-ko-probe` now selects compile-time `STORY_KO_PROBE` in a separate
+`build_story_ko_probe/` directory. It omits the unrelated synthetic initializer
+comparison/hold/injection helper code (`bridge_matches`/`bridge_hold`) from
+KO linking. Command 6 refuses explicitly before any cold load, and bridge
+harness phases reject this profile before Frontend startup. Ordinary
+`make story-probe` retains byte-identical combined diagnostics; accepted
+`959513af` bridge artifacts/evidence remain immutable and independently usable.
+
+Buffer inventory: the 416-byte progression history has five 68-byte mons and
+76 bytes of counts/award/stage data; all five are needed for KO/resume/terminal
+comparison. The 736-byte bridge views contain 16 control bytes and six
+120-byte native views: initial/current pairs prove fresh learning-hold
+preservation, carry pair records immediate resumed publication. They are all
+used by KO diagnostics, so they are not discarded or dynamically overlaid.
+Only the mutually exclusive bridge-only helper execution is excluded;
+canonical stats/KO logic, cold catalog/assets and all KO evidence remain.
+
+Measured KO pool start is `0x8011DDC0` versus failed combined `0x8011E3F0`,
+recovering 1,584 bytes of resident code/alignment without moving asset or pool
+boundaries. That exceeds the observed shortage by 1,440 bytes, but is not
+permission to waive failures or proof of later resource peaks. Cold RAM
+remains 173,872 and diagnostic ABIs remain 416/76, 736 and 212. Tick frame
+stays 104; no cold ownership or native allocator behavior changed. Host
+tests run combined and KO runtime variants; the KO variant proves command-6
+refusal without writes and retains KO/learning/terminal rejection coverage.
+Normal RL ROM remains the prior story-branch hash `a4fab9f9...125d`, not a
+claim of merged-master identity. No emulator rerun is authorized for this
+profile until source review and a new explicit bounded grant.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

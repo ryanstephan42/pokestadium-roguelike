@@ -322,11 +322,17 @@ int main(void) {
               snapshot.interrupted && snapshot.state.party[0].level == 6);
     }
     progress_case = 0;
+#ifndef STORY_KO_PROBE
     for (bridge_case = 1; bridge_case <= 10; bridge_case++) {
         writes = 0; gScProbe.command = 6;
         check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
               writes == 1 && !gScProbeActive && !gScProbe.active);
     }
+#else
+    before = writes; gScProbe.command = 6;
+    check(sc_runtime_probe_poll() && gScProbe.status == 0x100 + SC_INVALID &&
+          writes == before && !gScProbeActive);
+#endif
     checkpoint = resident.party[0];
     check(terminal_matches(&checkpoint, &resident.party[0]));
     checkpoint.pp[0]++;

@@ -24,11 +24,26 @@ from tools.rltest.story_probe import (
     read_progress,
     require_resume_native,
     require_learning_storage,
+    require_probe_profile,
 )
 from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_ko_profile_rejects_bridge_before_frontend(self):
+        from tools.rltest import story_probe
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "probe.map"
+            path.write_text("0x80001000 gScProbeKoProfile\n")
+            for phase in ("bridge_init", "bridge_carry"):
+                with patch.object(story_probe, "Frontend") as frontend:
+                    with self.assertRaisesRegex(HarnessError, "STORY_KO_PROBE"):
+                        story_probe.phase(Mock(map=path, phase=phase, out=temporary))
+                    frontend.assert_not_called()
+            require_probe_profile(path, "ko_synthetic")
+            path.write_text("0x80001000 gScProbeCompiledSize\n")
+            require_probe_profile(path, "bridge_init")
+
     def test_learning_storage_rejects_pause_and_hold_writes(self):
         prebattle = bytes(1536)
         changed = b"\1" + prebattle[1:]

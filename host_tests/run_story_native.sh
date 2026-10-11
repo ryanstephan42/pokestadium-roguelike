@@ -18,6 +18,11 @@ gcc "${flags[@]}" host_tests/test_story_runtime.c src/story/sc_native_probe.c \
     src/story/sc_graph.c src/story/sc_save.c src/story/sc_crc.c src/story/sc_storage.c src/story/sc_cold.c build/story/sc_data.c \
     -Wl,--gc-sections -o build/story/test_story_runtime
 build/story/test_story_runtime
+gcc "${flags[@]}" -DSTORY_KO_PROBE host_tests/test_story_runtime.c src/story/sc_native_probe.c \
+    src/story/sc_progression.c src/story/sc_combat.c src/story/sc_make.c src/story/sc_bridge.c src/story/sc_core.c \
+    src/story/sc_graph.c src/story/sc_save.c src/story/sc_crc.c src/story/sc_storage.c src/story/sc_cold.c build/story/sc_data.c \
+    -Wl,--gc-sections -o build/story/test_story_runtime_ko
+build/story/test_story_runtime_ko
 gcc "${flags[@]}" host_tests/test_story_cold_load.c \
     -Wl,--gc-sections -o build/story/test_story_cold_load
 build/story/test_story_cold_load

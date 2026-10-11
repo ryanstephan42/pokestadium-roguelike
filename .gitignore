@@ -34,4 +34,5 @@ tools/n64
 
 build_rl/
 build_story_probe/
+build_story_ko_probe/
 .local/

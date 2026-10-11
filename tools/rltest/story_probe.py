@@ -229,6 +229,12 @@ def require_learning_storage(prebattle, paused, held):
     require(held == prebattle, "Learning hold changed durable prebattle storage")
 
 
+def require_probe_profile(map_path, phase):
+    if phase in ("bridge_init", "bridge_carry"):
+        require("gScProbeKoProfile" not in Path(map_path).read_text(),
+                "Bridge phases unavailable in STORY_KO_PROBE profile")
+
+
 def require_fixture_party(party, hp=17, pp=7, status=4):
     require(len(party) == 1, "Checkpoint fixture party count mismatch")
     mon = party[0]
@@ -450,6 +456,7 @@ def foreign_note(data, base, full=False):
 
 def phase(args):
     directory = Path(args.out)
+    require_probe_profile(args.map, args.phase)
     provenance = {
         "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "diff_sha256": hashlib.sha256(subprocess.check_output(
