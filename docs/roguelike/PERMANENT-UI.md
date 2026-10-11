@@ -18,8 +18,10 @@ or consume another receipt. An unresolved edit offers only retry/back, and
 blocks New Run and settings. Terminal recording still uses its original
 once-only resident candidate, never the profile-edit path. Returning from an
 unsaved summary retains its candidate rather than discarding an uncertain write.
-If the Pak is exchanged while a candidate is pending, `DEVICE_CHANGED` blocks
-retry until the original unchanged Pak is reinserted. There is deliberately no
+If the Pak is exchanged while a candidate is pending, the scene explicitly
+instructs the player to reinsert the original Pak and retry. Retry accepts either
+the original record or the already-committed candidate, but never a profile or
+suspend changed externally. There is deliberately no
 abandon action for an uncertain commit: abandoning and repeating a skip or
 terminal payout could consume or award twice. Returning to Menu Select retains
 the candidate; restarting the game loses the resident retry state, so load the
@@ -53,6 +55,10 @@ species weights and kit valuation are provisional balance proposals.
 and native rental catalogs, C89 declarations, ASan/UBSan, deterministic weighted
 drafts, base/registered eligibility and heavily weighted locked exclusions,
 theme/kit/move effects, and suspended-run/uncertain purchase/register/skip retries.
+Scene regressions exchange and restore the stored profile during an uncertain
+purchase, skip and terminal payout, proving retry preserves the suspend and
+does not write/debit/pay again after a candidate was already committed. Host
+checkpoint-provenance tests mock ROM bytes and need no built ROM.
 
 `python3 -m tools.rltest.test_permanent_progression` first follows an ordinary
 seed-99 fossil event, recruits Kabuto, confirms starter releases and loses a

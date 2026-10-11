@@ -288,7 +288,15 @@ int main(int argc, char** argv) {
     assert(gRlPlayProfile.edit_pending && sPlayMeta.currency == 100);
     assert(sDiskMeta.currency == 70 && sWriteCount == 1);
     assert(!memcmp(&before, &sDiskRun, sizeof(before)));
-    assert(rl_play_commit_edit() == RL_SAVE_OK);
+    sDiskMeta.currency++;
+    rl_play_meta_menu();
+    rl_play_update_meta(RL_UI_A);
+    assert(gRlPlayProfile.edit_pending && sPlayMeta.currency == 100 &&
+           sWriteCount == 1);
+    assert(!strcmp(sPlayMessage,
+                   "Pak changed: reinsert original Pak, then retry; changes retained"));
+    sDiskMeta.currency--;
+    rl_play_update_meta(RL_UI_A);
     assert(!gRlPlayProfile.edit_pending && sPlayMeta.currency == 70);
     assert(sWriteCount == 1 && sPlayMeta.runs == profile_before.runs);
     assert(rl_play_edit(2, 0) == RL_SAVE_IO);
@@ -350,8 +358,10 @@ int main(int argc, char** argv) {
            gRlPlayProfile.edit_candidate.pending_registration_count == 1);
     sDiskRun.rng ^= 1;
     sUncertainWrite = 0;
-    assert(rl_play_commit_edit() == RL_SAVE_OK);
+    rl_play_update_meta(RL_UI_A);
+    assert(!gRlPlayProfile.edit_pending);
     assert(sDiskMeta.pending_registration_count == 1 && sWriteCount == (int)old_count + 2);
+    assert(!memcmp(&before, &sDiskRun, sizeof(before)));
 
     /* Terminal win recording remains once-only and distinct from profile edits. */
     profile_before = sPlayMeta;
@@ -377,7 +387,16 @@ int main(int argc, char** argv) {
            sPlaySummaryPrepared && !sPlaySummarySaved);
     assert(sPlayMessage && !strcmp(sPlayMessage,
                                   "Retry unsaved results before resuming another run"));
-    assert(rl_play_store(0) == RL_SAVE_OK);
+    sDiskMeta.currency++;
+    rl_play_make_summary();
+    assert(!strcmp(sPlayMessage,
+                   "Pak changed: reinsert original Pak, then retry; changes retained"));
+    rl_play_update_summary(RL_UI_A);
+    assert(sPlaySummaryPrepared && !sPlaySummarySaved &&
+           sWriteCount == (int)old_count + 1);
+    assert(!memcmp(&before, &gRlRun, sizeof(before)));
+    sDiskMeta.currency--;
+    rl_play_update_summary(RL_UI_A);
     assert(sWriteCount == (int)old_count + 1 && sPlaySummarySaved);
     assert(rl_play_edit(1, 8) == RL_SAVE_IO);
     assert(rl_play_commit_edit() == RL_SAVE_OK);

@@ -87,12 +87,15 @@ class TestProgressionProbes(unittest.TestCase):
                 "rom_sha256": "not-current-rom",
             }))
             original_read = Path.read_bytes
+
             def fixture_read(candidate):
                 if candidate == Path("build_rl/pokestadium-rl.z64"):
                     return b"mock current ROM"
                 return original_read(candidate)
+
             with patch.object(Path, "read_bytes", fixture_read):
-                with self.assertRaises(HarnessError):
+                with self.assertRaisesRegex(
+                        HarnessError, "checkpoint was funded by a different ROM artifact"):
                     restore_checkpoint(None, path)
 
 
