@@ -302,6 +302,13 @@ int main(int argc, char** argv) {
     assert(rl_play_edit(1, 150) == RL_SAVE_OK);
     assert(sWriteCount == (int)old_count && sPlayMeta.pending_registration_count == 0);
     assert(rl_play_edit(0, RL_META_EVENT_PACK_1) == RL_SAVE_INVALID);
+    rl_play_meta_menu();
+    sPlayList.cursor = 2;
+    old_count = sWriteCount;
+    rl_play_update_meta(RL_UI_A);
+    assert(sPlayMessage && !strcmp(sPlayMessage,
+                                  "Already owned; permanent coins were not spent"));
+    assert(sWriteCount == (int)old_count);
 
     /* New Run cannot bypass pending choices, including after a cold load. */
     sDiskMeta.pending_registration_count = 1;

@@ -57,14 +57,17 @@ def save_checkpoint(emu, path):
     }, indent=2))
 
 
-def restore_checkpoint(emu, path):
+def restore_checkpoint(emu, path, allow_prior_rom=False):
     data = path.read_bytes()
     manifest = json.loads(path.with_suffix(".json").read_text())
     require(manifest["codec_version"] == 4 and
             hashlib.sha256(data).hexdigest() == manifest["save_sha256"],
             "funding checkpoint schema/image identity mismatch")
-    require(hashlib.sha256(Path("build_rl/pokestadium-rl.z64").read_bytes()).hexdigest() ==
-            manifest["rom_sha256"], "checkpoint was funded by a different ROM artifact")
+    current_sha = hashlib.sha256(Path("build_rl/pokestadium-rl.z64").read_bytes()).hexdigest()
+    require(current_sha == manifest["rom_sha256"] or allow_prior_rom,
+            "checkpoint was funded by a different ROM artifact")
+    if current_sha != manifest["rom_sha256"]:
+        print(f"EXPLICIT PRIOR-ARTIFACT FUNDING REUSE; current ROM={current_sha}", flush=True)
     print(f"checkpoint source HEAD={manifest['head']} ROM={manifest['rom_sha256']}", flush=True)
     pointer, initial = save_ram(emu)
     require(len(data) == len(initial), "aggregate save size changed")
@@ -156,14 +159,14 @@ def ordinary_earn(emu):
     require(emu.read_u32("gRlPlayTestMode") == 0, "ordinary earn used fixture mode")
 
 
-def phase(directory, part):
+def phase(directory, part, allow_prior_rom=False):
     with Frontend(default_core(), Path("build_rl/pokestadium-rl.z64"),
                   Path("build_rl/pokestadium-rl.map"), output=directory,
                   options={"mupen64plus-pak1": "memory"}, timeout=3600) as emu:
         if part != "earn":
             checkpoint = directory / "funding-save.bin"
             source = checkpoint if part == "shop" and checkpoint.exists() else directory / "permanent-save.bin"
-            restore_checkpoint(emu, source)
+            restore_checkpoint(emu, source, allow_prior_rom)
             boot(emu)
             enter_roguelike_from_menu(emu)
         if part == "earn":
@@ -303,9 +306,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", choices=("earn", "shop", "reload"))
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--allow-prior-rom", action="store_true",
+                        help="Explicitly label reuse of an older ROM's hash-verified funding checkpoint")
     args = parser.parse_args()
     if args.phase:
-        phase(args.output, args.phase)
+        phase(args.output, args.phase, args.allow_prior_rom)
         return
     root = Path(".local/rltest")
     root.mkdir(parents=True, exist_ok=True)

@@ -1339,7 +1339,16 @@ static void rl_play_update_meta(u16 pressed) {
         rl_play_set_scene(RL_PLAY_MENU);
         return;
     }
-    if (result < 0) return;
+    if (result < 0) {
+        if (result == RL_UI_DISABLED)
+            sPlayMessage = scene == RL_PLAY_REGISTER ?
+                "No earned registration receipt remains" :
+                sPlayList.cursor == 0 ? "No earned registration receipt remains" :
+                rl_meta_option_unlocked(&sPlayMeta, sPlayMetaIds[sPlayList.cursor]) ?
+                "Already owned; permanent coins were not spent" :
+                "Not enough permanent coins for this option";
+        return;
+    }
     if (scene == RL_PLAY_META && !gRlPlayProfile.edit_pending && result == 0) {
         rl_play_registration();
         return;
