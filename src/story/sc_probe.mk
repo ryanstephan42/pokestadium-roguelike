@@ -6,6 +6,10 @@ SC_COLD_O := $(addprefix $(BUILD_DIR)/src/story/,$(addsuffix .o,$(SC_COLD_NAMES)
 SC_HEADER_O := $(BUILD_DIR)/src/story/sc_cold_header.o
 SC_RELOCS_O := $(RL_DIR)/fragmentSC_relocs.o
 SC_RELOCS0_O := $(RL_DIR)/fragmentSC_relocs_pass1.o
+SC_POOL_TRACE_O := $(BUILD_DIR)/src/story/sc_pool_trace.o
+RL_MAIN_O += $(SC_POOL_TRACE_O)
+O_FILES += $(SC_POOL_TRACE_O)
+$(BUILD_DIR)/src/memory_main.o: src/story/sc_runtime_probe.h
 RL_MAIN_O += $(filter-out $(SC_COLD_O),$(SC_PROBE_O))
 O_FILES += $(SC_PROBE_O) $(SC_PROBE_CATALOG) $(SC_HEADER_O)
 

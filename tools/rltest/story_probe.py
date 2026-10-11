@@ -59,16 +59,26 @@ def memory_evidence(emu, result):
         "pool_scope": "raw availability after every main-pool allocation attempt since command",
         **counters,
     }
+    for label, symbol in (("first_zero", "gScPoolZero"), ("first_failure", "gScPoolFailure")):
+        values = struct.unpack(">10I", emu.read(emu.symbols.address(symbol), 40))
+        evidence[label] = dict(zip(
+            ("requested", "charged", "side", "before", "after", "caller", "stage", "cold_busy",
+             "address", "active"), values))
+    return evidence
+
+
+def validate_memory(evidence, result):
+    margin = evidence["stack_written_margin"]
+    fragment = (evidence["fragment_vaddr"], evidence["fragment_size"])
     require(margin >= 64, f"Game stack bottom sentinel exhausted: {evidence}")
     require(fragment == (0, 0), f"Cold fragment map survived pool pop: {evidence}")
     require(not result["map_before"] and not result["map_before_size"] and
             result["map_loaded"] and result["map_loaded_size"] == result["cold_size"] and
             not result["map_after"] and not result["map_after_size"],
             f"Cold map load/pop ownership mismatch: {result}")
-    require(counters["gScPoolAllocations"] > 0 and counters["gScPoolFailures"] == 0 and
-            counters["gScPoolMinimum"] != 0xFFFFFFFF,
+    require(evidence["gScPoolAllocations"] > 0 and evidence["gScPoolFailures"] == 0 and
+            evidence["gScPoolMinimum"] != 0xFFFFFFFF,
             f"Allocation diagnostics failed: {evidence}")
-    return evidence
 
 
 def verify_mailbox_abi(emu):
@@ -94,6 +104,8 @@ def start_command(emu, command, create=0):
     verify_mailbox_abi(emu)
     for name in POOL_COUNTERS:
         emu.write_u32(emu.symbols.address(name), 0xFFFFFFFF if name == "gScPoolMinimum" else 0)
+    for name in ("gScPoolZero", "gScPoolFailure"):
+        emu.write(emu.symbols.address(name), bytes(40))
     values = dict.fromkeys(FIELDS, 0)
     values.update(status=0xFFFFFFFF, create=create, seed=42)
     emu.write(emu.symbols.address("gScProbe"),
@@ -358,10 +370,11 @@ def phase(args):
                 story_owned_changes(fixture, after, base)
                 require(native_command(emu, 1)[4] == 42, "SC01 changed RL01 meta")
                 (directory / "save-ram.bin").write_bytes(save_ram(emu)[1])
+        (directory / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n")
         if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload"):
             evidence = memory_evidence(emu, result)
             (directory / f"{args.phase}-memory.json").write_text(json.dumps(evidence, indent=2) + "\n")
-        (directory / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n")
+            validate_memory(evidence, result)
         print(f"story native {args.phase}: OK")
 
 

@@ -11,6 +11,7 @@ from tools.rltest.story_probe import (
     FIELDS, finish_command, foreign_note, map_value, probe_deadline, story_owned_changes,
     stack_written_margin,
     memory_evidence,
+    validate_memory,
     verify_mailbox_abi,
 )
 
@@ -48,17 +49,21 @@ class StoryHarnessTests(unittest.TestCase):
         emu.symbols.address.side_effect = {
             "D_80080000": 0x80080000, "D_800818E0": 0x800818E0,
             "gFragments": 0x80090000,
+            "gScPoolZero": 0x80091000, "gScPoolFailure": 0x80091040,
         }.__getitem__
-        emu.read.side_effect = [b"\xA5" * 80 + b"\0" * (0x18E0 - 80), b"\0" * 8]
+        emu.read.side_effect = [b"\xA5" * 80 + b"\0" * (0x18E0 - 80), b"\0" * 8,
+                               bytes(40), bytes(40)]
         emu.read_u32.side_effect = [320, 4, 0, 128]
         result = dict(map_before=0, map_before_size=0, map_loaded=0x80200000,
                       map_loaded_size=173456, cold_size=173456, map_after=0, map_after_size=0)
-        self.assertEqual(memory_evidence(emu, result)["stack_written_margin"], 80)
+        evidence = memory_evidence(emu, result)
+        self.assertEqual(evidence["stack_written_margin"], 80)
+        validate_memory(evidence, result)
         emu.read.side_effect = [b"\xA5" * 80 + b"\0" * (0x18E0 - 80),
-                               struct.pack(">II", 0, 173456)]
+                               struct.pack(">II", 0, 173456), bytes(40), bytes(40)]
         emu.read_u32.side_effect = [320, 4, 0, 128]
         with self.assertRaisesRegex(HarnessError, "fragment map survived"):
-            memory_evidence(emu, result)
+            validate_memory(memory_evidence(emu, result), result)
 
     def test_layout_symbols(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -555,6 +555,30 @@ count and rejects the old ABI. It also reads the resident compiled
 wrong object size; a regression rejects wrong size even with matching spacing.
 Frozen failed artifacts/evidence are retained.
 
+The corrected `85011e0` create phase passed. Its written-stack margin was
+260 bytes (6,108 written of 6,368), so the journal path remains close to the
+stack bottom despite the intact 64-byte sentinel. The following live interrupt
+stopped on one unattributed failed allocation among 97 attempts; raw minimum
+was zero and written-stack margin 1,340 bytes. Direct map and canonical live
+checks passed, but fresh reload was not run. These are bounded observations,
+not complete memory acceptance.
+
+Retail fragment-62 setup intentionally creates temporary geometry subpools
+with `func_80002D10(main_pool_get_available(), 0)`, consuming raw main-pool
+availability to zero, then shrinks them with `func_80002D60`. Thus raw zero
+alone is not a required-resource shortage; the failed allocation must still
+be attributed. Probe-only tail wrappers preserve the caller return PC in an
+extra internal diagnostic argument without changing public allocator ABI or
+allocation decisions. First-zero and first-failure records retain requested
+and aligned/header-charged sizes, side, raw before/after, caller return PC,
+probe stage, cold-busy/active flags and returned address. For
+`main_pool_alloc`, the PC identifies its consumer; direct
+`main_pool_alloc_from_pool` callers identify the pool-state/realloc wrapper.
+Rejected reallocs that never reach that function remain outside these counters.
+Result/memory JSON is persisted before assertions reject a boundary. No
+failure is waived or threshold relaxed; another reviewed bounded attribution
+run is needed to distinguish optional probing from required resources.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
