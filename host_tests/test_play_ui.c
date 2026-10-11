@@ -341,6 +341,13 @@ int main(int argc, char** argv) {
     sDiskRun.rng ^= 1;
     assert(rl_play_commit_edit() == RL_SAVE_DEVICE_CHANGED);
     assert(sWriteCount == (int)old_count + 1);
+    rl_play_meta_menu();
+    rl_play_update_meta(RL_UI_A);
+    assert(gRlPlayProfile.edit_pending &&
+           !strcmp(sPlayMessage,
+                   "Pak changed: reinsert original Pak, then retry; changes retained"));
+    assert(sWriteCount == (int)old_count + 1 &&
+           gRlPlayProfile.edit_candidate.pending_registration_count == 1);
     sDiskRun.rng ^= 1;
     sUncertainWrite = 0;
     assert(rl_play_commit_edit() == RL_SAVE_OK);

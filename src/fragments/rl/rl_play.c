@@ -95,6 +95,12 @@ static void rl_play_preview_lane(void);
 static void rl_play_meta_menu(void);
 static void rl_play_registration(void);
 
+static const char* rl_play_retry_status(RlSaveStatus status) {
+    if (status == RL_SAVE_DEVICE_CHANGED)
+        return "Pak changed: reinsert original Pak, then retry; changes retained";
+    return rl_save_status_text(status);
+}
+
 static int rl_play_meta_equal(const RlMeta* a, const RlMeta* b) {
     unsigned first;
     unsigned second;
@@ -878,7 +884,7 @@ static void rl_play_make_summary(void) {
             sPlayItems[2].disabled = 0;
             sPlayMessage = "Progression saved to Controller Pak";
         } else {
-            sPlayMessage = rl_save_status_text(status);
+            sPlayMessage = rl_play_retry_status(status);
         }
     }
 }
@@ -1320,7 +1326,7 @@ static void rl_play_update_summary(u16 pressed) {
             gRlMain.returnState = STATE_MENU_SELECT;
             gRlPlayExit = 1;
         } else {
-            sPlayMessage = rl_save_status_text(status);
+            sPlayMessage = rl_play_retry_status(status);
         }
     } else if (result == 1 || result == RL_UI_CANCEL) {
         rl_play_build_root();
@@ -1363,7 +1369,7 @@ static void rl_play_update_meta(u16 pressed) {
     else status = rl_play_edit(0, sPlayMetaIds[result]);
     if (status != RL_SAVE_OK) {
         rl_play_meta_menu();
-        sPlayMessage = rl_save_status_text(status);
+        sPlayMessage = rl_play_retry_status(status);
         return;
     }
     if (sPlayNewAfterRegistration && !sPlayMeta.pending_registration_count) {
