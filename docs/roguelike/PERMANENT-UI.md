@@ -47,9 +47,11 @@ and native rental catalogs, C89 declarations, ASan/UBSan, deterministic weighted
 drafts, base/registered eligibility and heavily weighted locked exclusions,
 theme/kit/move effects, and suspended-run/uncertain purchase/register/skip retries.
 
-`python3 -m tools.rltest.test_permanent_progression` completes real native losses
-using the explicit legacy one-HP/Growl fixture to earn non-base pending species
-and sufficient currency (26 completed encounters). It uses real registration,
+`python3 -m tools.rltest.test_permanent_progression` first follows an ordinary
+seed-99 fossil event, recruits Kabuto, confirms starter releases and loses a
+native battle with unmodified combat conditions to earn a non-base receipt.
+It then completes native losses using the explicit legacy one-HP/Growl fixture
+to fund sufficient currency (26 total completed encounters). It uses real registration,
 skip, shop and settings controls, three fresh processes, active suspension
 preservation, and ordinary themed/variant/kit drafts. It never injects profile
 currency, registration bits or terminal outcomes. This is not an ordinary

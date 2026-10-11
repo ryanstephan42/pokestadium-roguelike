@@ -1,7 +1,8 @@
 """Native profile UI, earned loss receipts, purchases and cold-process drafts.
 
-Losses use the explicit legacy one-HP/Growl battle fixture, not injected meta,
-terminal outcomes or currency. Ordinary drafts never enable that fixture.
+The first loss follows ordinary fossil recruitment with unmodified combat.
+Funding losses use the explicit legacy one-HP/Growl battle fixture, not
+injected meta, terminal outcomes or currency. Ordinary drafts never enable it.
 """
 
 import argparse
@@ -70,6 +71,39 @@ def resolve_pending(emu, register=False):
 def draft(emu):
     return (Mon * 6).from_buffer_copy(emu.read("gRlPlayDraft", ctypes.sizeof(Mon) * 6))
 
+def release_to_one(emu, keep_last=False):
+    run = read_run(emu)
+    row = 0 if run.row == 255 else run.row + 1
+    select(emu, run.map.lanes[row] + 2)
+    wait_scene(emu, 8)
+    while read_run(emu).party_count > 1:
+        select(emu, 0 if keep_last else 1)
+        select(emu, 1)
+        select(emu, 1)
+    press(emu, "N64_B")
+    wait_scene(emu, 2)
+
+
+def ordinary_earn(emu):
+    boot(emu)
+    enter_roguelike_from_menu(emu)
+    start_new_run(emu, 99, 0)
+    select(emu, 3)
+    wait_scene(emu, 8)
+    require(emu.read_u32("gRlSceneEvent") == 0, "seed 99 did not offer ordinary fossil event")
+    press(emu, "N64_A")
+    wait_scene(emu, 2)
+    require(read_run(emu).party_count == 4 and read_run(emu).party[3].species == 140,
+            "ordinary fossil event did not recruit canonical Kabuto")
+    release_to_one(emu, keep_last=True)
+    run = read_run(emu)
+    require(run.party[0].species == 140 and run.party[0].level == 20 and
+            run.map.nodes[7].type == 0, "ordinary fossil-to-trainer route changed")
+    for _ in range(3):
+        press(emu, "DOWN")
+    verify_native_loss(emu, expected_party=1)
+    require(emu.read_u32("gRlPlayTestMode") == 0, "ordinary earn used fixture mode")
+
 
 def phase(directory, part):
     with Frontend(default_core(), Path("build_rl/pokestadium-rl.z64"),
@@ -83,15 +117,15 @@ def phase(directory, part):
             boot(emu)
             enter_roguelike_from_menu(emu)
         if part == "earn":
-            run_native_loss_only(emu)
-            enter_roguelike_from_menu(emu)
+            ordinary_earn(emu)
             meta = read_meta(emu)
             require(meta.runs == 1 and meta.currency == 5, "native loss payout wrong")
             require(meta.pending_registration_count == 1 and
                     any(meta.pending_species), "native final team earned no non-base choice")
             _, data = save_ram(emu)
             (directory / "permanent-save.bin").write_bytes(data)
-            print("NATIVE EARN PASSED: real loss, pending non-base species, five coins")
+            print("ORDINARY NATIVE EARN PASSED: fossil recruit, confirmed releases, "
+                  "unmodified native loss, pending Kabuto, five coins")
             return
         if part == "shop":
             meta = read_meta(emu)
@@ -104,7 +138,8 @@ def phase(directory, part):
             for number in range(2, 27):
                 resolve_pending(emu, register=number != 3)
                 start_new_run(emu, 0x13579BDF + (1 if number == 2 else 0), 3)
-                verify_native_loss(emu)
+                release_to_one(emu)
+                verify_native_loss(emu, expected_party=1)
                 require(read_meta(emu).runs == number and
                         read_meta(emu).currency == number * 5,
                         f"native run {number} paid or recorded twice")

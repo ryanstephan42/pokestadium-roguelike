@@ -291,14 +291,14 @@ def verify_seed8_suspend_resume(emu):
             "Controller Pak resume did not restore the seed-8 route")
 
 
-def verify_native_loss(emu):
+def verify_native_loss(emu, expected_party=3):
     emu.step(30)
     press(emu, "N64_A")
     wait_scene(emu, SCENE_PARTY)
     emu.step(30)
     run = read_run(emu)
-    require(run.party_count == 3, "native-loss fixture needs three starters")
-    for _ in range(3):
+    require(run.party_count == expected_party, "native-loss party count mismatch")
+    for _ in range(min(3, expected_party)):
         press(emu, "DOWN")
     press(emu, "N64_A")
     wait_scene(emu, SCENE_BATTLE)
@@ -367,7 +367,7 @@ def verify_native_loss(emu):
     lost = read_run(emu)
     require(result.outcome == 0,
             f"expected a native human battle loss, got outcome {result.outcome}")
-    require(result.player_count == 3 and all(
+    require(result.player_count == min(3, expected_party) and all(
         result.player[i].fainted and result.player[i].cur_hp == 0
         for i in range(result.player_count)
     ), "native adapter did not return all three battle losses")
