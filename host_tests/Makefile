@@ -54,12 +54,12 @@ scene-nodes-test:
 	@set -e; trap 'rm -f test_scene_nodes test_scene_nodes_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) -I.. -iquote ../include -Wno-endif-labels \
 	-include scene_nodes_stubs.h test_scene_nodes.c \
-	../src/fragments/rl/rl_scene_nodes.c ../src/roguelike/rl_ui_model.c \
+	../src/fragments/rl/rl_scene_nodes.c ../src/fragments/rl/rl_ui_mon.c ../src/roguelike/rl_ui_model.c \
 	$(CORE) ../src/roguelike/rl_meta.c -o test_scene_nodes; \
 	./test_scene_nodes; \
 	$(CC) $(CPPFLAGS) $(SANFLAGS) $(INCLUDES) -I.. -iquote ../include -Wno-endif-labels \
 	-include scene_nodes_stubs.h test_scene_nodes.c \
-	../src/fragments/rl/rl_scene_nodes.c ../src/roguelike/rl_ui_model.c \
+	../src/fragments/rl/rl_scene_nodes.c ../src/fragments/rl/rl_ui_mon.c ../src/roguelike/rl_ui_model.c \
 	$(CORE) ../src/roguelike/rl_meta.c -o test_scene_nodes_san; \
 	ASAN_OPTIONS=detect_leaks=1 ./test_scene_nodes_san
 

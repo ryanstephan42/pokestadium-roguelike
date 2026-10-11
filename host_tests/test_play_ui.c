@@ -14,6 +14,11 @@ static unsigned sPpDrawn;
 static unsigned sRosterNamesDrawn;
 static unsigned sOrderDrawn;
 static unsigned sDrawnMoves[4];
+static unsigned sSpeciesSeen[152];
+static char sSpeciesNames[152][16];
+static char sDetailText[16][128];
+static unsigned sDetailCount;
+static unsigned sSuspendDrawn, sNodeStatusDrawn;
 
 void osSyncPrintf(const char* format, ...) {}
 int rl_battle_apply_pp_pouch(RunState* run) {
@@ -43,15 +48,33 @@ const char* rl_ui_move_name(unsigned move) {
     sDrawnMoves[(sMoveNamesDrawn + 4) % 4] = move;
     return move ? "THUNDERBOLT" : "--";
 }
-const char* rl_ui_species_name(unsigned species) { return "CHARMANDER"; }
+const char* rl_ui_species_name(unsigned species) {
+    if (species < 1 || species > 151) return "Invalid Pokemon";
+    sSpeciesSeen[species]++;
+    return sSpeciesNames[species];
+}
 void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
+    if (!strcmp(text, "START: suspend to Controller Pak")) {
+        if (y != 416) __builtin_trap();
+        sSuspendDrawn++;
+    }
     if (!strcmp(text, "THUNDERBOLT")) sMoveNamesDrawn++;
     if (!strncmp(text, "PP ", 3)) sPpDrawn++;
-    if (!strcmp(text, "CHARMANDER")) sRosterNamesDrawn++;
+    if (!strncmp(text, "SPECIES", 7)) sRosterNamesDrawn++;
+    if (x >= 410 && y >= 80 && y <= 300 && sDetailCount < 16)
+        strcpy(sDetailText[sDetailCount++], text);
     if (text[0] >= '1' && text[0] <= '3' && text[1] == ' ') sOrderDrawn++;
 }
 void rl_ui_text_wrap(s16 x, s16 y, s16 width, unsigned lines,
                      const char* text, Color_RGBA8 color) {
+    if (!strcmp(text, "Node save status")) {
+        if (x != 42 || y != 438 || width != 556 || lines != 1) __builtin_trap();
+        sNodeStatusDrawn++;
+    }
+    if (x == 410) {
+        if (width != 200 || (lines != 1 && lines != 2)) __builtin_trap();
+        rl_ui_text(x, y, text, color);
+    }
 }
 void rl_ui_window(s16 x, s16 y, s16 w, s16 h) {}
 void rl_ui_list_draw(const RlUiList* list, s16 x, s16 y, s16 w) {}
@@ -76,13 +99,17 @@ int main(int argc, char** argv) {
     unsigned i;
     unsigned lane;
     int count;
+    unsigned seed, recruits;
+    char label[48];
     RlBattleRules rules;
 
     if (argc == 2 && !strcmp(argv[1], "--layout")) {
-        printf("{\"mon_size\":%u,\"rules_size\":%u,\"relics\":%u,"
+        printf("{\"mon_size\":%u,\"reward_size\":%u,\"reward_mon\":%u,\"rules_size\":%u,\"relics\":%u,"
                "\"pending_size\":%u,\"rules\":%u,\"player_slots\":%u,"
                "\"trainer\":%u,\"trainer_count\":%u}\n",
-               (unsigned)sizeof(RlMon), (unsigned)sizeof(RlBattleRules),
+               (unsigned)sizeof(RlMon), (unsigned)sizeof(RlReward),
+               (unsigned)offsetof(RlReward, mon),
+               (unsigned)sizeof(RlBattleRules),
                (unsigned)offsetof(RlBattleRules, relics),
                (unsigned)sizeof(RlPendingBattle),
                (unsigned)offsetof(RlPendingBattle, rules),
@@ -93,6 +120,10 @@ int main(int argc, char** argv) {
     }
 
     for (i = 0; i < 165; i++) D_80072B00[i].unk_05 = 15;
+    for (i = 1; i <= 151; i++) {
+        /* Distinct text fixtures catch accidental lookup of a different mon. */
+        sprintf(sSpeciesNames[i], "SPECIES%03u", i);
+    }
     rl_meta_init(&sPlayMeta);
     rl_run_new(&gRlRun, 3, 0);
     gRlRun.phase = RL_MAP;
@@ -175,5 +206,39 @@ int main(int argc, char** argv) {
     sPlayList.cursor = 3;
     rl_ui_list(&sPlayList, RL_UI_DOWN);
     assert(sPlayList.cursor == 3);
+    recruits = 0;
+    gRlRun.party_count = 2;
+    for (seed = 1; seed <= 100; seed++) {
+        gRlRun.rng = seed;
+        rl_play_make_rewards();
+        for (i = 0; i < (unsigned)sPlayRewardCount; i++) {
+            if (sPlayRewards[i].kind != RL_REWARD_RECRUIT) continue;
+            recruits++;
+            sprintf(label, "Recruit %u %s", i + 1,
+                    sSpeciesNames[sPlayRewards[i].mon.species]);
+            assert(!strcmp(sPlayItems[i].text, label));
+            sPlayList.cursor = i;
+            sDetailCount = sMoveNamesDrawn = sPpDrawn = 0;
+            rl_play_draw();
+            assert(sDetailCount == 11 && sMoveNamesDrawn == 4 && sPpDrawn == 4);
+            assert(!strcmp(sDetailText[0], sSpeciesNames[sPlayRewards[i].mon.species]));
+            sprintf(label, "Level %03u", sPlayRewards[i].mon.level);
+            assert(!strcmp(sDetailText[1], label));
+            sprintf(label, "HP %03u/%03u", sPlayRewards[i].mon.cur_hp,
+                    sPlayRewards[i].mon.max_hp);
+            assert(!strcmp(sDetailText[2], label));
+            for (lane = 0; lane < 4; lane++) {
+                assert(sDrawnMoves[lane] == sPlayRewards[i].mon.moves[lane]);
+                sprintf(label, "PP %02u/%02u", sPlayRewards[i].mon.pp[lane],
+                        sPlayRewards[i].mon.max_pp[lane]);
+                assert(!strcmp(sDetailText[4 + lane * 2], label));
+            }
+        }
+    }
+    assert(recruits > 0);
+    gRlPlayScene = RL_PLAY_NODE;
+    sPlayMessage = "Node save status";
+    rl_play_draw();
+    assert(sSuspendDrawn == 1 && sNodeStatusDrawn == 1);
     return 0;
 }

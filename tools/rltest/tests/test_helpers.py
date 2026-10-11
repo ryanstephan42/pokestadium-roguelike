@@ -1,3 +1,5 @@
+import ctypes
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +9,49 @@ from tools.rltest.frontend import HarnessError, Symbols, _png
 
 
 class HelperTests(unittest.TestCase):
+    def test_native_reward_capture_uses_exported_symbols(self):
+        from tools.rltest.test_play_run import Reward, capture_reward_details
+
+        with tempfile.TemporaryDirectory() as directory:
+            emu = Mock()
+            emu.output = Path(directory)
+            emu.read_u32.return_value = 1
+            reward = Reward()
+            reward.mon.species = 25
+            reward.mon.level = 30
+            reward.mon.moves[0] = 85
+            emu.read.return_value = bytes(reward)
+            with patch("tools.rltest.test_play_run.capture_choices") as capture:
+                capture_reward_details(emu, 1)
+            emu.read_u32.assert_called_once_with("gRlPlayRewardCount")
+            emu.read.assert_called_once_with("gRlPlayRewards", ctypes.sizeof(Reward))
+            capture.assert_called_once_with(emu, 1, "reward-details-battle-1")
+            evidence = json.loads((emu.output / "reward-recruits-battle-1.json").read_text())
+            self.assertEqual(evidence[0]["species"], 25)
+            self.assertEqual(evidence[0]["moves"][0], 85)
+
+    def test_recruit_capture_browses_real_inputs_without_confirming(self):
+        from tools.rltest.test_play_run import capture_choices
+
+        emu = Mock()
+        emu.output = Path("/captures")
+        emu.read.return_value = b"unchanged run"
+        capture_choices(emu, 3, "recruit")
+        self.assertEqual(emu.press.call_args_list, [
+            call("DOWN", frames=4, after=4),
+            call("DOWN", frames=4, after=4),
+            call("UP", frames=4, after=4),
+            call("UP", frames=4, after=4),
+        ])
+        self.assertEqual(emu.screenshot.call_args_list, [
+            call(Path("/captures/recruit-1.png")),
+            call(Path("/captures/recruit-2.png")),
+            call(Path("/captures/recruit-3.png")),
+        ])
+        emu.read.side_effect = [b"before", b"changed"]
+        with self.assertRaises(HarnessError):
+            capture_choices(emu, 1, "recruit")
+
     def test_node_fixture_enters_menu_before_native_probe(self):
         from tools.rltest import test_nodes
 
