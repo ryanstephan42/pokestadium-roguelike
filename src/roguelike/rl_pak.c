@@ -15,13 +15,16 @@ static int equal(const RlU8 *a, const RlU8 *b, unsigned n) {
     return 1;
 }
 
-RlSaveStatus rl_pak_validate(const RlU8 m[RL_PAK_METADATA_SIZE], RlPakLayout *out) {
+RlSaveStatus rl_pak_validate_note(const RlU8 m[RL_PAK_METADATA_SIZE],
+                                 const RlPakIdentity *identity, RlPakLayout *out) {
     RlPakLayout layout;
     RlU8 used[128];
     const RlU8 *id, *inode, *dir;
-    unsigned i, j, sum, inverse, page, count, found, own;
+    unsigned i, j, sum, inverse, page, count, found, own, key;
     static const unsigned copies[3] = { 3, 4, 6 };
-    if (!m || !out) return RL_SAVE_INVALID;
+    if (!m || !out || !identity || !identity->name || !identity->extension ||
+        !identity->game || !identity->company || identity->company > 65535 ||
+        !identity->pages || identity->pages > RL_PAK_PAGES) return RL_SAVE_INVALID;
     id = m + 32;
     sum = inverse = 0;
     for (i = 0; i < 28; i += 2) {
@@ -46,9 +49,14 @@ RlSaveStatus rl_pak_validate(const RlU8 m[RL_PAK_METADATA_SIZE], RlPakLayout *ou
     found = 0;
     for (i = 0; i < 16; i++) {
         dir = m + 768 + i * 32;
-        own = be16(dir + 4) == RL_PAK_COMPANY_CODE &&
-            dir[0] == 'R' && dir[1] == 'L' && dir[2] == '0' && dir[3] == '1' &&
-            equal(dir + 12, gRlPakExtension, 4) && equal(dir + 16, gRlPakName, 16);
+        key = be16(dir + 4) == identity->company &&
+            dir[0] == (RlU8)(identity->game >> 24) &&
+            dir[1] == (RlU8)(identity->game >> 16) &&
+            dir[2] == (RlU8)(identity->game >> 8) &&
+            dir[3] == (RlU8)identity->game;
+        own = key && equal(dir + 12, identity->extension, 4) &&
+            equal(dir + 16, identity->name, 16);
+        if (key && !own) return RL_SAVE_BAD_DATA;
         if (!be16(dir + 4) && !dir[0] && !dir[1] && !dir[2] && !dir[3]) {
             layout.free_notes++;
             continue;
@@ -66,7 +74,7 @@ RlSaveStatus rl_pak_validate(const RlU8 m[RL_PAK_METADATA_SIZE], RlPakLayout *ou
             page = be16(inode + page * 2);
         }
         if (own) {
-            if (count != RL_PAK_PAGES) return RL_SAVE_BAD_DATA;
+            if (count != identity->pages) return RL_SAVE_BAD_DATA;
             layout.note = i;
         }
     }
@@ -79,4 +87,11 @@ RlSaveStatus rl_pak_validate(const RlU8 m[RL_PAK_METADATA_SIZE], RlPakLayout *ou
     }
     *out = layout;
     return found ? RL_SAVE_OK : RL_SAVE_NOT_FOUND;
+}
+
+RlSaveStatus rl_pak_validate(const RlU8 m[RL_PAK_METADATA_SIZE], RlPakLayout *out) {
+    static const RlPakIdentity identity = {
+        gRlPakName, gRlPakExtension, RL_PAK_GAME_CODE, RL_PAK_COMPANY_CODE, RL_PAK_PAGES
+    };
+    return rl_pak_validate_note(m, &identity, out);
 }

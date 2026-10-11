@@ -77,6 +77,8 @@ static void filesystem_tests(void) {
     RlU8 m[RL_PAK_METADATA_SIZE], copy[RL_PAK_METADATA_SIZE];
     RlPakLayout layout;
     unsigned i;
+    static const RlU8 story_name[16] = {44,45,26,29,34,46,38,15,44,45,40,43,50,0,0,0};
+    RlPakIdentity story = {story_name, gRlPakExtension, 0x53433031U, 0x524c, 6};
     pak_fixture(m);
     assert(rl_pak_validate(m, &layout) == RL_SAVE_NOT_FOUND);
     assert(layout.free_pages == 123 && layout.free_notes == 16);
@@ -109,6 +111,22 @@ static void filesystem_tests(void) {
     assert(rl_pak_validate(m, &layout) == RL_SAVE_BAD_DATA);
     memset(m, 0x80, sizeof(m));
     assert(rl_pak_validate(m, &layout) == RL_SAVE_UNSUPPORTED);
+    memcpy(m, copy, sizeof(m));
+    for (i = 0; i < 6; i++) be16(m + 256 + (15 + i) * 2, i == 5 ? 1 : 16 + i);
+    inode_sum(m);
+    memcpy(m + 800, "SC01", 4);
+    be16(m + 804, 0x524c); be16(m + 806, 15);
+    memcpy(m + 812, gRlPakExtension, 4);
+    memcpy(m + 816, story_name, 16);
+    assert(rl_pak_validate(m, &layout) == RL_SAVE_OK && layout.note == 0);
+    assert(rl_pak_validate_note(m, &story, &layout) == RL_SAVE_OK && layout.note == 1);
+    for (i = 0; i < 6; i++) assert(layout.pages[i] == 15 + i);
+    m[816]++;
+    assert(rl_pak_validate_note(m, &story, &layout) == RL_SAVE_BAD_DATA);
+    assert(rl_pak_validate(m, &layout) == RL_SAVE_OK);
+    m[816]--;
+    story.pages = 7;
+    assert(rl_pak_validate_note(m, &story, &layout) == RL_SAVE_BAD_DATA);
 }
 
 int main(void) {
