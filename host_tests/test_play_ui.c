@@ -17,6 +17,7 @@ static unsigned sDrawnMoves[4];
 static unsigned sSpeciesSeen[152];
 static char sSpeciesNames[152][16];
 static char sDetailText[16][128];
+static s16 sDetailY[16];
 static unsigned sDetailCount;
 static unsigned sSuspendDrawn, sNodeStatusDrawn;
 
@@ -61,9 +62,14 @@ void rl_ui_text(s16 x, s16 y, const char* text, Color_RGBA8 color) {
     if (!strcmp(text, "THUNDERBOLT")) sMoveNamesDrawn++;
     if (!strncmp(text, "PP ", 3)) sPpDrawn++;
     if (!strncmp(text, "SPECIES", 7)) sRosterNamesDrawn++;
-    if (x >= 410 && y >= 80 && y <= 300 && sDetailCount < 16)
+    if (x >= 410 && y >= 80 && y <= 330 && sDetailCount < 16) {
+        sDetailY[sDetailCount] = y;
         strcpy(sDetailText[sDetailCount++], text);
-    if (text[0] >= '1' && text[0] <= '3' && text[1] == ' ') sOrderDrawn++;
+    }
+    if (text[0] >= '1' && text[0] <= '3' && text[1] == ' ') {
+        if (y != 354 + sOrderDrawn * 20) __builtin_trap();
+        sOrderDrawn++;
+    }
 }
 void rl_ui_text_wrap(s16 x, s16 y, s16 width, unsigned lines,
                      const char* text, Color_RGBA8 color) {
@@ -232,7 +238,10 @@ int main(int argc, char** argv) {
                 sprintf(label, "PP %02u/%02u", sPlayRewards[i].mon.pp[lane],
                         sPlayRewards[i].mon.max_pp[lane]);
                 assert(!strcmp(sDetailText[4 + lane * 2], label));
+                assert(sDetailY[3 + lane * 2] == 80 + 96 + lane * 44);
+                assert(sDetailY[4 + lane * 2] == sDetailY[3 + lane * 2] + 22);
             }
+            assert(sDetailY[10] + 20 < 354);
         }
     }
     assert(recruits > 0);
