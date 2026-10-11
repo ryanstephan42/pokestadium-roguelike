@@ -66,6 +66,8 @@ void rl_ui_list_draw(const RlUiList* list, s16 x, s16 y, s16 w) {}
 s32 rl_ui_mon_icon(s32 species, s16 x, s16 y) { return RL_UI_NONE; }
 void rl_ui_hp_bar(s16 x, s16 y, s16 w, u16 hp, u16 max_hp) {}
 void rl_scene_nodes_draw(void) {}
+void rl_scene_nodes_begin(RunState* run, const RlPool* rentals, unsigned mode,
+                          const RlMeta* meta) {}
 RlSaveStatus rl_save_load(unsigned port, RlMeta* meta, RunState* run, RlU8* has_run) {
     if (sStorageEnabled) {
         if (sReadFailure != RL_SAVE_OK) return sReadFailure;
@@ -362,6 +364,12 @@ int main(int argc, char** argv) {
            sDiskMeta.wins == profile_before.wins + 1);
     assert(sDiskMeta.currency == profile_before.currency + 35);
     assert(sDiskMeta.pending_registration_count == profile_before.pending_registration_count + 1);
+    before = gRlRun;
+    rl_play_resume();
+    assert(!memcmp(&before, &gRlRun, sizeof(before)) &&
+           sPlaySummaryPrepared && !sPlaySummarySaved);
+    assert(sPlayMessage && !strcmp(sPlayMessage,
+                                  "Retry unsaved results before resuming another run"));
     assert(rl_play_store(0) == RL_SAVE_OK);
     assert(sWriteCount == (int)old_count + 1 && sPlaySummarySaved);
     assert(rl_play_edit(1, 8) == RL_SAVE_IO);

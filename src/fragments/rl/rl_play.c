@@ -1029,6 +1029,10 @@ static void rl_play_resume(void) {
     RlSaveStatus status;
     RlU8 ascension;
 
+    if (sPlaySummaryPrepared && !sPlaySummarySaved) {
+        sPlayMessage = "Retry unsaved results before resuming another run";
+        return;
+    }
     status = rl_save_load(0, &meta, &run, &has_run);
     if (status != RL_SAVE_OK && status != RL_SAVE_RECOVERED) {
         sPlayMessage = rl_save_status_text(status);
