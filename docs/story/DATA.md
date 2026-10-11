@@ -1175,6 +1175,65 @@ input, resume or retry ran. These are submitted entry/resource observations,
 not exhaustive SP safety, natural KO, learning, WIN, terminal or reload
 acceptance. Full combat still requires a separate grant.
 
+The subsequent separately granted natural `ko_ember` attempt exhausted its
+unchanged 6,000-frame prelearning budget and stopped at that first failure.
+Its source was the reviewed `d850681` executable delta with the expressly
+permitted docs-only `d1fe11c` HEAD; executable and frozen artifact hashes,
+docs delta, core/options, proof/checkpoint and immutable source are recorded.
+`.local/rltest/story-ember-natural-d1fe11c/` preserves 6,001 contiguous passive
+history rows (2270..8270), raw entry/failure party/state/save/native/machine/
+progress/memory and recursive manifest/release evidence.
+
+Real CPU combat changed player HP24 to20, opponent HP27 to13, player PP35/40
+to33/38 and opponent PP35/40 to33/37. Neither party fainted. Story remained
+XP338/L8/BATTLE with KO, learning, injection, resume, award, error and terminal
+all0; native result remained0. Logic/presentation advanced3001 each.
+This is honest timeout/advancement evidence, not KO, learning, WIN, terminal
+acceptance or evidence of a stall. No postresume or learning hold ran.
+Strict captured memory checks pass100 allocations/0 failures, cold
+pool2956480 before/after, cleared map and written margin1340/new bottom0;
+this does not establish exhaustive SP safety or later peaks. Failure and
+prebattle saves remain identical `fe28483c...17525`, immutable source
+`ca483ab3...726d2`. The process-free slot release was reported. There was no
+retry, retuning, input, injection, deadline increase or result forcing;
+the original failed Bulbasaur fixture/evidence remain unchanged.
+
+Read-only timing attribution of the failed Ember history shows552 frames
+of mode4 introduction,1359 mode1 selection/inter-round frames and4090 mode2
+action presentation frames (6001 sampled rows, including the final boundary).
+Four complete mode2 round presentations ran3100..4101,4380..5419,
+5698..6695 and6974..8023:1002,1040,998 and1050 frontend frames.
+The four full selection/inter-round mode1 intervals were278 frames each;
+the fifth was cut after247 frames by the deadline. Each transition from
+menu1 to both menu3 took120 frames, with no missing CPU admission.
+
+The committed move pairs were Growl45/String Shot81, Scratch10/Poison
+Sting40, Growl45/String Shot81 and Scratch10/Poison Sting40; a fifth
+Growl/String Shot pair was selected at8248 but had not entered mode2.
+Only the two Scratch turns reduced enemy HP (27 to19 at4926, then19 to13
+at7530); Poison Sting reduced player HP24 to22 at4326 and22 to20 at6920.
+The non-damaging turns consumed PP normally. Actor handoff action36 lasted
+2 frames each; action1 camera presentation100..112; first actor action2
+418..444; second actor action3 416..456; round-end action4 36. Every round
+returned to selection, and no learning/error hook was active.
+These repeating transitions support ordinary scheduling and animation/
+non-damaging AI cost, not a demonstrated scheduling defect.
+
+Source `func_8430DFCC`/`func_8430DCD4` admits CPU choices through normal
+timer/menu gates; `func_84320108` and `func_8432079C` perform the two actor
+calculations, with action36 handing back to presentation;
+`func_84322600` advances the action1 camera predicate to action2.
+The existing custom native battle harness uses a separate18000-frame
+completion budget (`tools/rltest/test_custom_battle.py:95`), a different
+L100 Mewtwo/three-enemy fixture with damaging-only moves; its ceiling is
+neither a measured Ember runtime nor permission to extend this6000 budget.
+For this exact observed trajectory,6000 did not reach a KO and cannot
+establish the learning criterion. Whether another natural scheduling/RNG
+trajectory could do so is unproved, not categorically impossible.
+Natural99XP/first Ember learning,60-frame hold, one resume/publication and
+WIN/native RESULT/terminal SC01 commit remain untested. No production fix
+is supported and no further execution or budget change is authorized.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
