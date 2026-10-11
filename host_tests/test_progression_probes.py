@@ -9,7 +9,10 @@ import unittest
 from unittest.mock import patch
 import zlib
 
-from tools.rltest.test_permanent_progression import committed_currency, restore_checkpoint
+from tools.rltest.test_permanent_progression import (
+    committed_currency, defined_bytes, restore_checkpoint,
+)
+from tools.rltest.test_play_run import Run
 from tools.rltest.test_save_migration import as_v3, read_note
 from tools.rltest.frontend import HarnessError
 
@@ -46,6 +49,21 @@ def commit(data, slot, sequence, currency, suspend):
 
 
 class TestProgressionProbes(unittest.TestCase):
+    def test_suspend_comparison_ignores_only_alignment_padding(self):
+        import ctypes
+        original = bytes(ctypes.sizeof(Run))
+        padding = bytearray(original)
+        padding[105:108] = b"pad"
+        padding[173:176] = b"pad"
+        self.assertEqual(defined_bytes(Run, original), defined_bytes(Run, padding))
+        for offset in (Run.rng.offset, Run.map.offset, Run.party.offset,
+                       Run.party.offset + 48, Run.party.offset + 40,
+                       Run.party.offset + 52, Run.money.offset):
+            changed = bytearray(original)
+            changed[offset] = 1
+            self.assertNotEqual(defined_bytes(Run, original),
+                                defined_bytes(Run, changed))
+
     def test_v3_conversion_preserves_suspend_and_owned_bytes(self):
         data = pak_image()
         commit(data, 0, 1, 45, 0)

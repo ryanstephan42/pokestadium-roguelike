@@ -22,7 +22,7 @@ from tools.rltest.save_roundtrip import boot, save_ram
 from tools.rltest.test_custom_battle import Mon
 from tools.rltest.test_play_run import (
     enter_roguelike_from_menu, press, read_run, require, run_native_loss_only,
-    start_new_run, verify_native_loss, wait_scene,
+    start_new_run, verify_native_loss, wait_scene, Run,
 )
 
 
@@ -45,6 +45,20 @@ class Meta(ctypes.BigEndianStructure):
 
 def read_meta(emu):
     return Meta.from_buffer_copy(emu.read("gRlPlayProfile", ctypes.sizeof(Meta)))
+
+
+def defined_bytes(kind, data):
+    """Compare every stored field, not undefined native C alignment padding."""
+    if issubclass(kind, ctypes.Structure):
+        return b"".join(
+            defined_bytes(field_kind, data[getattr(kind, name).offset:
+                          getattr(kind, name).offset + ctypes.sizeof(field_kind)])
+            for name, field_kind in kind._fields_)
+    if issubclass(kind, ctypes.Array):
+        size = ctypes.sizeof(kind._type_)
+        return b"".join(defined_bytes(kind._type_, data[i * size:(i + 1) * size])
+                        for i in range(kind._length_))
+    return data
 
 def save_checkpoint(emu, path):
     data = save_ram(emu)[1]
@@ -231,7 +245,11 @@ def phase(directory, part, allow_prior_rom=False):
             press(emu, "N64_B")
             select(emu, 1)
             wait_scene(emu, 2)
-            require(bytes(read_run(emu)) == suspended, "purchase erased or changed suspension")
+            resumed = bytes(read_run(emu))
+            require(defined_bytes(Run, resumed) == defined_bytes(Run, suspended),
+                    "purchase erased or changed suspension: byte differences " +
+                    str([(i, a, b) for i, (a, b) in
+                         enumerate(zip(suspended, resumed)) if a != b]))
             select(emu, read_run(emu).map.lanes[0])
             emu.wait_state(4, frames=600)
             save_checkpoint(emu, directory / "permanent-save.bin")
