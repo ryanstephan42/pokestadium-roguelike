@@ -280,7 +280,7 @@ def capture_progress(emu, directory, label):
     result = read_probe(emu)
     memory = memory_evidence(emu, result)
     for name, data in (("result", result), ("memory", memory)):
-        if name == "result" and label.startswith("ko_ember-"):
+        if name == "result" and label.startswith(("ko_ember-", "ember_entry-")):
             data = {**data, "coverage_scope": EMBER_SCOPE}
         (directory / f"{label}-{name}.json").write_text(json.dumps(data, indent=2) + "\n")
     progress = read_progress(emu)
@@ -482,11 +482,58 @@ def require_learning_storage(prebattle, paused, held):
 
 def require_probe_profile(map_path, phase):
     contents = Path(map_path).read_text()
-    require(("gScProbeEmberProfile" in contents) == (phase == "ko_ember"),
+    require(("gScProbeEmberProfile" in contents) == (phase in ("ko_ember", "ember_entry")),
             "Ember scenario requires its separate profile; original scenarios refuse it")
     if phase in ("bridge_init", "bridge_carry"):
         require("gScProbeKoProfile" not in contents,
                 "Bridge phases unavailable in STORY_KO_PROBE profile")
+
+
+def require_ember_native_entry(machine):
+    require(len(machine["sides"]) == 2, "Ember entry native side count mismatch")
+    for side, expected in zip(machine["sides"], (
+            (4, 8, 0x4528, 24, [24, 14, 12, 16, 13], [10, 45, 0, 0], [35, 40, 0, 0]),
+            (13, 9, 0x8889, 27, [27, 12, 11, 15, 10], [40, 81, 0, 0], [35, 40, 0, 0]))):
+        species, level, dvs, hp, stats, moves, pp = expected
+        party = bytes.fromhex(side["team_raw"])[0x1C:0x70]
+        live = bytes.fromhex(side["control_raw"])[0x38:]
+        half = lambda data, offset: struct.unpack_from(">H", data, offset)[0]
+        require(side["flags"] & 2 and side["count"] == 1 and side["active"] == 0 and
+                side["hp"] == hp and side["party_hp"] == [hp] and
+                side["moves"] == moves and side["pp"] == side["party_pp"] == pp and
+                not side["status"] and side["stages"] == [7] * 6,
+                "Ember entry native CPU/HP/PP/status/stage mismatch")
+        require(party[0] == live[0x0B] == species and
+                party[0x24] == live[0x26] == level and
+                half(party, 0x1E) == half(live, 0x24) == dvs and
+                half(party, 0x26) == half(live, 0x28) == hp and
+                [half(party, 0x26 + 2 * i) for i in range(5)] == stats and
+                [half(live, 0x28 + 2 * i) for i in range(5)] == stats,
+                "Ember entry original/live canonical fields mismatch")
+
+
+def ember_entry_only(emu, directory, before):
+    start_command(emu, 3)
+    try:
+        wait_probe(emu, lambda result: result["active"] and result["ticks"],
+                   1800, "Ember initialized entry only")
+        result, progress, raw, party, memory = capture_progress(emu, directory, "ember_entry-entry")
+        after = save_ram(emu)[1]
+        (directory / "ember_entry-prebattle-save.bin").write_bytes(after)
+        require_ember_entry(result, raw, party)
+        require(not result["force_ko"] and not result["resume"] and
+                not any(progress[key] for key in ("error", "injected", "ko_captures", "resumes", "terminal")),
+                "Ember entry unexpectedly advanced KO/learning/force state")
+        require(result["cold_calls"] == 1 and not result["cold_busy"] and
+                not result["cold_address"] and result["cold_before"] == result["cold_after"],
+                "Ember entry cold ownership/pool imbalance")
+        validate_memory(memory, result)
+        require_ember_native_entry(read_native_machine(emu))
+        story_owned_changes(before, after, find_pak(before))
+        return result
+    except HarnessError:
+        capture_progress(emu, directory, "ember_entry-failure")
+        raise
 
 
 def require_fixture_party(party, hp=17, pp=7, status=4):
@@ -720,7 +767,7 @@ def phase(args):
         "map_sha256": hashlib.sha256(Path(args.map).read_bytes()).hexdigest(),
         "core_sha256": hashlib.sha256(Path(args.core).read_bytes()).hexdigest(),
     }
-    if args.phase == "ko_ember":
+    if args.phase in ("ko_ember", "ember_entry"):
         provenance["coverage_scope"] = EMBER_SCOPE
         provenance["fixture"] = {
             "seed": 42, "pure_wins": [57, 349], "declined_rewards": [57, 349],
@@ -746,7 +793,7 @@ def phase(args):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
                           "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ember_entry"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -754,6 +801,13 @@ def phase(args):
         # Stabilize vanilla FlashRAM initialization, without invoking any story writer.
         native_command(emu, 1)
         pointer, before = save_ram(emu)
+        if args.phase == "ember_entry":
+            result = ember_entry_only(emu, directory, before)
+            (directory / "ember_entry-result.json").write_text(
+                json.dumps({**result, "coverage_scope": EMBER_SCOPE,
+                            "acceptance_scope": "initialized entry/resources only; no combat continuation"},
+                           indent=2) + "\n")
+            return
         if args.phase == "missing":
             result = command(emu, 2, 1)
             require(result["status"] == 2 and save_ram(emu)[1] == before,
@@ -1029,7 +1083,8 @@ def main():
                                           "battle", "natural", "reload", "missing", "full",
                                           "allocation", "checkpoint", "checkpoint_reload",
                                           "bridge_init", "bridge_carry",
-                                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember"))
+                                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember",
+                                          "ember_entry"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")

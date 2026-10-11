@@ -37,6 +37,68 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_ember_entry_only_stops_without_combat_or_resume(self):
+        from tools.rltest import story_probe
+        emu = Mock()
+        result = dict(active=1, ticks=1, force_ko=0, resume=0, cold_calls=1,
+                      cold_busy=0, cold_address=0, cold_before=123, cold_after=123)
+        progress = dict(error=0, injected=0, ko_captures=0, resumes=0, terminal=0)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "start_command") as start, \
+                patch.object(story_probe, "wait_probe") as wait, \
+                patch.object(story_probe, "capture_progress",
+                             return_value=(result, progress, b"raw", [dict()], dict())) as capture, \
+                patch.object(story_probe, "save_ram", return_value=(0, b"save")), \
+                patch.object(story_probe, "require_ember_entry"), \
+                patch.object(story_probe, "validate_memory"), \
+                patch.object(story_probe, "read_native_machine", return_value=dict()), \
+                patch.object(story_probe, "require_ember_native_entry"), \
+                patch.object(story_probe, "story_owned_changes"), \
+                patch.object(story_probe, "find_pak", return_value=0), \
+                patch.object(story_probe, "wait_natural_probe") as natural, \
+                patch.object(story_probe, "set_field") as write:
+            directory = Path(temporary)
+            self.assertEqual(story_probe.ember_entry_only(emu, directory, b"before"), result)
+            start.assert_called_once_with(emu, 3)
+            self.assertEqual(wait.call_args.args[2], 1800)
+            capture.assert_called_once_with(emu, directory, "ember_entry-entry")
+            self.assertEqual((directory / "ember_entry-prebattle-save.bin").read_bytes(), b"save")
+            emu.step.assert_not_called()
+            natural.assert_not_called()
+            write.assert_not_called()
+            capture.reset_mock()
+            progress["error"] = 1
+            with self.assertRaises(HarnessError):
+                story_probe.ember_entry_only(emu, directory, b"before")
+            self.assertEqual(capture.call_args.args[2], "ember_entry-failure")
+            natural.assert_not_called()
+            emu.step.assert_not_called()
+
+    def test_ember_native_entry_exact_fields(self):
+        from tools.rltest import story_probe
+        sides = []
+        for species, level, dvs, hp, stats, moves, pp in (
+                (4, 8, 0x4528, 24, [24, 14, 12, 16, 13], [10, 45, 0, 0], [35, 40, 0, 0]),
+                (13, 9, 0x8889, 27, [27, 12, 11, 15, 10], [40, 81, 0, 0], [35, 40, 0, 0])):
+            party, live = bytearray(0x54), bytearray(0x94)
+            party[0] = live[0x0B] = species
+            party[0x24] = live[0x26] = level
+            struct.pack_into(">H", party, 0x1E, dvs)
+            struct.pack_into(">H", live, 0x24, dvs)
+            for i, value in enumerate(stats):
+                struct.pack_into(">H", party, 0x26 + 2 * i, value)
+                struct.pack_into(">H", live, 0x28 + 2 * i, value)
+            sides.append(dict(flags=3, count=1, active=0, hp=hp, party_hp=[hp],
+                              moves=moves, pp=pp, party_pp=pp, status=0, stages=[7] * 6,
+                              team_raw=(bytes(0x1C) + party).hex(),
+                              control_raw=(bytes(0x38) + live).hex()))
+        story_probe.require_ember_native_entry(dict(sides=sides))
+        for key, value in (("hp", 23), ("flags", 1), ("status", 4), ("count", 2)):
+            wrong = copy.deepcopy(sides)
+            wrong[0][key] = value
+            with self.assertRaises(HarnessError):
+                story_probe.require_ember_native_entry(dict(sides=wrong))
+
     def test_ember_exact_ko_resume_and_terminal_rejections(self):
         before = dict(species=4, level=8, exp=338, dvs=0x4528, hp=17, max_hp=24,
                       status=0x40, fainted=0, moves=[10, 45, 0, 0], pp=[31, 39, 0, 0],

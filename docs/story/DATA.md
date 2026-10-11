@@ -1145,6 +1145,19 @@ metadata; the original frozen map/artifacts remain untouched. Exact Ember
 artifacts and source delta require independent review before a separate
 execution grant.
 
+The subsequent entry/resource-only grant does not authorize `ko_ember`,
+which automatically continues into combat. The harness-only `ember_entry`
+phase starts the same command and uses the existing 1,800-frame initialized
+entry wait/capture. It checks exact decoded checkpoint, both original/live
+native canonical teams, CPU flags, unmodified HP/PP/status/stages, zero
+KO/force/resume/terminal counters, cold ownership/pool balance, SC01 isolation
+and strict memory, then returns from the Frontend context without another
+step, input, resume or natural wait. Failures capture durable evidence before
+closing. This separate delta requires review before using the grant.
+Compiled nested stack reservations include constructor736 + `sc_new`720 +
+cold entry88 =1544 bytes before other callees/outer callers; the older
+1340-byte written margin proves neither sufficiency nor exhaustive SP safety.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and
