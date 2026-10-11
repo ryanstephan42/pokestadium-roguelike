@@ -104,14 +104,15 @@ def wait_bridge_boundary(emu, directory, label, boundary, frames):
         raise
 
 
-def decode_party(emu, result):
+def decode_party(emu, result, allow_empty=False):
     require(emu.read_u32("gScProbeMonSize") == ct.sizeof(Mon), "Story party ABI mismatch")
     offset = emu.read_u32("gScProbePartyOffset")
     count_offset = emu.read_u32("gScProbePartyCountOffset")
     require(0 <= count_offset < offset < result["state_size"], "Story resident offsets mismatch")
     raw = emu.read(result["state_address"], result["state_size"])
     count = raw[count_offset]
-    require(1 <= count <= 6 and offset + count * ct.sizeof(Mon) <= result["state_size"],
+    require((0 if allow_empty else 1) <= count <= 6 and
+            offset + count * ct.sizeof(Mon) <= result["state_size"],
             "Story resident party bounds mismatch")
     party = []
     for slot in range(count):
@@ -182,7 +183,7 @@ def require_ko_progress(evidence, synthetic, terminal=False):
 
 
 EMBER_SCOPE = "pure-host-prehistory-not-native-wins; target-natural-native-battle"
-EMBER_PHASES = ("ko_ember", "ko_ember_e2e", "ember_entry")
+EMBER_PHASES = ("ko_ember", "ko_ember_e2e", "ember_entry", "ember_reload")
 
 
 class EmberCombatBudget:
@@ -211,6 +212,137 @@ def finish_ember_budget_command(emu, budget):
     emu.release("L")
     return result
 
+
+def ember_reload_expected(source, directory):
+    hashes = {
+        "save-ram.bin": "8c8b2b3c868b7cf593e03b0bb2c54c6fbc704dc2b2caea42fbb37a6f60ce7822",
+        "completed-party.json": "68d17c72dd64415e47fd83b1fbcc17706bef92fb7490c11ed8d6f854d4ffa11e",
+        "completed-result.json": "4ca728e8310a383f67d230caa355dc9e840026b73023ab9f4466aff0099faf5b",
+        "ko_ember_e2e-terminal-state.bin": "9f4667ed7ecd181a6644900158299cb98adf552e658292f2051ad9463eaf1ed2",
+        "evidence.sha256": "6ebf07c4c2e7a93c3ba9ecb08398f75ca4737a572ecf842d82f3c3e350ee2875",
+        "grant-provenance.json": "8c569459dc01ded5f99884a76219a8f2f5f0bb8b21b6ef1b2772ddd0c98d2e6f",
+    }
+    require(source.resolve() != directory.resolve() and not any(directory.iterdir()),
+            "Ember reload requires a new empty output separate from immutable source")
+    data = {}
+    for name, digest in hashes.items():
+        data[name] = (source / name).read_bytes()
+        require(hashlib.sha256(data[name]).hexdigest() == digest,
+                f"Ember reload accepted source hash mismatch: {name}")
+    manifest = {}
+    for line in data["evidence.sha256"].decode().splitlines():
+        digest, name = line.split("  ", 1)
+        manifest[name] = digest
+    for name in hashes.keys() - {"evidence.sha256"}:
+        require(hashlib.sha256(data[name]).hexdigest() == manifest.get(name),
+                f"Ember reload expected hash mismatch: {name}")
+    raw = data["ko_ember_e2e-terminal-state.bin"]
+    party = json.loads(data["completed-party.json"])
+    result = json.loads(data["completed-result.json"])
+    require(len(raw) == 644 and raw[20] == 3 and raw[21] == 1 and
+            result["status"] == 0 and result["phase"] == 3 and not result["interrupted"] and
+            result["completed_crc"] == 3785588613,
+            "Ember reload source is not a completed reward checkpoint")
+    require(party == [decode_mon(raw[168:236])], "Ember reload named/raw party mismatch")
+    require(party[0]["exp"] == 437 and party[0]["level"] == 9 and
+            party[0]["dvs"] == 0x4528 and party[0]["hp"] == 16 and
+            party[0]["status"] == 0 and party[0]["moves"] == [10, 45, 0, 52] and
+            party[0]["pp"] == [30, 35, 0, 25] and
+            party[0]["stat_exp"] == [169, 148, 160, 188, 110] and
+            party[0]["current_stats"] == [26, 16, 13, 17, 14],
+            "Ember reload source canonical party mismatch")
+    completed = bytearray(64)
+    for index in (57, 349, 351):
+        completed[index // 8] |= 1 << (index % 8)
+    require(raw[38:102] == bytes(completed), "Ember reload source target bits mismatch")
+    base = find_pak(data["save-ram.bin"])
+    pages = story_owned_changes(data["save-ram.bin"], data["save-ram.bin"], base)
+    note = b"".join(data["save-ram.bin"][base + page * 256:base + (page + 1) * 256]
+                    for page in pages)
+    (directory / "ember_reload-source-note.bin").write_bytes(note)
+    (directory / "ember_reload-expected-state.bin").write_bytes(raw)
+    codec = ROOT / "build/story/test_story_ember"
+    require(codec.is_file(), "Build host story tests before Ember reload codec preflight")
+    checked = subprocess.run([str(codec), "--validate-reload",
+                              str(directory / "ember_reload-source-note.bin"),
+                              str(directory / "ember_reload-expected-state.bin")],
+                             capture_output=True, text=True)
+    (directory / "ember_reload-codec.log").write_text(checked.stdout + checked.stderr)
+    require(checked.returncode == 0, f"Ember reload codec preflight failed: {checked.stderr}")
+    for name in hashes:
+        (directory / ("source-" + name if name in ("evidence.sha256", "grant-provenance.json")
+                      else name)).write_bytes(data[name])
+    hashes["host_codec"] = hashlib.sha256(codec.read_bytes()).hexdigest()
+    hashes["source_note"] = hashlib.sha256(note).hexdigest()
+    return dict(raw=raw, party=party, result=result, save=data["save-ram.bin"],
+                hashes=hashes)
+
+
+def require_ember_reload_idle(result, progress):
+    require(not any(result[key] for key in (
+                "active", "ticks", "ko_count", "logic_steps", "presentation_steps",
+                "pause_ticks", "resume", "force_ko")) and
+            not any(progress[key] for key in (
+                "ko_captures", "resumes", "terminal", "error", "injected", "award", "learn_move")),
+            "Ember completed reload replayed battle/progression")
+
+
+def require_ember_reload(result, progress, raw, party, before, after, expected):
+    require(result["command"] == 0 and result["status"] == 0 and result["phase"] == 3 and
+            not result["interrupted"] and result["completed_crc"] == expected["result"]["completed_crc"],
+            "Ember completed reload status/phase/identity mismatch")
+    require(raw == expected["raw"] and party == expected["party"],
+            "Ember completed reload changed full state/reward/RNG/party")
+    require_ember_reload_idle(result, progress)
+    require(before == after == expected["save"], "Ember completed reload modified storage")
+    require(result["cold_calls"] == 1 and not result["cold_busy"] and
+            not result["cold_address"] and result["cold_before"] == result["cold_after"],
+            "Ember completed reload cold ownership/pool mismatch")
+
+
+def ember_reload_only(emu, directory, before, expected):
+    start = emu.frame
+    battle_count = emu.read_u32("gRlBattleCount")
+    frames = dict(setup_end_frame=start, command_launch_end_frame=None, load_end_frame=None,
+                  load_wait_limit=6000, setup_scope="boot/native query excluded from probe accounting",
+                  operation_scope="launch transition frames included; no combat or cleanup steps")
+    base = emu.symbols.address("D_80080000")
+    top = emu.symbols.address("D_800818E0")
+    emu.story_stack_before = emu.read(base, top - base)
+    try:
+        require(before == expected["save"], "Boot stabilization changed completed reload source")
+        (directory / "ember_reload-preload-save.bin").write_bytes(before)
+        start_command(emu, 1)
+        frames["command_launch_end_frame"] = emu.frame
+        def ready(instance):
+            result = read_probe(instance)
+            progress = read_progress(instance)
+            with (directory / "ember_reload-load-history.jsonl").open("a") as history:
+                history.write(json.dumps(dict(frame=instance.frame, result=result, progress=progress)) + "\n")
+            require_ember_reload_idle(result, progress)
+            require(not instance.read_u32("gScProbeActive") and
+                    not instance.read_u32("gRlBattleActive") and
+                    instance.read_u32("gRlBattleCount") == battle_count,
+                    "Ember completed reload launched/replayed a native battle")
+            require(result["status"] == 0xFFFFFFFF or result["status"] == 0,
+                    f"Ember completed load failed: {result}")
+            return result["command"] == 0
+        emu.wait(ready, frames=6000, description="Ember completed read-only load")
+        result, progress, raw, party, memory = capture_progress(emu, directory, "ember_reload-loaded")
+        after = save_ram(emu)[1]
+        require_ember_reload(result, progress, raw, party, before, after, expected)
+        validate_memory(memory, result)
+        emu.release("L")
+        return result
+    except HarnessError:
+        capture_progress(emu, directory, "ember_reload-failure", allow_empty=True)
+        raise
+    finally:
+        frames["load_end_frame"] = emu.frame
+        frames["operation_frames"] = emu.frame - start
+        frames["native_battle_count_before"] = battle_count
+        frames["native_battle_count_after"] = emu.read_u32("gRlBattleCount")
+        (directory / "ember_reload-frames.json").write_text(json.dumps(frames, indent=2) + "\n")
 
 def require_ember_progress(evidence, terminal=False):
     require(not evidence["error"] and evidence["ko_captures"] == 1 and
@@ -304,20 +436,20 @@ def require_resume_native(progress, native):
                 "Resumed live canonical stats/status/stage mismatch")
 
 
-def capture_progress(emu, directory, label):
+def capture_progress(emu, directory, label, allow_empty=False):
     result = read_probe(emu)
+    (directory / f"{label}-save.bin").write_bytes(save_ram(emu)[1])
     memory = memory_evidence(emu, result)
     for name, data in (("result", result), ("memory", memory)):
-        if name == "result" and label.startswith(("ko_ember-", "ko_ember_e2e-", "ember_entry-")):
+        if name == "result" and label.startswith(("ko_ember-", "ko_ember_e2e-", "ember_entry-", "ember_reload-")):
             data = {**data, "coverage_scope": EMBER_SCOPE}
         (directory / f"{label}-{name}.json").write_text(json.dumps(data, indent=2) + "\n")
     progress = read_progress(emu)
     (directory / f"{label}-progress.json").write_text(json.dumps(progress, indent=2) + "\n")
     (directory / f"{label}-native.json").write_text(json.dumps(read_bridge(emu), indent=2) + "\n")
-    raw, party = decode_party(emu, result)
+    raw, party = decode_party(emu, result, allow_empty=allow_empty)
     (directory / f"{label}-state.bin").write_bytes(raw)
     (directory / f"{label}-party.json").write_text(json.dumps(party, indent=2) + "\n")
-    (directory / f"{label}-save.bin").write_bytes(save_ram(emu)[1])
     if result["active"]:
         (directory / f"{label}-machine.json").write_text(
             json.dumps(read_native_machine(emu), indent=2) + "\n")
@@ -795,6 +927,10 @@ def foreign_note(data, base, full=False):
 def phase(args):
     directory = Path(args.out)
     require_probe_profile(args.map, args.phase)
+    expected_reload = None
+    if args.phase == "ember_reload":
+        require(args.reload_source is not None, "Ember reload requires immutable --reload-source")
+        expected_reload = ember_reload_expected(Path(args.reload_source), directory)
     provenance = {
         "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "diff_sha256": hashlib.sha256(subprocess.check_output(
@@ -817,6 +953,10 @@ def phase(args):
             provenance["fixture"].pop("postresume_budget")
             provenance["fixture"]["shared_combat_budget"] = 18000
             provenance["fixture"]["budget_scope"] = "entry capture through terminal, excluding exact render hold"
+        if expected_reload is not None:
+            provenance["fixture"] = {"seed": 42, "completed_target": 351, "load_wait_limit": 6000}
+            provenance["reload_expected_hashes"] = expected_reload["hashes"]
+            provenance["operation_scope"] = "fresh-process completed LOAD only; boot/setup not battle accounting"
         provenance["save_source_sha256"] = hashlib.sha256(
             (directory / "save-ram.bin").read_bytes()).hexdigest()
         provenance["core_options"] = {"mupen64plus-pak1": "memory",
@@ -835,7 +975,7 @@ def phase(args):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
                           "allocation", "checkpoint", "checkpoint_reload", "bridge_init", "bridge_carry",
-                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e", "ember_entry"):
+                          "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e", "ember_entry", "ember_reload"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -843,6 +983,17 @@ def phase(args):
         # Stabilize vanilla FlashRAM initialization, without invoking any story writer.
         native_command(emu, 1)
         pointer, before = save_ram(emu)
+        if args.phase == "ember_reload":
+            (directory / "ember_reload-setup.json").write_text(json.dumps(dict(
+                frame=emu.frame, save_sha256=hashlib.sha256(before).hexdigest(),
+                probe=read_probe(emu), progress=read_progress(emu),
+                scope="post boot/native query, before command1 LOAD"), indent=2) + "\n")
+            result = ember_reload_only(emu, directory, before, expected_reload)
+            (directory / "ember_reload-result.json").write_text(
+                json.dumps({**result, "coverage_scope": EMBER_SCOPE,
+                            "acceptance_scope": "completed read-only reload only"}, indent=2) + "\n")
+            print("story native ember_reload: OK")
+            return
         if args.phase == "ember_entry":
             result = ember_entry_only(emu, directory, before)
             (directory / "ember_entry-result.json").write_text(
@@ -1130,12 +1281,13 @@ def main():
     parser.add_argument("--rom", default="build_story_probe/pokestadium-rl.z64")
     parser.add_argument("--map", default="build_story_probe/pokestadium-rl.map")
     parser.add_argument("--out", default=".local/rltest/story-probe")
+    parser.add_argument("--reload-source", help="Immutable accepted Ember end-to-end evidence directory")
     parser.add_argument("--phase", choices=("create", "interrupt", "interrupted_reload",
                                           "battle", "natural", "reload", "missing", "full",
                                           "allocation", "checkpoint", "checkpoint_reload",
                                           "bridge_init", "bridge_carry",
                                           "ko_synthetic", "ko_natural", "ko_reload", "ko_ember", "ko_ember_e2e",
-                                          "ember_entry"))
+                                          "ember_entry", "ember_reload"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")

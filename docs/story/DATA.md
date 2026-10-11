@@ -1292,6 +1292,55 @@ ran. Independent evidence review is pending; these results do not establish
 completed reload, defeat, six-party, Transform or full-gate acceptance.
 Both earlier6000-frame failures remain immutable failed evidence.
 
+### Completed Ember reload (source/harness only)
+
+The separately authorized harness implementation adds `ember_reload`, leaving
+old `ko_reload` unchanged and requiring the Ember profile. `--reload-source`
+identifies the immutable accepted end-to-end evidence. Before Frontend startup,
+the source manifest hashes, exact accepted terminal save8c8b...ce7822,
+644-byte reward state, named/raw party identity, canonical learned move/stats
+and target completion bits are checked; expected files are copied only to
+the new output, never normalized or modified. Provenance records all hashes.
+
+Fresh-process save restoration, boot stabilization and existing native query
+are distinct setup, not zero-ever-native-update claims. The completed LOAD
+must see the exact restored save unchanged after setup. Only command1 runs,
+with a separate existing6000-frame load ceiling, no battle launch, learning,
+resume, result injection, or title/180-frame cleanup. Capture precedes
+assertions; completion compares full state bytes (including offer, RNG,
+options and completion bits) and every named party field to the immutable
+terminal source. Probe/progress accounting must be zero and storage must
+remain byte-identical across the load. Cold call count1, pool balance, cleared
+direct map, zero allocation failures and written-stack checks remain strict.
+Inactive BATL pointers are never read. Error/timeout preserves failure
+state/save/party/progress/memory before close; no retry. Exact source review
+and a separate reload execution grant remain required.
+
+Preflight additionally extracts the six-page SC01 note with the existing Pak
+ownership helper and invokes the host Ember test's read-only validation mode.
+That mode uses `sc_storage_load`/`sc_save_decode`/`sc_state_valid`, selects the
+actual journal generation, requires interrupted0, and compares the decoded
+full state against the unmodified terminal ABI bytes after endian conversion.
+The accepted source state/result/party/save, evidence manifest and grant
+provenance have pinned full hashes; the host codec and extracted note hashes
+are recorded too. Only a new empty output separate from the source is allowed.
+Load polling records frame/probe/progress history and refuses replay/error
+immediately. Setup and operation frame boundaries include launch transitions
+explicitly; there are no extra steps after command completion.
+
+Host validation covers exact-cap completion, timeout at the same cap,
+immediate load-error/replay/injection/native-launch refusal, durable last
+history/frame/failure capture, hash-mutation refusal before codec startup,
+codec journal corruption/full-state mismatch (normal and ASan/UBSan), and no
+extra cleanup steps or inactive machine reads. Failed-load capture explicitly
+allows an empty resident party without accepting it as a valid checkpoint;
+normal party decoding still refuses it, and raw save capture precedes decode.
+The 42 helper tests, both
+original runtime profiles, Ember cold tests and pure/sanitized suites pass;
+vanilla remains byte-matching. Frozen88f target files and accepted natural
+source evidence are unchanged. No reload emulator run or full gate was
+performed: both still require separate execution authorization.
+
 ## Verification scope and remaining review
 
 `story-test` checks source inventory/overrides/rivals/statics, parser errors and

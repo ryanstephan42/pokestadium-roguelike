@@ -5,6 +5,78 @@
 #include "src/story/sc_save.h"
 
 static unsigned rows;
+static RlU8 reload_note[SC_SAVE_NOTE_SIZE];
+
+static int reload_open(void *context, RlU32 company, RlU32 game,
+                       const RlU8 *name, const RlU8 *extension, unsigned size, int create) {
+    (void)context; (void)name; (void)extension;
+    return company == SC_SAVE_COMPANY && game == SC_SAVE_GAME &&
+           size == sizeof(reload_note) && !create ? SC_SAVE_OK : SC_SAVE_INVALID;
+}
+
+static int reload_read(void *context, unsigned offset, RlU8 *data, unsigned size) {
+    (void)context;
+    if (offset > sizeof(reload_note) || size > sizeof(reload_note) - offset)
+        return SC_SAVE_INVALID;
+    memcpy(data, reload_note + offset, size);
+    return SC_SAVE_OK;
+}
+
+static int reload_write(void *context, unsigned offset, const RlU8 *data, unsigned size) {
+    (void)context; (void)offset; (void)data; (void)size;
+    return SC_SAVE_IO;
+}
+
+static int read_exact(const char *path, void *data, unsigned size) {
+    FILE *file = fopen(path, "rb");
+    int valid;
+    if (!file) { perror(path); return 0; }
+    valid = fread(data, 1, size, file) == size && fgetc(file) == EOF;
+    if (fclose(file)) valid = 0;
+    if (!valid) fprintf(stderr, "Invalid reload input size: %s\n", path);
+    return valid;
+}
+
+static void from_be(void *field, unsigned size) {
+    RlU8 *bytes = field;
+    RlU32 value = 0;
+    unsigned i;
+    for (i = 0; i < size; i++) value = (value << 8) | bytes[i];
+    if (size == 2) *(RlU16 *)field = (RlU16)value;
+    else *(RlU32 *)field = value;
+}
+
+static int validate_reload(const char *note_path, const char *state_path) {
+    ScState expected;
+    ScSnapshot snapshot;
+    ScSaveDevice device = {NULL, reload_open, reload_read, reload_write};
+    unsigned i, j;
+    int status;
+    if (sizeof(expected) != 644 || sizeof(RlMon) != 68 ||
+        !read_exact(note_path, reload_note, sizeof(reload_note)) ||
+        !read_exact(state_path, &expected, sizeof(expected))) return 1;
+    from_be(&expected.seed, 4); from_be(&expected.rng, 4);
+    from_be(&expected.milestones, 4); from_be(&expected.healing_used, 4);
+    from_be(&expected.encounter, 2);
+    for (i = 0; i < 7; i++) {
+        RlMon *mon = i == 6 ? &expected.offer : &expected.party[i];
+        from_be(&mon->exp, 4); from_be(&mon->dvs, 2);
+        from_be(&mon->cur_hp, 2); from_be(&mon->max_hp, 2);
+        for (j = 0; j < 5; j++) {
+            from_be(&mon->stat_exp[j], 2);
+            from_be(&mon->current_stats[j], 2);
+        }
+    }
+    status = sc_storage_load(&device, &sc_catalog, &snapshot);
+    if (status != SC_SAVE_OK || snapshot.interrupted ||
+        !sc_state_valid(&expected, &sc_catalog) ||
+        memcmp(&expected, &snapshot.state, sizeof(expected))) {
+        fprintf(stderr, "Completed reload codec/state mismatch: %d\n", status);
+        return 1;
+    }
+    puts("Completed reload SC01 codec/full state: OK");
+    return 0;
+}
 
 static void trace(const char *operation, unsigned index, const ScState *state,
                    int status, void *context) {
@@ -46,6 +118,8 @@ int main(int argc, char **argv) {
     FILE *file;
     RlMon enemies[6];
     unsigned i, target = SC_NO_ENCOUNTER, count;
+    if (argc == 4 && !strcmp(argv[1], "--validate-reload"))
+        return validate_reload(argv[2], argv[3]);
     assert(sc_ember_checkpoint(&state, &sc_catalog, trace, NULL) == SC_OK);
     assert(sc_state_valid(&state, &sc_catalog));
     assert(state.party_count == 1 && state.rival_branch == 0);

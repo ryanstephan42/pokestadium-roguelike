@@ -37,6 +37,205 @@ from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
+    def test_ember_reload_failed_load_captures_empty_resident_without_native_read(self):
+        from tools.rltest import story_probe
+        raw = bytes(644)
+        result = dict(active=0, state_address=0x80001000, state_size=644, status=4)
+        emu = Mock()
+        emu.read_u32.side_effect = lambda name: {
+            "gScProbeMonSize": 68, "gScProbePartyOffset": 168,
+            "gScProbePartyCountOffset": 21}[name]
+        emu.read.return_value = raw
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "read_probe", return_value=result), \
+                patch.object(story_probe, "memory_evidence", return_value={}), \
+                patch.object(story_probe, "read_progress", return_value={}), \
+                patch.object(story_probe, "read_bridge", return_value={}), \
+                patch.object(story_probe, "save_ram", return_value=(0, b"failed-save")), \
+                patch.object(story_probe, "read_native_machine") as machine:
+            directory = Path(temporary)
+            captured = story_probe.capture_progress(
+                emu, directory, "ember_reload-failure", allow_empty=True)
+            self.assertEqual(captured[2:4], (raw, []))
+            self.assertEqual((directory / "ember_reload-failure-save.bin").read_bytes(), b"failed-save")
+            self.assertEqual((directory / "ember_reload-failure-state.bin").read_bytes(), raw)
+            machine.assert_not_called()
+            with self.assertRaises(HarnessError):
+                decode_party(emu, result)
+
+    def test_ember_reload_expected_immutable_source(self):
+        from tools.rltest import story_probe
+        source = Path(".local/rltest/story-ember-e2e-f90d18a")
+        if not source.exists():
+            self.skipTest("Accepted native evidence is local and intentionally not committed")
+        with tempfile.TemporaryDirectory() as temporary:
+            expected = story_probe.ember_reload_expected(source, Path(temporary))
+            self.assertEqual(expected["party"][0]["moves"], [10, 45, 0, 52])
+            self.assertEqual(len(expected["raw"]), 644)
+            self.assertEqual(len(expected["save"]), 296960)
+            note = Path(temporary) / "ember_reload-source-note.bin"
+            state = Path(temporary) / "ember_reload-expected-state.bin"
+            for codec in ("test_story_ember", "test_story_ember_san"):
+                command = [str(Path("build/story") / codec), "--validate-reload", str(note), str(state)]
+                self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+                original = note.read_bytes()
+                changed = bytearray(original)
+                for offset in (8, 768 + 8):
+                    changed[offset] ^= 1
+                note.write_bytes(changed)
+                self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+                note.write_bytes(original)
+                raw = state.read_bytes()
+                changed = bytearray(raw)
+                changed[7] ^= 1
+                state.write_bytes(changed)
+                self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+                state.write_bytes(raw)
+            with self.assertRaises(HarnessError):
+                story_probe.ember_reload_expected(source, Path(temporary))
+
+    def test_ember_reload_exact_state_replay_write_and_resource_refusals(self):
+        from tools.rltest import story_probe
+        result = dict(command=0, status=0, phase=3, interrupted=0, completed_crc=123,
+                      active=0, ticks=0, ko_count=0, logic_steps=0, presentation_steps=0,
+                      pause_ticks=0, resume=0, force_ko=0, cold_calls=1, cold_busy=0,
+                      cold_address=0, cold_before=1234, cold_after=1234)
+        progress = dict(ko_captures=0, resumes=0, terminal=0, error=0, injected=0,
+                        award=0, learn_move=0)
+        expected = dict(result=dict(completed_crc=123), raw=b"full-state", party=[dict(exp=437)],
+                        save=b"unchanged-save")
+        story_probe.require_ember_reload(result, progress, expected["raw"], expected["party"],
+                                         expected["save"], expected["save"], expected)
+        for key, value in (("interrupted", 1), ("phase", 1), ("completed_crc", 124),
+                           ("ticks", 1), ("ko_count", 1), ("cold_calls", 2), ("cold_after", 1)):
+            wrong = {**result, key: value}
+            with self.assertRaises(HarnessError):
+                story_probe.require_ember_reload(wrong, progress, expected["raw"], expected["party"],
+                                                 expected["save"], expected["save"], expected)
+        for raw, party, save in ((b"changed-offer", expected["party"], expected["save"]),
+                                 (expected["raw"], [dict(exp=536)], expected["save"]),
+                                 (expected["raw"], expected["party"], b"changed-save")):
+            with self.assertRaises(HarnessError):
+                story_probe.require_ember_reload(result, progress, raw, party,
+                                                 expected["save"], save, expected)
+        with self.assertRaises(HarnessError):
+            story_probe.require_ember_reload(result, {**progress, "resumes": 1},
+                                             expected["raw"], expected["party"],
+                                             expected["save"], expected["save"], expected)
+
+    def test_ember_reload_only_no_cleanup_and_failure_capture(self):
+        from tools.rltest import story_probe
+        emu = Mock(frame=0)
+        emu.read_u32.return_value = 0
+        emu.symbols.address.side_effect = lambda name: 0 if name == "D_80080000" else 0x18E0
+        emu.read.return_value = bytes(0x18E0)
+        expected = dict(save=b"save")
+        result = dict(command=0, status=0)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(story_probe, "start_command") as start, \
+                patch.object(story_probe, "read_probe", return_value=result), \
+                patch.object(story_probe, "capture_progress",
+                             return_value=(result, {}, b"raw", [], {})) as capture, \
+                patch.object(story_probe, "save_ram", return_value=(0, b"save")), \
+                patch.object(story_probe, "require_ember_reload"), \
+                patch.object(story_probe, "validate_memory"), \
+                patch.object(story_probe, "read_native_machine") as machine:
+            directory = Path(temporary)
+            self.assertEqual(story_probe.ember_reload_only(emu, directory, b"save", expected), result)
+            start.assert_called_once_with(emu, 1)
+            self.assertEqual(emu.wait.call_args.kwargs["frames"], 6000)
+            emu.step.assert_not_called()
+            emu.wait_state.assert_not_called()
+            machine.assert_not_called()
+            for error in (HarnessError("load timeout"), HarnessError("load error")):
+                emu.wait.side_effect = error
+                with self.assertRaises(HarnessError):
+                    story_probe.ember_reload_only(emu, directory, b"save", expected)
+                self.assertEqual(capture.call_args.args[2], "ember_reload-failure")
+                emu.step.assert_not_called()
+
+    def test_ember_reload_wait_exact_cap_early_refusal_and_history(self):
+        from tools.rltest import story_probe
+        from tools.rltest.frontend import Frontend
+        progress = dict(ko_captures=0, resumes=0, terminal=0, error=0, injected=0,
+                        award=0, learn_move=0)
+        result = dict(command=1, status=0xFFFFFFFF, active=0, ticks=0, ko_count=0,
+                      logic_steps=0, presentation_steps=0, pause_ticks=0, resume=0, force_ko=0)
+        for case in ("exact_cap", "timeout", "load_error", "replay", "injection", "native_launch"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                emu = Mock(frame=100)
+                emu.symbols.address.side_effect = lambda name: 0 if name == "D_80080000" else 0x18E0
+                emu.read.return_value = bytes(0x18E0)
+                emu.wait.side_effect = lambda predicate, **kw: Frontend.wait(emu, predicate, **kw)
+                emu.step.side_effect = lambda frames=1: setattr(emu, "frame", emu.frame + frames)
+                emu.read_u32.side_effect = lambda symbol: int(
+                    case == "native_launch" and symbol == "gRlBattleActive" and emu.frame == 113)
+                def probe(instance):
+                    value = result.copy()
+                    if case == "exact_cap" and instance.frame == 6112:
+                        value.update(command=0, status=0)
+                    if instance.frame == 113:
+                        if case == "load_error":
+                            value["status"] = 4
+                        elif case == "replay":
+                            value["ticks"] = 1
+                    return value
+                def progression(instance):
+                    return {**progress, "injected": int(case == "injection" and instance.frame == 113)}
+                with patch.object(story_probe, "start_command", side_effect=lambda *a: emu.step(12)), \
+                        patch.object(story_probe, "read_probe", side_effect=probe), \
+                        patch.object(story_probe, "read_progress", side_effect=progression), \
+                        patch.object(story_probe, "capture_progress",
+                                     return_value=(result, progress, b"raw", [], {})) as capture, \
+                        patch.object(story_probe, "save_ram", return_value=(0, b"save")), \
+                        patch.object(story_probe, "require_ember_reload"), \
+                        patch.object(story_probe, "validate_memory"), \
+                        patch.object(story_probe, "read_native_machine") as native:
+                    directory = Path(temporary)
+                    if case == "exact_cap":
+                        story_probe.ember_reload_only(emu, directory, b"save", dict(save=b"save"))
+                        self.assertEqual(emu.frame, 6112)
+                        self.assertEqual(capture.call_args.args[2], "ember_reload-loaded")
+                    else:
+                        with self.assertRaises(HarnessError):
+                            story_probe.ember_reload_only(emu, directory, b"save", dict(save=b"save"))
+                        self.assertEqual(emu.frame, 6112 if case == "timeout" else 113)
+                        self.assertEqual(capture.call_args.args[2], "ember_reload-failure")
+                    rows = (directory / "ember_reload-load-history.jsonl").read_text().splitlines()
+                    self.assertEqual(json.loads(rows[-1])["frame"], emu.frame)
+                    frames = json.loads((directory / "ember_reload-frames.json").read_text())
+                    self.assertEqual(frames["command_launch_end_frame"], 112)
+                    self.assertEqual(frames["operation_frames"], emu.frame - 100)
+                    emu.press.assert_not_called()
+                    emu.write.assert_not_called()
+                    emu.write_u32.assert_not_called()
+                    native.assert_not_called()
+
+    def test_ember_reload_preflight_refuses_hash_mutation_before_codec(self):
+        from tools.rltest import story_probe
+        source = Path(".local/rltest/story-ember-e2e-f90d18a")
+        if not source.exists():
+            self.skipTest("Accepted native evidence is local and intentionally not committed")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            modified = root / "source"
+            modified.mkdir()
+            output = root / "output"
+            output.mkdir()
+            for name in ("save-ram.bin", "completed-party.json", "completed-result.json",
+                         "ko_ember_e2e-terminal-state.bin", "evidence.sha256", "grant-provenance.json"):
+                (modified / name).write_bytes((source / name).read_bytes())
+            for name in ("save-ram.bin", "completed-party.json", "completed-result.json",
+                         "ko_ember_e2e-terminal-state.bin", "evidence.sha256", "grant-provenance.json"):
+                original = (modified / name).read_bytes()
+                (modified / name).write_bytes(original + b"altered")
+                with patch.object(story_probe.subprocess, "run") as codec, \
+                        self.assertRaises(HarnessError):
+                    story_probe.ember_reload_expected(modified, output)
+                codec.assert_not_called()
+                self.assertEqual(list(output.iterdir()), [])
+                (modified / name).write_bytes(original)
+
     def test_ember_budget_finish_has_no_hidden_steps(self):
         from tools.rltest import story_probe
         emu = Mock(frame=18060)
@@ -242,6 +441,7 @@ class StoryHarnessTests(unittest.TestCase):
             path.write_text("gScProbeKoProfile\ngScProbeEmberProfile\n")
             require_probe_profile(path, "ko_ember")
             require_probe_profile(path, "ko_ember_e2e")
+            require_probe_profile(path, "ember_reload")
             for phase in ("ko_natural", "ko_synthetic", "bridge_init", "create", "ko_reload"):
                 with self.assertRaises(HarnessError):
                     require_probe_profile(path, phase)
@@ -250,6 +450,8 @@ class StoryHarnessTests(unittest.TestCase):
                 require_probe_profile(path, "ko_ember")
             with self.assertRaises(HarnessError):
                 require_probe_profile(path, "ko_ember_e2e")
+            with self.assertRaises(HarnessError):
+                require_probe_profile(path, "ember_reload")
 
     def test_ember_passive_wait_preserves_budget_scope_and_no_writes(self):
         from tools.rltest import story_probe
