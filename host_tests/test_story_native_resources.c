@@ -441,7 +441,7 @@ static void child_learning(void) {
 static ScNativeLoop loop;
 static ScNativeCampaignEvent loop_event;
 static ScNativeDisplay display;
-static int begin_status, end_status, poll_status, release_status, validate_status;
+static int begin_status, end_status, poll_status, release_status, validate_status, end_validate_refusal;
 static ScNativeCampaignEvent pending_event;
 static int submit_status, resume_status, child_on_submit;
 static unsigned submissions, resumes;
@@ -475,7 +475,11 @@ int sc_native_display_acquire(ScNativeDisplay *d) {
     main_pool_push_state(0); d->scope = pool.mainState; d->acquired = 1; return SC_OK;
 }
 int sc_native_display_begin(ScNativeDisplay *d) { (void)d; begins++; return begin_status; }
-int sc_native_display_end(ScNativeDisplay *d) { (void)d; ends++; return end_status; }
+int sc_native_display_end(ScNativeDisplay *d) {
+    (void)d; ends++;
+    if (end_validate_refusal) { validate_status = SC_UNAVAILABLE; end_validate_refusal = 0; }
+    return end_status;
+}
 int sc_native_display_release(ScNativeDisplay *d) {
     assert(d->scope == pool.mainState); main_pool_pop_state(0); d->acquired = 0; return SC_OK;
 }
@@ -530,6 +534,11 @@ static void presentation_loop(void) {
     loop.event_operation = 1; loop.event_serial = ~(RlU32)0;
     assert(sc_native_loop_open(&loop, &display, &calls) == SC_OK);
     assert(!loop.exited && !loop.queued && !loop.held_operation && !loop.event_serial);
+    resumed_state = ui.state;
+    pending_event.kind = SC_NATIVE_EVENT_OBSERVE;
+    pending_event.operation_id = 1; pending_event.generation = 1;
+    assert(sc_native_loop_step(&loop) == SC_INVALID && !driver.launched);
+    assert(!memcmp(&ui.state, &resumed_state, sizeof(ui.state)) && !loop.event_serial);
     controller.buttonPressed = RL_UI_DOWN;
     assert(sc_native_loop_step(&loop) == SC_OK && ui.list.cursor == 1);
     assert(sc_native_loop_step(&loop) == SC_OK && ui.list.cursor == 2);
@@ -582,7 +591,12 @@ static void loop_battle(void) {
     assert(loop_choose(region) == SC_OK && loop_choose(encounter) == SC_OK);
     submit_status = SC_PENDING;
     assert(loop_choose(1) == SC_PENDING && driver.launch_pending && !driver.launched);
-    submit_status = SC_OK; child_on_submit = 1;
+    submit_status = SC_OK; child_on_submit = 1; end_validate_refusal = 1;
+    before = submissions;
+    assert(sc_native_loop_step(&loop) == SC_UNAVAILABLE && loop.queued && driver.launched);
+    assert(submissions == before && loop.acquired && !pak.session);
+    assert(sc_native_loop_close(&loop) == SC_UNAVAILABLE && loop.queued);
+    validate_status = SC_OK;
     assert(sc_native_loop_step(&loop) == SC_OK && driver.launched);
     controller.buttonPressed = 0; before = frames;
     poll_status = SC_PENDING;
