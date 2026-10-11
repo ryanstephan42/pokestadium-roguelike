@@ -74,13 +74,35 @@ class PreviewTests(unittest.TestCase):
                 if line.startswith("input_player1_r_")
             )
             self.assertEqual(bindings, {
-                "input_player1_r_y_minus_axis": '"+3"',
-                "input_player1_r_y_plus_axis": '"-3"',
+                "input_player1_r_y_minus_btn": '"11"',
+                "input_player1_r_y_plus_btn": '"12"',
+                "input_player1_r_x_minus_btn": '"13"',
+                "input_player1_r_x_plus_btn": '"14"',
+                "input_player1_r_y_minus_axis": '"nul"',
+                "input_player1_r_y_plus_axis": '"nul"',
+                "input_player1_r_x_minus_axis": '"nul"',
+                "input_player1_r_x_plus_axis": '"nul"',
                 "input_player1_r_y_minus": '"i"',
                 "input_player1_r_y_plus": '"k"',
                 "input_player1_r_x_minus": '"j"',
                 "input_player1_r_x_plus": '"l"',
             })
+            settings = dict(line.split(" = ", 1)
+                            for line in config.splitlines())
+            for direction, axis in (
+                ("up", "-1"), ("down", "+1"),
+                ("left", "-0"), ("right", "+0"),
+            ):
+                self.assertEqual(settings[f"input_player1_{direction}_btn"],
+                                 '"nul"')
+                self.assertEqual(settings[f"input_player1_{direction}_axis"],
+                                 f'"{axis}"')
+                self.assertEqual(settings[f"input_player1_{direction}"],
+                                 f'"{direction}"')
+            for button, key in (("b", "z"), ("y", "x"),
+                                ("start", "enter"), ("l", "q")):
+                self.assertEqual(settings[f"input_player1_{button}"], f'"{key}"')
+                self.assertNotIn(f"input_player1_{button}_btn", settings)
 
 
 if __name__ == "__main__":

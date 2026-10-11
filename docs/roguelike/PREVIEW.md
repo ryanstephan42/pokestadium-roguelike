@@ -33,8 +33,8 @@ libdecor/GTK at startup. Neither is a ROM fix.
 | L | Q | LB |
 | R | E | RB |
 | Z trigger | A | LT |
-| D-pad | Arrow keys | D-pad |
-| C-up/down/left/right | I / K / J / L | Right stick |
+| D-pad / menu navigation | Arrow keys | Left stick |
+| C-up/down/left/right | I / K / J / L | D-pad up/down/left/right |
 
 Wait for **PRESS START**, then Enter, Z at Game Pak Check, and **hold Q while
 pressing Z** in Menu Select. Keep Q held until the fade completes. Z starts a
@@ -50,12 +50,14 @@ SDL device index if needed; inspect the input/autoconfig lines in the local log.
 The tested host enumerated Xbox first and the Keychron keyboard's joystick
 interface second.
 
-The preview explicitly swaps the Xbox right-stick vertical axis bindings
-(`r_y_minus_axis = "+3"`, `r_y_plus_axis = "-3"`) to correct the inverted
-C-up/C-down reported during physical-controller play. Horizontal stick
-bindings and keyboard I/K/J/L remain unchanged. This applies when
-`scripts/rl-preview.sh` next generates its local config; it does not change
-the currently running preview or any global controller configuration.
+The Xbox D-pad supplies C-buttons through SDL2 standard buttons 11/12/13/14
+(up/down/left/right). Left-stick axes -1/+1/-0/+0 supply N64 directional/menu
+navigation. Ordinary D-pad bindings are disabled to avoid duplicate navigation;
+all right-stick C-axis bindings are disabled. This replaces the earlier
+right-stick vertical inversion workaround at the user's request. Keyboard
+I/K/J/L, arrow keys and A/B/Start/L mappings remain unchanged. These settings
+apply when `scripts/rl-preview.sh` next generates its local config; they do not
+change the currently running preview or any global controller configuration.
 
 ### Physical-controller acceptance checklist
 
@@ -64,11 +66,12 @@ tests do not establish that the user's physical button presses work. With the
 game window focused and the RetroArch menu closed:
 
 1. Release all triggers; press Menu/Start at the settled title.
-2. Press Xbox A at Game Pak Check; use the D-pad to change the Menu Select cursor.
+2. Press Xbox A at Game Pak Check; use the left stick to change the Menu Select cursor.
 3. Hold LB, press A, and keep LB held through the fade. Verify the RL menu appears.
 4. Verify A selects and X backs out; draft three starters and start a battle.
-5. Press A to open Battle, then tilt the right stick in a C-button direction.
-   Verify an attack animation and changed HP/PP rather than just a cursor.
+5. Press A to open Battle; verify D-pad up/down/left/right choose the corresponding
+   C-button moves. Verify an attack animation and changed HP/PP rather than just a
+   cursor. The right stick must not select moves.
 
 If a step fails, check pad selection in `.local/rltest/preview/retroarch.log`.
 Observe `evtest /dev/input/event11` **without `--grab`** on the tested host while
