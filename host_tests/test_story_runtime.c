@@ -122,8 +122,10 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
 
 int main(void) {
     ScSnapshot snapshot;
+    RlMon checkpoint;
     RlU32 before;
     RlU32 generation;
+    unsigned i;
     check(sizeof(ScProbeMailbox) == 53 * 4);
     gScProbe.command = 3; gScProbe.seed = 42; gScProbe.create = 1;
     if (!sc_runtime_probe_poll() || failure || gScProbe.status != SC_SAVE_OK) {
@@ -171,6 +173,28 @@ int main(void) {
     check(sc_save_decode(&snapshot, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK &&
            snapshot.interrupted && snapshot.state.phase == SC_ROUTE &&
            snapshot.state.party[0].level == 6);
+    gScProbe.command = 5;
+    check(sc_runtime_probe_poll() && gScProbe.status == SC_SAVE_OK);
+    check(resident.party[0].cur_hp == 17 && resident.party[0].pp[0] == 7 &&
+          resident.party[0].status == 4 && resident.party[0].level == 6);
+    check(sc_save_decode(&snapshot, &sc_catalog, &generation, saved, sizeof(saved)) == SC_SAVE_OK &&
+          snapshot.interrupted && snapshot.state.phase == SC_ROUTE &&
+          snapshot.state.party[0].cur_hp == 17 && snapshot.state.party[0].pp[0] == 7 &&
+          snapshot.state.party[0].status == 4);
+    checkpoint = snapshot.state.party[0];
+    memset(&resident, 0, sizeof(resident));
+    before = writes; gScProbe.command = 1;
+    check(sc_runtime_probe_poll() && gScProbe.status == SC_SAVE_OK &&
+          gScProbe.interrupted && writes == before &&
+          resident.party[0].cur_hp == 17 && resident.party[0].max_hp == 22 &&
+          resident.party[0].pp[0] == 7 && resident.party[0].max_pp[0] == 35 &&
+          resident.party[0].status == 4 && resident.party[0].moves[0] == 33 &&
+          resident.party[0].dvs == 0x8889 && resident.party[0].exp == 235 &&
+          !resident.party[0].fainted && resident.party[0].level == 6);
+    for (i = 0; i < 4; i++)
+        check(resident.party[0].moves[i] == checkpoint.moves[i] &&
+              resident.party[0].pp[i] == checkpoint.pp[i] &&
+              resident.party[0].max_pp[i] == checkpoint.max_pp[i]);
     puts("Story runtime host scheduling/stat/pause/codec scaffold: OK (not emulator proof)");
     return 0;
 }

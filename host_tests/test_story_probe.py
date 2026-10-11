@@ -1,4 +1,5 @@
 import struct
+import ctypes
 import subprocess
 import sys
 import tempfile
@@ -13,7 +14,10 @@ from tools.rltest.story_probe import (
     memory_evidence,
     validate_memory,
     verify_mailbox_abi,
+    require_checkpoint_party,
+    decode_party,
 )
+from tools.rltest.test_custom_battle import Mon
 
 
 class StoryHarnessTests(unittest.TestCase):
@@ -29,6 +33,58 @@ class StoryHarnessTests(unittest.TestCase):
         self.assertEqual(stack_written_margin(b"\xA5" * 64 + b"\x01\xA5"), 64)
         self.assertEqual(stack_written_margin(b"\xA5" * 64), 64)
         self.assertEqual(stack_written_margin(b"\0" + b"\xA5" * 64), 0)
+
+    def test_checkpoint_party_discriminates_pp_status(self):
+        party = [dict(species=1, hp=17, max_hp=22, level=6, exp=235, dvs=0x8889,
+                      fainted=0, status=4, pp=[7, 40, 0, 0], moves=[33, 45, 0, 0],
+                      max_pp=[35, 40, 0, 0])]
+        require_checkpoint_party(party)
+        party[0]["pp"][0] = 35
+        with self.assertRaisesRegex(HarnessError, "discriminating checkpoint"):
+            require_checkpoint_party(party)
+        party[0]["pp"][0] = 7
+        party[0]["status"] = 0
+        with self.assertRaisesRegex(HarnessError, "discriminating checkpoint"):
+            require_checkpoint_party(party)
+
+    def test_decodes_resident_party_not_mailbox_or_padding(self):
+        mon = Mon(species=1, level=6, exp=235, dvs=0x8889, cur_hp=17, max_hp=22, status=4)
+        mon.moves[:] = [33, 45, 0, 0]
+        mon.pp[:] = [7, 40, 0, 0]
+        mon.max_pp[:] = [35, 40, 0, 0]
+        emu = Mock()
+        emu.read_u32.side_effect = lambda symbol: {
+            "gScProbeMonSize": ctypes.sizeof(Mon), "gScProbePartyOffset": 4,
+            "gScProbePartyCountOffset": 0,
+        }[symbol]
+        raw = b"\1\0\0\0" + bytes(mon)
+        emu.read.return_value = raw
+        result = dict(state_address=0x80100000, state_size=len(raw), hp=999)
+        captured, party = decode_party(emu, result)
+        self.assertEqual(captured, raw)
+        emu.read.assert_called_once_with(result["state_address"], len(raw))
+        require_checkpoint_party(party)
+        changed = bytearray(raw)
+        defined = set()
+        for name, field in Mon._fields_:
+            defined.update(range(getattr(Mon, name).offset,
+                                 getattr(Mon, name).offset + ctypes.sizeof(field)))
+        for byte in set(range(ctypes.sizeof(Mon))) - defined:
+            changed[4 + byte] = 0xA5
+        emu.read.return_value = bytes(changed)
+        self.assertEqual(decode_party(emu, result)[1], party)
+        changed[4 + Mon.pp.offset] = 35
+        emu.read.return_value = bytes(changed)
+        with self.assertRaisesRegex(HarnessError, "discriminating checkpoint"):
+            require_checkpoint_party(decode_party(emu, result)[1])
+        changed[4 + Mon.pp.offset] = 7
+        changed[4 + Mon.status.offset] = 0
+        emu.read.return_value = bytes(changed)
+        with self.assertRaisesRegex(HarnessError, "discriminating checkpoint"):
+            require_checkpoint_party(decode_party(emu, result)[1])
+        emu.read.return_value = b"\7" + raw[1:]
+        with self.assertRaisesRegex(HarnessError, "bounds mismatch"):
+            decode_party(emu, result)
 
     def test_stale_target_mailbox_rejected(self):
         emu = Mock()

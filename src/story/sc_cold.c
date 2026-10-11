@@ -32,22 +32,28 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
         if (status == SC_SAVE_OK) *state = snapshot.state;
         return status;
     }
-    if (request->command != SC_COLD_NEW && request->command != SC_COLD_PREPARE)
+    if (request->command != SC_COLD_NEW && request->command != SC_COLD_PREPARE &&
+        request->command != SC_COLD_CHECKPOINT)
         return 0x100 + SC_INVALID;
     if (request->command == SC_COLD_PREPARE && (!request->combat || !request->opponents))
         return 0x100 + SC_INVALID;
     status = sc_new(&snapshot.state, &sc_catalog, &options, request->seed);
     if (status != SC_OK) return 0x100 + status;
-    if (request->command == SC_COLD_PREPARE) {
+    if (request->command != SC_COLD_NEW) {
         snapshot.state.party[0].dvs = 0x8889;
         snapshot.state.party[0].level = 6;
         snapshot.state.party[0].exp = sc_xp(7, snapshot.state.party[0].growth) - 1;
         sc_recalculate(&snapshot.state.party[0], 0);
+        if (request->command == SC_COLD_CHECKPOINT) {
+            snapshot.state.party[0].cur_hp = 17;
+            snapshot.state.party[0].pp[0] = 7;
+            snapshot.state.party[0].status = 4;
+        }
     }
-    snapshot.interrupted = request->command == SC_COLD_PREPARE;
+    snapshot.interrupted = request->command != SC_COLD_NEW;
     status = sc_pak_probe_store(request->controller, &sc_catalog, &snapshot, request->create);
     if (status != SC_SAVE_OK) return status;
-    if (request->command == SC_COLD_NEW) {
+    if (request->command != SC_COLD_PREPARE) {
         *state = snapshot.state;
         return SC_SAVE_OK;
     }

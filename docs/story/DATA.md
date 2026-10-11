@@ -614,6 +614,10 @@ relic trace ring (8,200 bytes including count/dropped) and trace writes.
 Relic calculations, battle hooks and public entrypoints remain intact;
 normal RL compilation keeps the original trace code and byte-identical ROM
 SHA256 `a4fab9f9a4979e7782ca8e1fce69fe3f6f92adec25342d36e14ad94d165a125d`.
+This comparison is against the prior story-branch default build, not merged
+master (`10872fc3...`): the earlier shared Pak identity-validation refactor
+at `be663c0` already changed normal RL code versus master and remains part of
+the final normal-RL review/gate scope.
 Neither story nor its harness consumes that trace. Both native-relic and
 relic-cadence acceptance harnesses reject a story-probe map before starting
 an emulator; the normal host relic test remains unchanged and passing.
@@ -624,6 +628,61 @@ are unchanged. This measured recovery exceeds the observed 2,288-byte
 PRS shortage but does not prove later allocations or six-party peaks.
 The required-resource NULL guard remains active; another independently
 reviewed, explicitly authorized native run must prove the asset actually loads.
+
+Exact `68bb3dac06721b99f50f297dbe52d6af8ad1770f` subsequently passed the
+authorized cap-4 `create` -> `interrupt` sequence with unchanged assertions.
+Results, memory and exact-head/artifact provenance remain separately in
+`.local/rltest/story-residency-68bb3da/`. Live entry recorded 100 allocation
+attempts and zero failures, with the required animation NULL guard clear;
+two ticks, one logic/presentation step, HP 22 and DVs `0x8889` were observed.
+Fragment `0xe9` was absent before loading, mapped at `0x8012D100` with size
+173,760 during the cold call, and directly absent (both words zero) afterward.
+Cold pool accessor values were equal at 2,960,800 before/after unload.
+Raw minimum zero was attributed to a successful full-payload geometry
+reservation at `func_80002D10`, not a failed allocation.
+
+Create's precommand/postcommand written margins were both 260 bytes; the
+live-interrupt margins were both 1,340 bytes, with no newly written bytes in
+either untouched bottom region. Thus those full-run written peaks predate
+the commands; this does not establish unwritten reserved-SP bounds or future
+callback/suballocator/six-party safety. The sampled live accessor was
+195,504 bytes, not a worst-case bound. The slot was released process-free.
+After a separate grant, fresh-process `interrupted_reload` on the same frozen
+head restored ROUTE/interrupted=1, L6/XP235/HP22/DVs `0x8889` and completed CRC
+1,972,200,246 without storage mutation or KO/logic/presentation replay.
+Both direct map words cleared, cold pool values balanced at 2,960,800, and
+55 allocation attempts had zero failures. Written pre/post margins were
+1,340 with no new bottom writes. The slot was released process-free.
+This run did **not** directly decode PP/status/moves: storage identity and
+scalar mailbox observations are not that proof. Its evidence remains
+immutable; KO/learning, Transform, six-party and full gate acceptance remain
+outstanding.
+
+#### Discriminating checkpoint decoder (source/host only)
+
+The opt-in probe has a separate command 5 / `SC_COLD_CHECKPOINT`, not a change
+to command 3's live-battle fixture. It writes an interrupted ROUTE snapshot
+through the existing SC01 codec/journal/Pak backend: Bulbasaur L6/XP235,
+DVs `0x8889`, HP17/22, nonfainted, status4, moves `[33,45,0,0]`,
+PP `[7,40,0,0]` and max PP `[35,40,0,0]`. It never starts native battle.
+The host scheduling regression clears resident state after writing, then
+loads through the actual save codec and asserts these restored values.
+
+Explicit `checkpoint` -> fresh-process `checkpoint_reload` harness phases
+capture resident memory using target-compiled party/count offsets and
+`sizeof(RlMon)`, reusing the existing big-endian canonical `Mon` ABI decoder.
+They persist result/memory JSON before party assertions, plus raw state
+and decoded party JSON. Every named mon field is recorded; equality excludes
+undefined struct padding (raw state is diagnostic only). Reload asserts the
+decoded discriminating fixture, equality with the written checkpoint party,
+interrupted flag, completed CRC, no storage change and no battle accounting.
+Helper tests reject full PP/zero status and altered resident PP, ignore
+padding differences, and reject out-of-bounds party decoding.
+
+These new phases require independent source review and an explicit emulator
+grant; none has run. Their eventual scope is checkpoint restoration, **not**
+preservation of PP/status through the native live-party bridge. Existing
+`68bb3da` reload evidence retains its narrower acceptance and limitations.
 
 ## Verification scope and remaining review
 

@@ -6,6 +6,9 @@
 
 volatile ScProbeMailbox gScProbe;
 const RlU32 gScProbeCompiledSize = sizeof(gScProbe);
+const RlU32 gScProbePartyOffset = (RlU32)&((ScState *)0)->party;
+const RlU32 gScProbePartyCountOffset = (RlU32)&((ScState *)0)->party_count;
+const RlU32 gScProbeMonSize = sizeof(RlMon);
 int gScProbeActive;
 static ScState resident;
 static ScBridge bridge;
@@ -197,15 +200,16 @@ int sc_runtime_probe_poll(void) {
             combat.ready = 0;
             gScProbe.interrupted = request.interrupted;
         }
-    } else if (command == 2 || command == 3) {
+    } else if (command == 2 || command == 3 || command == 5) {
         if (pending_outcome != 255) { status = 0x100 + SC_PENDING; goto end; }
         combat.ready = 0;
-        request.command = command == 2 ? SC_COLD_NEW : SC_COLD_PREPARE;
+        request.command = command == 2 ? SC_COLD_NEW :
+            (command == 5 ? SC_COLD_CHECKPOINT : SC_COLD_PREPARE);
         request.combat = &combat;
         request.opponents = opponents;
         status = sc_cold_call(&request);
         gScProbe.stage = 5;
-        if (status != SC_SAVE_OK || command == 2) goto end;
+        if (status != SC_SAVE_OK || command != 3) goto end;
         for (i = 0; i < 6; i++) { mapping[i] = (RlU8)i; bridge.participants[i] = 0; }
         bridge.enemy_count = request.enemy_count;
         gScProbe.stage = 6;

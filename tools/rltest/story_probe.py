@@ -21,6 +21,7 @@ from tools.rltest.save_roundtrip import (
     boot, checksum_inode, find_pak, native_command, save_ram,
 )
 from tools.rl.boot_test import find_core
+from tools.rltest.test_custom_battle import Mon
 
 FIELDS = (
     "command status controller create seed active ticks ko_count pause_ticks resume force_ko "
@@ -34,6 +35,41 @@ FIELDS = (
 ).split()
 
 POOL_COUNTERS = ("gScPoolMinimum", "gScPoolAllocations", "gScPoolFailures", "gScPoolLargest")
+
+
+def decode_party(emu, result):
+    require(emu.read_u32("gScProbeMonSize") == ct.sizeof(Mon), "Story party ABI mismatch")
+    offset = emu.read_u32("gScProbePartyOffset")
+    count_offset = emu.read_u32("gScProbePartyCountOffset")
+    require(0 <= count_offset < offset < result["state_size"], "Story resident offsets mismatch")
+    raw = emu.read(result["state_address"], result["state_size"])
+    count = raw[count_offset]
+    require(1 <= count <= 6 and offset + count * ct.sizeof(Mon) <= result["state_size"],
+            "Story resident party bounds mismatch")
+    party = []
+    for slot in range(count):
+        start = offset + slot * ct.sizeof(Mon)
+        mon_raw = raw[start:start + ct.sizeof(Mon)]
+        mon = Mon.from_buffer_copy(mon_raw)
+        party.append(dict(species=mon.species, level=mon.level, exp=mon.exp, dvs=mon.dvs,
+                          hp=mon.cur_hp, max_hp=mon.max_hp, fainted=mon.fainted,
+                          status=mon.status, moves=list(mon.moves), pp=list(mon.pp),
+                          max_pp=list(mon.max_pp), growth=mon.growth,
+                          stat_exp=list(mon.stat_exp), base_stats=list(mon.base_stats),
+                          current_stats=list(mon.current_stats), held_relic=mon.held_relic,
+                          nickname=mon_raw[Mon.nickname.offset:Mon.nickname.offset + 11].hex()))
+    return raw, party
+
+
+def require_checkpoint_party(party):
+    require(len(party) == 1, "Checkpoint fixture party count mismatch")
+    mon = party[0]
+    require(mon["species"] == 1 and mon["hp"] == 17 and mon["max_hp"] == 22 and
+            mon["level"] == 6 and mon["exp"] == 235 and mon["dvs"] == 0x8889 and
+            mon["fainted"] == 0 and mon["status"] == 4 and mon["pp"][0] == 7 and
+            mon["moves"] == [33, 45, 0, 0] and mon["max_pp"] == [35, 40, 0, 0] and
+            mon["pp"][1:] == [40, 0, 0],
+            f"Decoded discriminating checkpoint mismatch: {party}")
 
 
 def stack_written_margin(data):
@@ -259,7 +295,7 @@ def phase(args):
                   options=options, timeout=900) as emu, probe_deadline(emu, directory):
         pointer, initial = save_ram(emu)
         if args.phase in ("reload", "interrupted_reload", "interrupt", "battle", "natural",
-                          "allocation"):
+                          "allocation", "checkpoint", "checkpoint_reload"):
             restored = (directory / "save-ram.bin").read_bytes()
             require(len(restored) == len(initial), "Save RAM size changed between processes")
             ct.memmove(pointer, restored, len(restored))
@@ -271,14 +307,20 @@ def phase(args):
             result = command(emu, 2, 1)
             require(result["status"] == 2 and save_ram(emu)[1] == before,
                     f"Missing Pak did not fail read-only: {result}")
-        elif args.phase in ("reload", "interrupted_reload"):
+        elif args.phase in ("reload", "interrupted_reload", "checkpoint_reload"):
             result = command(emu, 1)
-            interrupted = args.phase == "interrupted_reload"
-            require(result["status"] == 0 and bool(result["interrupted"]) == interrupted and
-                    result["level"] == (6 if interrupted else 7) and
-                    result["phase"] == (0 if interrupted else 3),
-                    f"Fresh-process checkpoint did not reload: {result}")
-            require(save_ram(emu)[1] == before, "Cold load modified storage")
+            interrupted = args.phase != "reload"
+            if args.phase != "checkpoint_reload":
+                require(result["status"] == 0 and bool(result["interrupted"]) == interrupted and
+                        result["level"] == (6 if interrupted else 7) and
+                        result["phase"] == (0 if interrupted else 3),
+                        f"Fresh-process checkpoint did not reload: {result}")
+                require(save_ram(emu)[1] == before, "Cold load modified storage")
+        elif args.phase == "checkpoint":
+            base = find_pak(before)
+            result = command(emu, 5)
+            after = save_ram(emu)[1]
+            (directory / "save-ram.bin").write_bytes(after)
         elif args.phase == "allocation":
             base = find_pak(before)
             result = command(emu, 3)
@@ -381,9 +423,29 @@ def phase(args):
                 require(native_command(emu, 1)[4] == 42, "SC01 changed RL01 meta")
                 (directory / "save-ram.bin").write_bytes(save_ram(emu)[1])
         (directory / f"{args.phase}-result.json").write_text(json.dumps(result, indent=2) + "\n")
-        if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload"):
+        if args.phase in ("create", "interrupt", "interrupted_reload", "battle", "natural", "reload",
+                          "checkpoint", "checkpoint_reload"):
             evidence = memory_evidence(emu, result)
             (directory / f"{args.phase}-memory.json").write_text(json.dumps(evidence, indent=2) + "\n")
+            raw, party = decode_party(emu, result)
+            (directory / f"{args.phase}-state.bin").write_bytes(raw)
+            (directory / f"{args.phase}-party.json").write_text(json.dumps(party, indent=2) + "\n")
+            if args.phase in ("checkpoint", "checkpoint_reload"):
+                require(result["status"] == 0 and result["phase"] == 0 and
+                        not any(result[key] for key in (
+                            "active", "ticks", "ko_count", "logic_steps", "presentation_steps")),
+                        f"Checkpoint-only command failed or advanced battle: {result}")
+                require_checkpoint_party(party)
+            if args.phase == "checkpoint":
+                story_owned_changes(before, after, base)
+            if args.phase == "checkpoint_reload":
+                require(result["interrupted"] == 1, "Discriminating checkpoint flag not restored")
+                require(save_ram(emu)[1] == before, "Checkpoint load modified storage")
+                expected = json.loads((directory / "checkpoint-party.json").read_text())
+                require(party == expected, "Decoded checkpoint party changed across fresh reload")
+                checkpoint = json.loads((directory / "checkpoint-result.json").read_text())
+                require(result["completed_crc"] == checkpoint["completed_crc"],
+                        "Checkpoint load changed completed encounter CRC")
             validate_memory(evidence, result)
         print(f"story native {args.phase}: OK")
 
@@ -398,7 +460,7 @@ def main():
     parser.add_argument("--out", default=".local/rltest/story-probe")
     parser.add_argument("--phase", choices=("create", "interrupt", "interrupted_reload",
                                           "battle", "natural", "reload", "missing", "full",
-                                          "allocation"))
+                                          "allocation", "checkpoint", "checkpoint_reload"))
     args = parser.parse_args()
     if not args.execute:
         parser.error("No emulator launched: --execute is required after slot authorization")
