@@ -563,6 +563,13 @@ static void rl_play_make_draft(void) {
         gRlPlayDraftSpecies[i] = sPlayDraft[i].species;
         indices[pick] = indices[available - 1];
         available--;
+        if (!gRlPlayTestMode) {
+            for (j = 0; j < available; ) {
+                if (sPlayPool[indices[j]].species == sPlayDraft[i].species)
+                    indices[j] = indices[--available];
+                else j++;
+            }
+        }
     }
     for (i = 0; i < RL_PLAY_DRAFT_SIZE; i++) {
         sPlayDraftSelected[i] = 0;
@@ -1126,7 +1133,10 @@ static void rl_play_update_root(u16 pressed) {
     if (result == 0) {
         rl_play_request_new();
     } else if (result == 1) {
-        rl_play_resume();
+        if (gRlPlayProfile.edit_pending) {
+            rl_play_meta_menu();
+            sPlayMessage = "Resolve the pending profile save before resuming";
+        } else rl_play_resume();
     } else if (result == 2 || result == RL_UI_CANCEL) {
         gRlMain.returnState = STATE_MENU_SELECT;
         gRlPlayScene = RL_PLAY_MENU;

@@ -7,6 +7,7 @@ injected meta, terminal outcomes or currency. Ordinary drafts never enable it.
 
 import argparse
 import ctypes
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -116,7 +117,9 @@ def phase(directory, part):
                   options={"mupen64plus-pak1": "memory"}, timeout=3600) as emu:
         if part != "earn":
             pointer, initial = save_ram(emu)
-            data = (directory / "permanent-save.bin").read_bytes()
+            checkpoint = directory / "funding-save.bin"
+            source = checkpoint if part == "shop" and checkpoint.exists() else directory / "permanent-save.bin"
+            data = source.read_bytes()
             require(len(data) == len(initial), "aggregate save size changed")
             ctypes.memmove(pointer, data, len(data))
             boot(emu)
@@ -134,13 +137,15 @@ def phase(directory, part):
             return
         if part == "shop":
             meta = read_meta(emu)
-            require(meta.runs == 1 and meta.pending_registration_count == 1,
-                    "cold load lost pending choices")
-            resolve_pending(emu, register=True)
+            require(1 <= meta.runs <= 26 and meta.currency == meta.runs * 5,
+                    "cold load lost completed funding runs")
+            if meta.runs == 1:
+                require(meta.pending_registration_count == 1, "cold load lost pending choices")
+                resolve_pending(emu, register=True)
             require(any(read_meta(emu).registered_species), "registration did not persist")
             # Complete meaningful native defeats until the real economy pays
             # for all three implemented option categories. Never write meta.
-            for number in range(2, 27):
+            for number in range(meta.runs + 1, 27):
                 resolve_pending(emu, register=number != 3)
                 start_new_run(emu, 0x13579BDF + (1 if number == 2 else 0), 3)
                 release_to_one(emu)
@@ -149,6 +154,7 @@ def phase(directory, part):
                         read_meta(emu).currency == number * 5,
                         f"native run {number} paid or recorded twice")
                 print(f"native payout {number}/26", flush=True)
+                (directory / "funding-save.bin").write_bytes(save_ram(emu)[1])
             resolve_pending(emu)
             require(read_meta(emu).currency == 130, "earned balance not 130")
             # Retain a real active suspension while purchasing at profile root.
@@ -180,6 +186,29 @@ def phase(directory, part):
             return
         require(read_meta(emu).currency == 0 and read_meta(emu).options & 274 == 274,
                 "cold process lost purchases")
+        base_species = {
+            1, 4, 7, 10, 13, 16, 19, 21, 23, 25, 27, 29, 32, 37, 39, 41,
+            43, 46, 48, 50, 52, 56, 60, 63, 66, 69, 74, 79, 84, 90, 104,
+            116, 118, 129,
+        }
+        meta = read_meta(emu)
+        registered = {species for species in range(1, 152)
+                      if meta.registered_species[(species - 1) >> 3] &
+                      (1 << ((species - 1) & 7))}
+        observed = set()
+        for seed in range(1, 65):
+            emu.write_u32("gRlPlayTestMode", 0)
+            emu.write_u32("gRlPlayTestSeed", seed)
+            press(emu, "N64_A")
+            wait_scene(emu, 1)
+            selected = set(emu.read("gRlPlayDraftSpecies", 6))
+            require(len(selected) == 6 and selected <= base_species | registered,
+                    f"ordinary seed {seed} selected locked or repeated species")
+            observed.update(selected)
+            press(emu, "N64_B")
+            wait_scene(emu, 0)
+        require(observed & base_species and 140 in observed,
+                "ordinary seeded drafts never offered registered Kabuto alongside base species")
         # Real settings controls, then ordinary weighted/canonical draft.
         select(emu, 3)
         wait_scene(emu, 10)
@@ -199,6 +228,9 @@ def phase(directory, part):
                     and not any(mon.stat_exp) for mon in before),
                 "ordinary themed draft inherited boosted source stats")
         changed = False
+        rentals = json.loads(Path("build/rl_gen/rl_rosters.json").read_text())["rental_sets"]
+        prime = next(pool for pool in rentals if pool["id"] == "prime")
+        legal_moves = {mon["species"]: tuple(mon["moves"]) for mon in prime["mons"]}
         for slot in range(6):
             press(emu, "RIGHT")
             after = draft(emu)
@@ -207,6 +239,9 @@ def phase(directory, part):
                     after[slot].dvs == before[slot].dvs and
                     tuple(after[slot].stat_exp) == tuple(before[slot].stat_exp),
                     "move option changed stats")
+            require(tuple(after[slot].moves) == legal_moves[after[slot].species] and
+                    tuple(after[slot].pp) == tuple(after[slot].max_pp),
+                    "variant is not the matching canonical Prime rental loadout")
             if slot < 5:
                 press(emu, "DOWN")
         require(changed, "purchased canonical loadout had no actual effect")

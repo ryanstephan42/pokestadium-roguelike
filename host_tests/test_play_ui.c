@@ -15,6 +15,7 @@ static unsigned sRosterNamesDrawn;
 static unsigned sOrderDrawn;
 static unsigned sDrawnMoves[4];
 static int sStorageEnabled, sUncertainWrite, sWriteCount;
+static RlSaveStatus sReadFailure;
 static RlMeta sDiskMeta;
 static RunState sDiskRun;
 static RlU8 sDiskHasRun;
@@ -67,6 +68,7 @@ void rl_ui_hp_bar(s16 x, s16 y, s16 w, u16 hp, u16 max_hp) {}
 void rl_scene_nodes_draw(void) {}
 RlSaveStatus rl_save_load(unsigned port, RlMeta* meta, RunState* run, RlU8* has_run) {
     if (sStorageEnabled) {
+        if (sReadFailure != RL_SAVE_OK) return sReadFailure;
         *meta = sDiskMeta;
         if (sDiskHasRun) *run = sDiskRun;
         *has_run = sDiskHasRun;
@@ -76,10 +78,11 @@ RlSaveStatus rl_save_load(unsigned port, RlMeta* meta, RunState* run, RlU8* has_
 }
 RlSaveStatus rl_save_store(unsigned port, const RlMeta* meta, const RunState* run, int create) {
     if (sStorageEnabled) {
+        sWriteCount++;
+        if (sUncertainWrite < 0) return RL_SAVE_IO;
         sDiskMeta = *meta;
         sDiskHasRun = run != NULL;
         if (run) sDiskRun = *run;
-        sWriteCount++;
         return sUncertainWrite ? RL_SAVE_IO : RL_SAVE_OK;
     }
     return RL_SAVE_NO_DEVICE;
@@ -297,5 +300,51 @@ int main(int argc, char** argv) {
     gRlPlayProfile.kit = RL_META_KIT_DEFAULT;
     rl_play_update_meta(RL_UI_A);
     assert(gRlPlayScene == RL_PLAY_DRAFT && !sPlayMeta.pending_registration_count);
+
+    sDiskMeta.pending_registration_count = 2;
+    sDiskMeta.pending_species[(149 - 1) >> 3] |= 1U << ((149 - 1) & 7);
+    sDiskMeta.pending_species[(148 - 1) >> 3] |= 1U << ((148 - 1) & 7);
+    sPlayMeta = sDiskMeta;
+    sUncertainWrite = -1;
+    old_count = sWriteCount;
+    assert(rl_play_edit(2, 0) == RL_SAVE_IO);
+    assert(sDiskMeta.pending_registration_count == 2 &&
+           gRlPlayProfile.edit_candidate.pending_registration_count == 1);
+    sReadFailure = RL_SAVE_RECOVERED;
+    assert(rl_play_commit_edit() == RL_SAVE_RECOVERED);
+    assert(gRlPlayProfile.edit_pending && sPlayMeta.pending_registration_count == 2);
+    sReadFailure = RL_SAVE_OK;
+    sDiskRun.rng ^= 1;
+    assert(rl_play_commit_edit() == RL_SAVE_DEVICE_CHANGED);
+    assert(sWriteCount == (int)old_count + 1);
+    sDiskRun.rng ^= 1;
+    sUncertainWrite = 0;
+    assert(rl_play_commit_edit() == RL_SAVE_OK);
+    assert(sDiskMeta.pending_registration_count == 1 && sWriteCount == (int)old_count + 2);
+
+    /* Terminal win recording remains once-only and distinct from profile edits. */
+    profile_before = sPlayMeta;
+    gRlRun = sDiskRun;
+    gRlRun.act = 3;
+    gRlRun.row = gRlRun.lane = 0;
+    gRlRun.phase = RL_WON;
+    gRlRun.party[0].species = 8;
+    gRlRun.stats.battles = gRlRun.stats.wins = 1;
+    rl_map_generate(&gRlRun.map, &gRlRun.rng, 3, 0);
+    sPlaySummaryPrepared = sPlaySummarySaved = 0;
+    sUncertainWrite = 1;
+    old_count = sWriteCount;
+    assert(rl_play_store(0) == RL_SAVE_IO);
+    assert(sPlaySummaryPrepared && !sPlaySummarySaved && !sDiskHasRun);
+    assert(sDiskMeta.runs == profile_before.runs + 1 &&
+           sDiskMeta.wins == profile_before.wins + 1);
+    assert(sDiskMeta.currency == profile_before.currency + 35);
+    assert(sDiskMeta.pending_registration_count == profile_before.pending_registration_count + 1);
+    assert(rl_play_store(0) == RL_SAVE_OK);
+    assert(sWriteCount == (int)old_count + 1 && sPlaySummarySaved);
+    assert(rl_play_edit(1, 8) == RL_SAVE_IO);
+    assert(rl_play_commit_edit() == RL_SAVE_OK);
+    assert(sPlayMeta.currency == profile_before.currency + 35 &&
+           sPlayMeta.runs == profile_before.runs + 1);
     return 0;
 }
