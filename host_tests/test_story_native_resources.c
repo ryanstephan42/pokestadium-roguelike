@@ -527,6 +527,25 @@ static void presentation_loop(void) {
     release_status = SC_OK;
     assert(sc_native_loop_close(&loop) == SC_OK && !native.acquired);
     assert(sc_native_loop_close(&loop) == SC_INVALID);
+    loop.event_operation = 1; loop.event_serial = ~(RlU32)0;
+    assert(sc_native_loop_open(&loop, &display, &calls) == SC_OK);
+    assert(!loop.exited && !loop.queued && !loop.held_operation && !loop.event_serial);
+    controller.buttonPressed = RL_UI_DOWN;
+    assert(sc_native_loop_step(&loop) == SC_OK && ui.list.cursor == 1);
+    assert(sc_native_loop_step(&loop) == SC_OK && ui.list.cursor == 2);
+    controller.buttonPressed = RL_UI_A;
+    assert(sc_native_loop_step(&loop) == SC_OK && loop.exited);
+    assert(sc_native_loop_close(&loop) == SC_OK);
+    ui_error = 1;
+    assert(sc_native_loop_open(&loop, &display, &calls) == SC_UNAVAILABLE);
+    assert(loop.acquired && loop.display_acquired && loop.pak_bound &&
+           !loop.resources_acquired && !loop.prepared);
+    assert(sc_native_loop_open(&loop, &display, &calls) == SC_INVALID && loop.acquired);
+    validate_status = SC_UNAVAILABLE;
+    assert(sc_native_loop_close(&loop) == SC_UNAVAILABLE && display.acquired && pak.bound);
+    validate_status = SC_OK;
+    assert(sc_native_loop_close(&loop) == SC_OK && !display.acquired && !pak.bound && !depth);
+    ui_error = 0;
     puts("Presentation loop: actual native adapter/input, callback refusal, explicit exit and fence; HOST only; OK");
 }
 

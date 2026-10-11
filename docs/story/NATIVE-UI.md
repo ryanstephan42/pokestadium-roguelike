@@ -172,3 +172,6 @@ ignored pending payload, serial exhaustion/staleness, held KO presentation,
 learning and resume retry, drained finish/save retry, validate refusal and
 release PENDING. Normal and ASan/UBSan results are HOST evidence, not native
 visible execution or allocator/service authority.
+Successful close permits reuse of the same small loop/display control object.
+Open resets exit/queue/hold/event-serial bookkeeping for the new lease only
+after refusing an already acquired lifetime; pending retirement cannot rebind.

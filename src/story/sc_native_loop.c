@@ -43,6 +43,11 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
         !owner || !owner->acquire || !owner->validate ||
         !owner->submit || !owner->poll || !owner->resume || !owner->release)
         return fail(NULL, SC_INVALID, "Story loop: owner acquisition callbacks unavailable");
+    loop->prepared = loop->exited = loop->queued = loop->held_presented = 0;
+    loop->held_operation = loop->held_generation = loop->event_operation = loop->event_serial = 0;
+    loop->drained_operation = loop->drained_outcome = 0;
+    loop->display_acquired = loop->pak_bound = loop->resources_acquired = 0;
+    loop->frame_status = SC_OK;
     loop->owner = *owner; loop->display = display;
     status = owner->acquire(owner->context, &loop->backing);
     if (status != SC_OK) return status;
