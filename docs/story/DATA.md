@@ -20,8 +20,15 @@ The importer downloads an allowlisted subset of assembly data/map objects and
 relevant scripts, not a repository clone, ROM, graphics, audio or dialogue
 assets. Downloads live in ignored `.local/story-source/`; generated numeric
 JSON/C tables live in ignored `build/story/`. Upstream assembly is not vendored.
-Cached content is checked against the pinned Git blob SHA, with SHA-256 source
-provenance recorded in the JSON. Missing offline files, unsupported conditional
+The expected tree is anchored by committed SHA-256
+`9a47f4f79fd8746ef3d87f4d3100743c2cbd4e54302b3114c64dc1f6e23913aa`,
+independently checked against a fresh pinned GitHub API response. Its digest
+covers root SHA and sorted `(path, mode, type, blob/tree SHA)` tuples (ASCII
+compact JSON with sorted keys). URLs and entry order are not trusted identity.
+Fetched and cached trees are authenticated before their blob hashes are used;
+an editable root SHA string alone is not an authenticity check.
+Cached content is checked against the authenticated Git blob SHA, with SHA-256
+source provenance recorded in the JSON. Missing offline files, unsupported conditional
 syntax, bad pointers, unknown species, duplicate IDs and hash mismatches are
 explicit errors.
 
@@ -75,21 +82,27 @@ Access/fossil-choice/expiration policy is deliberately deferred to graph review.
 
 ### Bounded retirement audit
 
-The JSON now records ten source-checked retirement rules, with exact trigger
+The JSON now records eleven source-checked retirement rules, with exact trigger
 and affected encounter IDs, event operands and pinned-source line numbers.
 All eight gym leaders deactivate their remaining gym trainers (41 total);
 the Dojo master deactivates the four other Blackbelts. Brock additionally
 expires the optional first Route 22 rival. These 46 distinct retirements are
 identical in Red and Blue. Source trainer-header counts (explicit battle-event
 checks for Cinnabar's custom quiz script) and contiguous event indices must
-match the expected deactivation directive or the audit fails.
+match the expected deactivation directive or the audit fails. Silph Giovanni's
+explicit hide list retires 30 additional trainers; the toggle constants and
+object-state table are paired per floor and resolved to exact encounter IDs.
+This does not retire the Silph rival or Lapras, which are not in that hide list.
 
 Evidence: each corresponding `scripts/*Gym.asm` leader postbattle handler,
 [`PewterGym.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/PewterGym.asm#L76-L79)
 and
 [`FightingDojo.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/FightingDojo.asm#L73).
-These are independently bounded facts, **not a complete graph**. Ship departure,
-Silph object removal, rival prerequisites, static permissions, route access and
+Silph evidence:
+[`SilphCo11F.asm`](https://github.com/pret/pokered/blob/af519899719f0754965776faac0e836a3b906e6d/scripts/SilphCo11F.asm#L73-L146),
+`constants/toggle_constants.asm` and `data/maps/toggleable_objects.asm`.
+These 76 retirements are independently bounded facts, **not a complete graph**.
+Ship departure, rival prerequisites, static permissions, route access and
 full branch/version traversals remain under review. The C emitter deliberately
 does not install these partial rules or change `graph_reviewed = 0`.
 

@@ -1,8 +1,10 @@
 import hashlib
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from tools.story_data import (
     DataError, REVISION, Source, base_stats, clean, construct_moves,
@@ -131,21 +133,74 @@ class CanonicalInventoryTests(unittest.TestCase):
     def test_reviewed_retirement_subset(self):
         red = self.data["retirement_audit"]["red"]
         self.assertEqual(red, self.data["retirement_audit"]["blue"])
-        self.assertEqual(len(red), 10)
+        self.assertEqual(len(red), 11)
         retired = [identifier for rule in red for identifier in rule["retires"]]
-        self.assertEqual(len(retired), 46)
-        self.assertEqual(len(set(retired)), 46)
+        self.assertEqual(len(retired), 76)
+        self.assertEqual(len(set(retired)), 76)
         entries = {e["id"]: e for e in self.data["encounters"]["red"]}
         for rule in red:
             self.assertIn(rule["after"], entries)
             self.assertNotIn(rule["after"], rule["retires"])
             self.assertTrue(all(identifier in entries for identifier in rule["retires"]))
             self.assertTrue(rule["line"] > 0)
-        self.assertEqual(red[-1]["retires"], ["Route22/rival-early"])
-        self.assertEqual(red[-1]["after"], red[0]["after"])
+        self.assertEqual(red[-2]["retires"], ["Route22/rival-early"])
+        self.assertEqual(red[-2]["after"], red[0]["after"])
+        self.assertEqual(len(red[-1]["retires"]), 30)
+        self.assertNotIn("SilphCo7F/rival-silph", red[-1]["retires"])
+        self.assertNotIn("SilphCo7F/gift-lapras", red[-1]["retires"])
         # Matching inventory alone cannot authorize a retirement policy.
         with self.assertRaisesRegex(DataError, "headers"):
             retirement_audit(list(entries.values()), {"scripts/PewterGym.asm": ""}, "red")
+
+    def test_authenticated_tree_cache(self):
+        root = Path(__file__).resolve().parents[1]
+        original = json.loads((root / ".local/story-source" / REVISION / "tree.json").read_text())
+        with tempfile.TemporaryDirectory() as cache:
+            source = Source(cache, True)
+            with patch("tools.story_data.urllib.request.urlopen",
+                       return_value=io.BytesIO(json.dumps(original).encode())):
+                fetched = source.paths()
+            offline = Source(cache, False)
+            self.assertEqual(fetched, offline.paths())
+            self.assertEqual(source.blobs, offline.blobs)
+            destination = Path(cache) / REVISION / "tree.json"
+            path = "data/pokemon/base_stats/bulbasaur.asm"
+            file = Path(cache) / REVISION / path
+            with self.assertRaisesRegex(DataError, "Missing cached source"):
+                offline.get(path)
+            file.parent.mkdir(parents=True)
+            factual = (root / ".local/story-source" / REVISION / path).read_text()
+            self.assertIn("45,  49,  49,  45,  65", factual)
+            file.write_text(factual.replace("45,  49,  49,  45,  65", "45,  50,  49,  45,  65"))
+            entry = next(e for e in original["tree"] if e["path"] == path)
+            raw = file.read_bytes()
+            entry["sha"] = hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest()
+            destination.write_text(json.dumps(original))
+            with self.assertRaisesRegex(DataError, "digest mismatch"):
+                offline.paths()
+            self.assertEqual(offline.blobs, {})
+            destination.unlink()
+            with patch("tools.story_data.urllib.request.urlopen",
+                       return_value=io.BytesIO(json.dumps(original).encode())):
+                with self.assertRaisesRegex(DataError, "digest mismatch"):
+                    source.paths()
+            self.assertFalse(destination.exists())
+            original["tree"].remove(entry)
+            destination.write_text(json.dumps(original))
+            with self.assertRaisesRegex(DataError, "digest mismatch"):
+                offline.paths()
+            original["sha"] = "0" * 40
+            destination.write_text(json.dumps(original))
+            with self.assertRaisesRegex(DataError, "Wrong source tree"):
+                offline.paths()
+            destination.unlink()
+            with self.assertRaisesRegex(DataError, "Missing tree cache"):
+                offline.paths()
+            with patch("tools.story_data.urllib.request.urlopen",
+                       return_value=io.BytesIO(json.dumps(original).encode())):
+                with self.assertRaisesRegex(DataError, "Wrong source tree"):
+                    source.paths()
+            self.assertFalse(destination.exists())
 
     def test_construct_every_species_level(self):
         for mon in self.data["species"]:

@@ -10,6 +10,7 @@ import re
 import urllib.request
 
 REVISION = "af519899719f0754965776faac0e836a3b906e6d"
+TREE_DIGEST = "9a47f4f79fd8746ef3d87f4d3100743c2cbd4e54302b3114c64dc1f6e23913aa"
 RAW = f"https://raw.githubusercontent.com/pret/pokered/{REVISION}/"
 TREE = f"https://api.github.com/repos/pret/pokered/git/trees/{REVISION}?recursive=1"
 GROWTH = {"GROWTH_MEDIUM_FAST": 0, "GROWTH_FAST": 1,
@@ -119,6 +120,8 @@ class Source:
         allowed = (path in {"constants/pokemon_constants.asm",
                            "constants/pokedex_constants.asm",
                            "constants/battle_constants.asm",
+                           "constants/toggle_constants.asm",
+                           "data/maps/toggleable_objects.asm",
                            "data/pokemon/evos_moves.asm", "data/pokemon/mew.asm",
                            "data/moves/moves.asm", "data/trainers/parties.asm",
                            "data/trainers/special_moves.asm", "home/move_mon.asm",
@@ -146,20 +149,38 @@ class Source:
         return data.decode("utf-8")
 
     def paths(self):
+        self.blobs = {}
         destination = self.root / "tree.json"
         if not destination.exists():
             require(self.fetch, "Missing tree cache; run with --fetch")
             request = urllib.request.Request(TREE, headers={"User-Agent": "stadium-story-audit"})
             with urllib.request.urlopen(request, timeout=45) as response:
                 data = json.load(response)
-            require(not data.get("truncated"), "Truncated upstream tree")
+            self.verify_tree(data)
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(json.dumps(data), encoding="utf-8")
         data = json.loads(destination.read_text(encoding="utf-8"))
-        require(data["sha"] == REVISION and not data.get("truncated"), "Wrong source tree")
+        self.verify_tree(data)
         self.blobs = {entry["path"]: entry["sha"] for entry in data["tree"]
                       if entry["type"] == "blob"}
         return [entry["path"] for entry in data["tree"] if entry["type"] == "blob"]
+
+    @staticmethod
+    def verify_tree(data):
+        require(data.get("sha") == REVISION and data.get("truncated") is False,
+                "Wrong source tree")
+        entries = data.get("tree")
+        require(isinstance(entries, list) and all(
+            isinstance(e, dict) and all(isinstance(e.get(key), str)
+                                       for key in ("path", "mode", "type", "sha"))
+            for e in entries), "Invalid source tree entries")
+        require(len({e["path"] for e in entries}) == len(entries),
+                "Duplicate source tree path")
+        normalized = {"sha": data["sha"], "tree": sorted(
+            (e["path"], e["mode"], e["type"], e["sha"]) for e in entries)}
+        raw = json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("ascii")
+        require(hashlib.sha256(raw).hexdigest() == TREE_DIGEST,
+                "Source tree digest mismatch")
 
 
 def moves(text):
@@ -326,6 +347,58 @@ def object_battles(text, version):
             yield line_number, fields[5], fields[6], number(fields[7])
 
 
+def silph_retirement(encounters, scripts, toggle_constants, toggle_objects, version):
+    mapping = {}
+    for floor in range(2, 12):
+        area = f"SilphCo{floor}F"
+        map_id = f"SILPH_CO_{floor}F"
+        def block(text, directive):
+            match = re.search(rf"^\s*{directive} {map_id}\s*(?:;[^\n]*)?\n"
+                              rf"(.*?)(?=^\s*{directive} |\Z)", text, re.M | re.S)
+            require(match is not None, f"Missing toggle map {map_id}")
+            return list(clean(match[1], version))
+        constants_rows = block(toggle_constants, "toggle_consts_for")
+        object_rows = block(toggle_objects, "toggleable_objects_for")
+        keys = [code.split()[1] for _, code in constants_rows if code.startswith("const ")]
+        objects = []
+        for _, code in object_rows:
+            match = re.fullmatch(r"toggle_object_state (\w+),\s*(ON|OFF)", code)
+            require(match is not None, f"Unsupported Silph toggle row: {code}")
+            objects.append(match[1])
+        require(len(keys) == len(objects) and keys and len(set(keys)) == len(keys),
+                f"Changed toggle mapping in {area}")
+        for key, obj in zip(keys, objects):
+            mapping[key] = f"{area}/TEXT_{obj}"
+    path = "scripts/SilphCo11F.asm"
+    text = scripts[path]
+    match = re.search(r"^\.HideToggleableObjectIDs:\n(.*?)^\s*db -1", text, re.M | re.S)
+    require(match is not None, "Missing Silph retirement list")
+    tokens = [(line, code[3:]) for line, code in clean(match[1], version)
+              if code.startswith("db ")]
+    require(len(tokens) == 40 and len(set(token for _, token in tokens)) == 40,
+            "Changed Silph hide list")
+    by_id = {e["id"]: e for e in encounters}
+    trigger = "SilphCo11F/TEXT_SILPHCO11F_GIOVANNI"
+    retired = []
+    for _, token in tokens:
+        if token.startswith("TOGGLE_SILPH_"):
+            require(token in mapping, f"Unknown Silph toggle {token}")
+            identifier = mapping[token]
+            require(identifier in by_id and by_id[identifier]["kind"] == "trainer",
+                    f"Silph hide list is not a trainer: {identifier}")
+            if identifier != trigger:
+                retired.append(identifier)
+    require(len(retired) == 30, "Changed Silph retired trainer count")
+    rows = list(clean(text, version))
+    call_lines = [line for line, code in rows if code == "call SilphCo11FTeamRocketLeavesScript"]
+    require(len(call_lines) == 1 and trigger in by_id, "Changed Silph retirement call")
+    return {"after": trigger, "retires": sorted(retired), "source": path,
+            "line": call_lines[0], "operation": "HideObject",
+            "toggles": [token for _, token in tokens],
+            "mapping_sources": ["constants/toggle_constants.asm",
+                                "data/maps/toggleable_objects.asm"]}
+
+
 def retirement_audit(encounters, scripts, version):
     """Check bounded retirement facts, not general assembly control flow."""
     rules = []
@@ -411,7 +484,8 @@ def audit(source):
             re.search(r"SPDSPCDV_TRAINER EQU \$88\b", dvs), "Changed trainer DVs")
     encounters = {}
     scripts = set(area for area, _, _, _ in RIVALS) | set(area for area, _, _, _ in GIFTS)
-    scripts |= {"PokemonTower6F", "MtMoonB2F", "Museum1F", "Museum2F"}
+    scripts |= {"PokemonTower6F", "MtMoonB2F", "Museum1F", "Museum2F",
+                "SSAnneCaptainsRoom", "VermilionDock"}
     used = set()
     for version in ("red", "blue"):
         output = []
@@ -496,6 +570,8 @@ def audit(source):
                     f"Gift species/level changed in {area}")
         else:
             require(re.search(rf"ld c, {level}\b", text), f"Gift level changed in {area}")
+    toggle_constants = source.get("constants/toggle_constants.asm")
+    toggle_objects = source.get("data/maps/toggleable_objects.asm")
     all_parties = {(key, index + 1) for key, entries in groups.items()
                    for index in range(len(entries))}
     return {"schema": 1, "revision": REVISION, "species": list(sorted(species.values(), key=lambda e: e["id"])),
@@ -503,7 +579,9 @@ def audit(source):
             "unreferenced_parties": [list(entry) for entry in sorted(all_parties - used)],
             "script_event_evidence": evidence,
             "retirement_audit": {
-                version: retirement_audit(entries, script_texts, version)
+                version: retirement_audit(entries, script_texts, version) +
+                         [silph_retirement(entries, script_texts, toggle_constants,
+                                           toggle_objects, version)]
                 for version, entries in encounters.items()},
             "availability_audit_complete": False,
             "availability_note": "Map/script encounter inventory is not a verified traversal/retirement graph.",
