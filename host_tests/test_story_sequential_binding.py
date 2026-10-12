@@ -62,11 +62,21 @@ class SequentialBindingTests(unittest.TestCase):
             changed = words.copy(); changed[index] += 4
             with self.assertRaises(HarnessError):
                 bind_words(host, keys, changed)
+        for shift in (340, 4, -4, 0):
+            with self.subTest(shift=shift):
+                changed = expected_words(host, keys)
+                for index, (group, key) in enumerate(keys):
+                    if group == "control" and (key == "size" or key.startswith("sequential_")):
+                        changed[index] += shift
+                with self.assertRaises(HarnessError):
+                    bind_words(host, keys, changed)
 
     def test_real_elf_parser_layout_rom_and_residency_refusals(self):
-        abi = dict(pointer_size=4, control={"size": 4104}, run={"size": 40})
+        abi = dict(pointer_size=4, control={"size": 3768}, run={"size": 40})
         keys = [("control", "size"), ("run", "size"), ("", "pointer_size")]
-        raw, rom = fixture(expected_words(abi, keys), 4104, 40)
+        words = expected_words(abi, keys)
+        words[0] = 4104
+        raw, rom = fixture(words, 4104, 40)
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "synthetic.elf"
             path.write_bytes(raw)

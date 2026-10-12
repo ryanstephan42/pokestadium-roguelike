@@ -132,8 +132,9 @@ python3 -m tools.rltest.bind_story_sequential \
 
 It checks source/package hashes, ELF32/MSB/MIPS linked type, symbol extents,
 ROM-loaded compiled layout/pointer bytes, resident control/run placement and
-map agreement. Compiled target offsets override only a uniform control-tail
-shift caused by the native lifetime prefix; all pure/UI/mon/event offsets and
+map agreement. Compiled target offsets override only the reviewed **+336**
+control-tail shift with HOST size **3,768** and native size **4,104**; other
+uniform shifts (including zero) are refused. All pure/UI/mon/event offsets and
 the UI pointer position must agree. Use its **bound `abi`**, not the HOST schema.
 IDO object witnesses and synthetic ELF fixtures are preparation, not final-link
 proof. This binder is only a layout binding, not the complete catalog/build

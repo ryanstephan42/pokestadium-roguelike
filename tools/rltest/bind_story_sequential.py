@@ -48,13 +48,16 @@ def expected_words(abi, keys):
 def bind_words(host, keys, words):
     """Native lifetime prefix includes real OS types, unlike the HOST seams.
 
-    Only a uniform shift of the sequential control tail is permitted. Every
+    Only the reviewed +336 shift of the sequential control tail is permitted. Every
     pure payload/mon/event offset and the UI pointer offset must match.
     """
     require(len(words) == len(keys), "Sequential native witness count mismatch")
     native = copy.deepcopy(host)
     values = dict(zip(keys, words))
     shift = values[("control", "size")] - host["control"]["size"]
+    require(host["control"]["size"] == 3768 and
+            values[("control", "size")] == 4104 and shift == 336,
+            "Sequential control ABI requires reviewed HOST3768/native4104 shift+336")
     for (group, key), actual, expected in zip(keys, words, expected_words(host, keys)):
         allowed = (group == "control" and (key == "size" or key.startswith("sequential_")))
         require(actual == expected + (shift if allowed else 0),
