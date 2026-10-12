@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 
-from tools.rltest.frontend import Frontend, HarnessError, Variable, _png
+from tools.rltest.frontend import Frontend, HarnessError, Variable, ANGRYLION_THREADS_OPTION, _png
 from tools.rltest.save_roundtrip import find_pak, save_ram
 from tools.rltest.story_probe import decode_mon, story_owned_changes
 from tools.rltest.story_sequential import ACTIVE, BATTLE, SequentialLedger, capture, field, require
@@ -149,6 +149,8 @@ class LeasedFrontend(Frontend):
         require(values and default in values, f"Invalid registered core option: {key}")
         self.registered_options[key] = dict(values=values, default=default,
                                             labels=labels, description=description)
+        if key == ANGRYLION_THREADS_OPTION:
+            self._angrylion_threads_supported = True
         if "disable" in (key + " " + description).lower() and (
                 "extra" in key.lower() or "expansion pak" in description.lower()):
             enabled = [value for value, label in zip(values, labels)

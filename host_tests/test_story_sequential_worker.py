@@ -296,6 +296,9 @@ class SequentialWorkerTests(unittest.TestCase):
         emu.register_option("mupen64plus-DisableExtraMem", ["True", "False"], "True",
                             ["Enabled", "Disabled"], "Disable Expansion Pak")
         self.assertEqual(emu.options["mupen64plus-DisableExtraMem"], "False")
+        emu.register_option(worker.ANGRYLION_THREADS_OPTION, ["1", "4"], "1",
+                            ["One", "Four"], "Angrylion threads")
+        self.assertTrue(emu._angrylion_threads_supported)
         emu.verify_options()
         emu.requested_options.add("invented")
         with self.assertRaisesRegex(HarnessError, "Unregistered"):
