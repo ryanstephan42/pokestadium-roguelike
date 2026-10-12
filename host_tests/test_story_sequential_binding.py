@@ -3,7 +3,7 @@ import struct
 import tempfile
 import unittest
 
-from tools.rltest.bind_story_sequential import layout_keys, expected_words, verify_layout, bind_words, bind_boot_symbols
+from tools.rltest.bind_story_sequential import layout_keys, expected_words, verify_layout, bind_words, bind_boot_symbols, bind_service_lifecycle
 from tools.rltest.seal_story_current_six import Elf
 from tools.rltest.frontend import HarnessError
 
@@ -48,6 +48,24 @@ def fixture(words, control_size, run_size):
 
 
 class SequentialBindingTests(unittest.TestCase):
+    def test_service_failure_witness_requires_linked_resident_size(self):
+        class Symbols:
+            address, size, constant = 0x80002000, 40, b"\0\0\0\x28"
+            def symbol(self, name):
+                return ((0, self.address, self.size) if name == "gScServiceLifecycle"
+                        else (0, 0x80003000, 4))
+            def read(self, address, size):
+                return self.constant
+        elf = Symbols()
+        self.assertEqual(bind_service_lifecycle(elf),
+                         dict(address=0x80002000, size=40, failed_offset=36))
+        for address, size, constant in ((0x80400000, 40, b"\0\0\0\x28"),
+                                        (0x80002000, 36, b"\0\0\0\x28"),
+                                        (0x80002000, 40, b"\0\0\0\x24")):
+            elf.address, elf.size, elf.constant = address, size, constant
+            with self.assertRaises(HarnessError):
+                bind_service_lifecycle(elf)
+
     def test_boot_memory_symbol_comes_from_exact_elf(self):
         class Symbols:
             memory = 0x80000318

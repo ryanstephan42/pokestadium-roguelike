@@ -187,6 +187,21 @@ class BootThreadTests(unittest.TestCase):
                 scenario.battle_action()
         self.assertEqual(presses, ["N64_A", "N64_A"])
 
+    def test_service_fail_stop_is_reported_without_waiting_for_frame_cap(self):
+        scenario = object.__new__(worker.Scenario)
+        raw = bytes(36) + (1).to_bytes(4, "big")
+        scenario.abi = {"native_service": dict(address=0x80001000, size=40,
+                                              failed_offset=36)}
+        scenario.emu = types.SimpleNamespace(read_u32=lambda _: worker.STORY_STATE,
+                                             read=lambda address, size: raw)
+        snapshots = []
+        scenario.progress = types.SimpleNamespace(details={},
+                                                  persist=snapshots.append)
+        with self.assertRaisesRegex(HarnessError, "callable service fail-stopped"):
+            scenario.observe()
+        self.assertEqual(scenario.progress.details["service_lifecycle"], raw.hex())
+        self.assertEqual(snapshots, [scenario.emu])
+
     def test_first_transform_witness_survives_cap_without_claiming_completion(self):
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory)

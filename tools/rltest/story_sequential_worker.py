@@ -350,6 +350,9 @@ def verify_candidate(seal_path, package, binding_path, expected_seal_sha):
             "list" in binding["abi"] and "labels" in binding["abi"]["ui"] and
             "native_lifecycle" in binding,
             "Worker requires final bound menu witnesses")
+    require(binding.get("native_service", {}).get("size") == 40 and
+            binding["native_service"].get("failed_offset") == 36,
+            "Worker requires ELF-bound service fail-stop witness")
     require(binding.get("boot_symbols", {}).get("osMemSize") == 0x80000318,
             "Worker requires ELF-bound boot symbols")
     config = seal["configuration"]
@@ -538,6 +541,15 @@ class Scenario:
     def observe(self):
         if self.emu.read_u32("gCurrentGameState") != STORY_STATE:
             return
+        service = self.abi.get("native_service")
+        if service:
+            raw = self.emu.read(service["address"], service["size"])
+            failed = int.from_bytes(raw[service["failed_offset"]:service["failed_offset"] + 4],
+                                    "big")
+            if self.progress:
+                self.progress.details["service_lifecycle"] = raw.hex()
+                self.progress.persist(self.emu)
+            require(failed == 0, "Native callable service fail-stopped; see service_lifecycle")
         row = capture(self.emu, self.abi, decode_mon)
         if self.ledger:
             self.ledger.accept(row)
@@ -816,6 +828,7 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
     abi = binding["abi"]
     abi["native_run_address"] = binding["binding"]["run"]
     abi["native_lifecycle"] = binding.get("native_lifecycle")
+    abi["native_service"] = binding.get("native_service")
     config = seal["configuration"]
     require(digest(args.core.read_bytes()) == args.core_sha256,
             "Core differs from approved external pin")

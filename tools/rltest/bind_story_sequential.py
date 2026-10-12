@@ -183,6 +183,7 @@ def main():
     result = dict(scope="linked-layout binding only; not catalog/heap/fence/Pak or execution acceptance",
                   binding=bound, abi=native_abi, package_sha256=hashlib.sha256(raw).hexdigest(),
                   native_lifecycle=native_lifecycle,
+                  native_service=bind_service_lifecycle(elf),
                   boot_symbols=bind_boot_symbols(elf),
                   elf_sha256=hashlib.sha256(args.elf.read_bytes()).hexdigest(),
                   map_sha256=hashlib.sha256(args.map.read_bytes()).hexdigest(),
@@ -209,6 +210,16 @@ def bind_boot_symbols(elf):
     require(all(0x80000000 <= address < 0x80400000 for address in addresses.values()),
             "Boot witness outside resident lower RAM")
     return addresses
+
+
+def bind_service_lifecycle(elf):
+    symbol = elf.symbol("gScServiceLifecycle")
+    require(symbol[2] == 40 and 0x80000000 <= symbol[1] <= 0x80400000 - 40,
+            "Service lifecycle witness is not resident or has unexpected size")
+    size = elf.symbol("gScServiceLifecycleSize")
+    require(size[2] == 4 and elf.read(size[1], 4) == b"\0\0\0\x28",
+            "Compiled service lifecycle size differs")
+    return dict(address=symbol[1], size=40, failed_offset=36)
 
 
 if __name__ == "__main__":

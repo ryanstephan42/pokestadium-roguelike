@@ -543,3 +543,32 @@ was set. It now presses calibrated A only at actual move/party dialog modes,
 without setting an accepted move marker. Read-only diagnostics retain the
 bounded 0x8C-byte dialog record. This is a source-derived stall hypothesis
 until a new run verifies the boundary; no historical report is rewritten.
+
+Run23 disproved the input hypotheses: it capped at 18,000 frames/403.087
+seconds, with exactly the same stopped native state and zero error dialog.
+Its aggregate report SHA is
+`2cdea388ec72ff04d10392b4c8e05c3ca9d60073f18f83163f6ee5f79ae6a1a7`.
+Exact candidate ELF resolution places the game thread at `osStopThread+0x7c`;
+retained stack addresses include `sc_service_require`, `sc_service_reject`
+and `sc_ma_fail`. The runner counter remains 0x1d19 across runs21-23.
+This is a deliberate callable-service fail-stop, not a frontend/input wait.
+
+Onix's live flag `unk_4C=0x01` enters the normal forced Bide branch of
+`func_8430DFCC`, which calls `func_8430DBA0`. Its story hook rejects the
+staged choice and then unconditionally calls `sc_service_require(0)`.
+No further input-only run is warranted. The proposed correction is to retain
+fail-stop on failed rollback but proceed through the original native forced
+path after verified rollback; that guard change has been sent to the
+coordinator for a decision and is not implemented in this diagnostic change.
+
+The existing two-phase HOST/sanitizer/IDO suite now additionally proves that
+rejecting a staged decision with Bide's flag present preserves the native
+actor and original enemy bank, retires its lock and refuses replay. Existing
+tampered-state refusal tests remain intact. This establishes the rollback
+prerequisite, not native acceptance of the proposed branch.
+
+The observer now binds the resident 40-byte `gScServiceLifecycle` against the
+exact ELF symbol size and compiled size constant. It atomically records the
+witness and immediately reports a nonzero failed flag rather than spending
+the rest of a reservation on a stopped game thread. This read-only failure
+diagnostic does not relax runtime guards or mark Transform/restoration PASS.
