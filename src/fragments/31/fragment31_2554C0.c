@@ -67,8 +67,14 @@ void func_81000420(s32 arg0, DisplayListState* state) {
     DisplayListAddresses* addresses;
     u8 temp_v1;
 
+#ifndef ROGUELIKE
     temp_v1 = func_800325B4();
+#endif
     if (arg0 == 2) {
+#ifdef ROGUELIKE
+        /* Phase-0 geo import has no bound renderer actor; read it only when drawing. */
+        temp_v1 = func_800325B4();
+#endif
         addresses = state->addresses;
         gfx = func_80005F5C(0x140);
         state->gfx = gfx;
