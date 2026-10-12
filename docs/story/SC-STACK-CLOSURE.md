@@ -132,7 +132,10 @@ in SC/AI ROM/size immediates; unchanged SC objects are identical modulo relocate
 (no target lies in a changed object); 0 INDIRECT/UNRESOLVED/CROSS/MISSING over 587 functions.
 
 Frames (N): wrappers sc_bridge_begin 40, sc_state_valid 24, sc_new 24, sc_save_decode 32,
-sc_ui_input 24; bodies 32 / 736 / 80 / 72 / 24 (sc_state_valid body keeps other locals).
+sc_ui_input 24; bodies (wrapper `jal` target, prologue) anon_8f903300 32 / anon_8f904268 736 /
+anon_8f900868 80 / anon_8f904c58 72 / anon_8f907884 64 (sc_state_valid body keeps other locals).
+The sc_ui_input wrapper also calls `report()` (anon_8f9065c0, 24) on the busy path; the sealed
+`out-frames-N.txt` mislabels that as the body — the closure outputs follow the real callees.
 
 | Entry | C | N |
 |---|---|---|
