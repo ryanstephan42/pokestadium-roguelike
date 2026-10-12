@@ -468,6 +468,10 @@ def calibrate(emu):
         finally:
             apply_candidate(emu, binding, False)
         emu.step(2)
+        if getattr(emu, "progress", None):
+            emu.progress.details.setdefault("calibration_observations", []).append(
+                dict(binding=binding, pressed=sorted(observed), frame=emu.frame))
+            emu.progress.persist(emu)
         for name, mask in masks.items():
             if observed == {mask} and name not in result:
                 result[name] = binding
@@ -573,6 +577,13 @@ class Scenario:
                 finally:
                     self.emu.release("START")
             self.emu.step(1)
+        # State2 is set before fragment36 loads assets/fades and starts polling.
+        self.boundary = "title-neutral-settle"
+        if self.progress:
+            self.progress.mark(self.boundary, self.emu)
+        self.emu.step(120)
+        require(self.emu.read_u32("gCurrentGameState") == 2,
+                "Title left during neutral pre-calibration settling")
 
     def press(self, name):
         if self.progress:

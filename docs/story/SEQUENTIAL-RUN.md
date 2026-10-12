@@ -353,3 +353,9 @@ Story-only linking also defers the adjacent symbol-loaded `_6EB340`/
 adjacency are preserved because fragment28's matching assembly uses the
 second segment's start as the first segment's end. RAM reservations and
 fixed GB-Tower/model ROM offsets do not change.
+
+The repaired image first reached title state2 in run3, then refused incomplete
+C-button calibration. State2 precedes title asset loading/fade and its
+30-tick input gate. The worker now adds 120 neutral counted frames before
+calibration and persists each candidate's observed pressed-bit set. This is
+a bounded frontend timing correction, not an assumed C-button mapping.

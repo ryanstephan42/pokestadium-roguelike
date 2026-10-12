@@ -280,6 +280,7 @@ class SequentialWorkerTests(unittest.TestCase):
         scenario.emu, scenario.progress = Intro(), None
         scenario.boot_to_title()
         self.assertEqual(scenario.emu.state, 2)
+        self.assertEqual(scenario.emu.frame, 243)
         self.assertFalse(any(scenario.emu.held))
 
     def test_real_frontend_constructor_frame_is_leased_before_run(self):
