@@ -110,12 +110,84 @@ def wait_bridge_boundary(emu, directory, label, boundary, frames):
         raise
 
 
+CURRENT_STORY_ABI = {
+    "gScProbeStateSize": 648, "gScProbeSnapshotSize": 652,
+    "gScProbeMonSize": 68, "gScProbePartyOffset": 168,
+    "gScProbePartyCountOffset": 21, "gScProbeInventoryOffset": 644,
+    "gScProbeSpentOffset": 645,
+}
+CURRENT_SIX_ABI = {
+    "gScSixPrecommitSize": 648, "gScSixCombatSize": 732,
+    "gScSixCombatMemberSize": 732, "gScSixCombatMemberOffset": 0,
+    "gScSixPrecommitOffset": 0, "gScSixBridgeStorageSize": 736,
+    "gScSixProgressStorageSize": 416, "gScSixBridgeViewsOffset": 0,
+    "gScSixTerminalOffset": 0, "gScSixEventOffset": 0,
+    "gScSixControlSize": 20, "gScSixEventSize": 416,
+    "gScSixTerminalSize": 696, "gScSixLaunchSize": 828,
+    "gScSixLaunchPlayerOffset": 12, "gScSixLaunchEnemyOffset": 420,
+}
+
+
+def verify_current_story_abi(emu, six=False):
+    dimensions = {**CURRENT_STORY_ABI, **(CURRENT_SIX_ABI if six else {})}
+    for name, expected in dimensions.items():
+        require(emu.read_u32(name) == expected, f"Current story compiled ABI mismatch: {name}")
+    require(ct.sizeof(Mon) == 68, "Current host Mon ABI mismatch")
+
+
+def read_exact(emu, address, size):
+    raw = emu.read(address, size)
+    require(len(raw) == size, f"Truncated story read: {address} requested {size}, got {len(raw)}")
+    return raw
+
+
+def read_service_lifecycle(emu):
+    require(emu.read_u32("gScProbeServiceProfile") == 1 and
+            emu.read_u32("gScServiceLifecycleSize") == 40,
+            "Two-phase service profile/lifecycle ABI mismatch")
+    fields = ("starts", "ready", "drains", "revokes", "retires", "scope_generation",
+              "module_generation", "pending", "active", "failed")
+    return dict(zip(fields, struct.unpack(">10I", read_exact(emu, "gScServiceLifecycle", 40))))
+
+
+def verify_current_six_package(package, rom, map_path):
+    package = Path(package)
+    manifest_path = package / "manifest.json"
+    require(manifest_path.is_file(), "Six natural requires a sealed current Moon fixture/codec package")
+    manifest = json.loads(manifest_path.read_text())
+    require(manifest["abi"] == {**CURRENT_STORY_ABI, **CURRENT_SIX_ABI} and
+            manifest["catalog_identity"] ==
+            "cc2fc13257f1e82205661a8fb282cddc0257f3f8a261a48a2650e29c45a4ee83" and
+            manifest["base_identity"] ==
+            "42abbcfced4b4e824b8495b0579b0b443d14715001e85d5700588b7a534eb42e",
+            "Six package ABI/catalog identity mismatch")
+    for path, key in ((Path(rom), "rom_sha256"), (Path(map_path), "map_sha256"),
+                      (Path(map_path).parent / "story/sc_data.c", "catalog_source_sha256"),
+                      (Path(map_path).parent / "story/data.json", "catalog_data_sha256")):
+        require(hashlib.sha256(path.read_bytes()).hexdigest() == manifest[key],
+                f"Six package candidate binding mismatch: {key}")
+    for name in ("codec", "sc_data.c", "data.json", "checkpoint.sc01", "host-proof.jsonl"):
+        require(hashlib.sha256((package / name).read_bytes()).hexdigest() ==
+                manifest["files"][name], f"Six package file hash mismatch: {name}")
+    require(manifest["files"]["sc_data.c"] == manifest["catalog_source_sha256"] and
+            manifest["files"]["data.json"] == manifest["catalog_data_sha256"] and
+            manifest["sources"], "Six package catalog/source binding missing")
+    for name, digest in manifest["sources"].items():
+        source = (ROOT / name).resolve()
+        require(source.is_relative_to(ROOT.resolve()), "Six package source outside workspace")
+        require(hashlib.sha256(source.read_bytes()).hexdigest() == digest,
+                f"Six package source hash mismatch: {name}")
+    return manifest
+
+
 def decode_party(emu, result, allow_empty=False):
+    require(result["state_size"] == 648, "Current story resident size mismatch")
+    verify_current_story_abi(emu, six=has_six_roles(emu))
     require(emu.read_u32("gScProbeMonSize") == ct.sizeof(Mon), "Story party ABI mismatch")
     offset = emu.read_u32("gScProbePartyOffset")
     count_offset = emu.read_u32("gScProbePartyCountOffset")
     require(0 <= count_offset < offset < result["state_size"], "Story resident offsets mismatch")
-    raw = emu.read(result["state_address"], result["state_size"])
+    raw = read_exact(emu, result["state_address"], result["state_size"])
     count = raw[count_offset]
     require((0 if allow_empty else 1) <= count <= 6 and
             offset + count * ct.sizeof(Mon) <= result["state_size"],
@@ -1039,6 +1111,8 @@ def phase(args):
     if args.phase == "six_natural":
         require(not any(directory.glob("six_natural-*")),
                 "Six natural requires a new output; existing evidence must not be overwritten")
+        six_package = Path(args.map).parent / "story/current-six"
+        six_manifest = verify_current_six_package(six_package, args.rom, args.map)
     expected_reload = None
     if args.phase == "ember_reload":
         require(args.reload_source is not None, "Ember reload requires immutable --reload-source")
@@ -1088,12 +1162,17 @@ def phase(args):
             data = (Path(args.map).parent / "story/data.json").read_bytes()
             (directory / "six-data.json").write_bytes(data)
             provenance["six_data_sha256"] = hashlib.sha256(data).hexdigest()
-            require((ROOT / "build/story/test_story_ember").is_file(),
-                    "Build existing generic completed-state codec validator before six natural")
+            (directory / "six-current-manifest.json").write_text(
+                json.dumps(six_manifest, indent=2) + "\n")
+            (directory / "six-current-codec").write_bytes((six_package / "codec").read_bytes())
+            (directory / "six-current-codec").chmod(0o700)
         provenance["save_source_sha256"] = hashlib.sha256(
             (directory / "save-ram.bin").read_bytes()).hexdigest()
         for name in ("six-host-proof.jsonl", "six-checkpoint.sc01"):
-            data = (ROOT / "build/story" / name).read_bytes()
+            source = (six_package / ("host-proof.jsonl" if name == "six-host-proof.jsonl"
+                                     else "checkpoint.sc01")) if args.phase == "six_natural" else (
+                                         ROOT / "build/story" / name)
+            data = source.read_bytes()
             (directory / name).write_bytes(data)
             provenance[name + "_sha256"] = hashlib.sha256(data).hexdigest()
     (directory / f"{args.phase}-provenance.json").write_text(

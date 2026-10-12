@@ -78,7 +78,7 @@ class StoryHarnessTests(unittest.TestCase):
         data = dict(party=[dict(learn=[]) for _ in range(6)],
                     enemy=[dict(base=[40, 80, 100, 20, 30], yield_=86)] * 2,
                     levels=[12, 14], pp=[0] * 166)
-        state = bytearray(644)
+        state = bytearray(648)
         control = dict(events=0, resumes=0, pause_id=0)
         initial = dict(state=bytes(state), party=party, control=control, machine=None)
         after, _, _ = awarded(party, data["enemy"][0], 12, 1, data["party"])
@@ -109,7 +109,7 @@ class StoryHarnessTests(unittest.TestCase):
         from tools.rltest import story_probe
         from tools.rltest.story_six_natural import SixLedger
         _, party, _ = story_probe.six_expected(Path("build/story/six-host-proof.jsonl"))
-        raw = bytearray(644); raw[26] = 3; raw[27:29] = bytes([52, 55])
+        raw = bytearray(648); raw[26] = 3; raw[27:29] = bytes([52, 55])
         previous = dict(state=bytes(raw), party=party, control=dict(events=1, resumes=0, pause_id=1),
                         machine=None)
         current = copy.deepcopy(previous)
@@ -159,31 +159,54 @@ class StoryHarnessTests(unittest.TestCase):
                 struct.pack_into(">H", raw, start + 20 + j * 2, mon["stat_exp"][j])
                 struct.pack_into(">H", raw, start + 38 + j * 2, mon["current_stats"][j])
         emu = Mock()
-        sizes = dict(gScSixTerminalSize=696, gScSixCombatSize=732, gScSixLaunchSize=828,
-                     gScSixLaunchPlayerOffset=12, gScSixLaunchEnemyOffset=420)
+        sizes = {**story_probe.CURRENT_STORY_ABI, **story_probe.CURRENT_SIX_ABI}
         emu.read_u32.side_effect = sizes.__getitem__
         launch = bytearray(828)
         launch[:9] = bytes([1, 6, 2] + list(reversed(range(6))))
         foes = [{**mon, "hp": 0, "fainted": 1} for mon in target]
         decoded = party + list(reversed(party)) + foes
         emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
-                                                  bytes(launch) if size == 828 else bytes(644))
+                                                  bytes(launch) if size == 828 else bytes(648))
         decoder = Mock(side_effect=decoded)
         self.assertEqual(terminal_proof(emu, decoder)["party"], party)
+        emu.read.assert_any_call("gScSixCombatStorage", 648)
+        emu.read.assert_any_call("gScSixBridgeStorage", 696)
+        emu.read.assert_any_call("gRlLastBattleResult", 828)
+        for name, expected in sizes.items():
+            emu.read.reset_mock()
+            sizes[name] = expected + 1
+            with self.assertRaises(HarnessError):
+                terminal_proof(emu, Mock(side_effect=decoded))
+            emu.read.assert_not_called()
+            sizes[name] = expected
+        buffers = {"gScSixBridgeStorage": bytes(raw), "gScSixCombatStorage": bytes(648),
+                   "gRlLastBattleResult": bytes(launch)}
+        for name, expected in buffers.items():
+            shortened = {**buffers, name: expected[:-1]}
+            emu.read.side_effect = lambda key, size, shortened=shortened: shortened[key]
+            with self.assertRaises(HarnessError):
+                terminal_proof(emu, Mock(side_effect=decoded))
+            emu.read.assert_any_call(name, len(expected))
+        for offset in (644, 645, 646, 647):
+            bad = bytearray(648); bad[offset] = 1
+            altered = {**buffers, "gScSixCombatStorage": bytes(bad)}
+            emu.read.side_effect = lambda key, size, altered=altered: altered[key]
+            with self.assertRaises(HarnessError):
+                terminal_proof(emu, Mock(side_effect=decoded))
         for offset, value in ((15, 0), (17, 5), (24 + 2, 1), (24 + 6 * 84 + 3, 1)):
             bad = bytearray(raw); bad[offset] = value
             emu.read.side_effect = lambda name, size: (bytes(bad) if size == 696 else
-                                                      bytes(launch) if size == 828 else bytes(644))
+                                                      bytes(launch) if size == 828 else bytes(648))
             with self.assertRaises(HarnessError):
                 terminal_proof(emu, Mock(side_effect=decoded))
         for offset, value in ((0, 0), (1, 5), (2, 1), (3, 0)):
             bad = bytearray(launch); bad[offset] = value
             emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
-                                                      bytes(bad) if size == 828 else bytes(644))
+                                                      bytes(bad) if size == 828 else bytes(648))
             with self.assertRaises(HarnessError):
                 terminal_proof(emu, Mock(side_effect=decoded))
         emu.read.side_effect = lambda name, size: (bytes(raw) if size == 696 else
-                                                  bytes(launch) if size == 828 else bytes(644))
+                                                  bytes(launch) if size == 828 else bytes(648))
         for slot in range(8):
             bad = copy.deepcopy(decoded); bad[6 + slot]["exp"] += 1
             with self.assertRaises(HarnessError):
@@ -199,7 +222,7 @@ class StoryHarnessTests(unittest.TestCase):
                 else:
                     setattr(record, field, value)
             return bytes(record)
-        state = bytearray(644)
+        state = bytearray(648)
         for slot, mon in enumerate(party):
             state[168 + slot * 68:236 + slot * 68] = encoded(mon)
         for slot, mon in enumerate(list(reversed(party))):
@@ -257,7 +280,7 @@ class StoryHarnessTests(unittest.TestCase):
         from tools.rltest import story_probe
         proof = Path("build/story/six-host-proof.jsonl")
         checkpoint, party, target = story_probe.six_expected(proof)
-        raw = bytearray(644)
+        raw = bytearray(648)
         struct.pack_into(">4I", raw, 0, 42, 1441438134, 0, 1)
         struct.pack_into(">H", raw, 36, 58)
         raw[38:102] = bytes.fromhex(checkpoint["completed"])
@@ -354,12 +377,10 @@ class StoryHarnessTests(unittest.TestCase):
 
     def test_ember_reload_failed_load_captures_empty_resident_without_native_read(self):
         from tools.rltest import story_probe
-        raw = bytes(644)
-        result = dict(active=0, state_address=0x80001000, state_size=644, status=4)
+        raw = bytes(648)
+        result = dict(active=0, state_address=0x80001000, state_size=648, status=4)
         emu = Mock()
-        emu.read_u32.side_effect = lambda name: {
-            "gScProbeMonSize": 68, "gScProbePartyOffset": 168,
-            "gScProbePartyCountOffset": 21}[name]
+        emu.read_u32.side_effect = story_probe.CURRENT_STORY_ABI.__getitem__
         emu.read.return_value = raw
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.object(story_probe, "read_probe", return_value=result), \
@@ -1238,16 +1259,17 @@ class StoryHarnessTests(unittest.TestCase):
             require_checkpoint_party(party)
 
     def test_decodes_resident_party_not_mailbox_or_padding(self):
+        from tools.rltest import story_probe
         mon = Mon(species=1, level=6, exp=235, dvs=0x8889, cur_hp=17, max_hp=22, status=4)
         mon.moves[:] = [33, 45, 0, 0]
         mon.pp[:] = [7, 40, 0, 0]
         mon.max_pp[:] = [35, 40, 0, 0]
         emu = Mock()
-        emu.read_u32.side_effect = lambda symbol: {
-            "gScProbeMonSize": ctypes.sizeof(Mon), "gScProbePartyOffset": 4,
-            "gScProbePartyCountOffset": 0,
-        }[symbol]
-        raw = b"\1\0\0\0" + bytes(mon)
+        emu.read_u32.side_effect = story_probe.CURRENT_STORY_ABI.__getitem__
+        raw = bytearray(648)
+        raw[21] = 1
+        raw[168:236] = bytes(mon)
+        raw = bytes(raw)
         emu.read.return_value = raw
         result = dict(state_address=0x80100000, state_size=len(raw), hp=999)
         captured, party = decode_party(emu, result)
@@ -1260,19 +1282,19 @@ class StoryHarnessTests(unittest.TestCase):
             defined.update(range(getattr(Mon, name).offset,
                                  getattr(Mon, name).offset + ctypes.sizeof(field)))
         for byte in set(range(ctypes.sizeof(Mon))) - defined:
-            changed[4 + byte] = 0xA5
+            changed[168 + byte] = 0xA5
         emu.read.return_value = bytes(changed)
         self.assertEqual(decode_party(emu, result)[1], party)
-        changed[4 + Mon.pp.offset] = 35
+        changed[168 + Mon.pp.offset] = 35
         emu.read.return_value = bytes(changed)
         with self.assertRaisesRegex(HarnessError, "discriminating checkpoint"):
             require_checkpoint_party(decode_party(emu, result)[1])
-        changed[4 + Mon.pp.offset] = 7
-        changed[4 + Mon.status.offset] = 0
+        changed[168 + Mon.pp.offset] = 7
+        changed[168 + Mon.status.offset] = 0
         emu.read.return_value = bytes(changed)
         with self.assertRaisesRegex(HarnessError, "discriminating checkpoint"):
             require_checkpoint_party(decode_party(emu, result)[1])
-        emu.read.return_value = b"\7" + raw[1:]
+        emu.read.return_value = raw[:21] + b"\7" + raw[22:]
         with self.assertRaisesRegex(HarnessError, "bounds mismatch"):
             decode_party(emu, result)
 

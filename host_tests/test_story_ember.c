@@ -48,13 +48,18 @@ static void from_be(void *field, unsigned size) {
 
 static int validate_reload(const char *note_path, const char *state_path) {
     ScState expected;
+    RlU8 legacy_state[644];
     ScSnapshot snapshot;
     ScSaveDevice device = {NULL, reload_open, reload_read, reload_write};
     unsigned i, j;
     int status;
-    if (sizeof(expected) != 644 || sizeof(RlMon) != 68 ||
+    memset(&expected, 0, sizeof(expected));
+    if (sizeof(expected) != 648 || sizeof(RlMon) != 68 ||
+        (RlU8 *)&expected.moon_stones - (RlU8 *)&expected != sizeof(legacy_state) ||
         !read_exact(note_path, reload_note, sizeof(reload_note)) ||
-        !read_exact(state_path, &expected, sizeof(expected))) return 1;
+        !read_exact(state_path, legacy_state, sizeof(legacy_state))) return 1;
+    /* Pinned historical raw v1 ABI; appended inventory must be fabricated-free. */
+    memcpy(&expected, legacy_state, sizeof(legacy_state));
     from_be(&expected.seed, 4); from_be(&expected.rng, 4);
     from_be(&expected.milestones, 4); from_be(&expected.healing_used, 4);
     from_be(&expected.encounter, 2);
@@ -68,13 +73,87 @@ static int validate_reload(const char *note_path, const char *state_path) {
         }
     }
     status = sc_storage_load(&device, &sc_catalog, &snapshot);
-    if (status != SC_SAVE_OK || snapshot.interrupted ||
+    if (status != SC_SAVE_OK || snapshot.interrupted || snapshot.wire_version != 1 ||
         !sc_state_valid(&expected, &sc_catalog) ||
         memcmp(&expected, &snapshot.state, sizeof(expected))) {
         fprintf(stderr, "Completed reload codec/state mismatch: %d\n", status);
         return 1;
     }
-    puts("Completed reload SC01 codec/full state: OK");
+    puts("Completed historical v1/644 reload migrated to current 648-byte state: OK");
+    return 0;
+}
+
+static int read_current_state(const char *path, ScState *state) {
+    unsigned i, j;
+    if (sizeof(*state) != 648 || sizeof(ScSnapshot) != 652 || sizeof(RlMon) != 68 ||
+        (RlU8 *)&state->party - (RlU8 *)state != 168 ||
+        (RlU8 *)&state->party_count - (RlU8 *)state != 21 ||
+        (RlU8 *)&state->moon_stones - (RlU8 *)state != 644 ||
+        (RlU8 *)&state->moon_stones_spent - (RlU8 *)state != 645 ||
+        !read_exact(path, state, sizeof(*state))) return 0;
+    if (((RlU8 *)state)[646] || ((RlU8 *)state)[647]) return 0;
+    from_be(&state->seed, 4); from_be(&state->rng, 4);
+    from_be(&state->milestones, 4); from_be(&state->healing_used, 4);
+    from_be(&state->encounter, 2);
+    for (i = 0; i < 7; i++) {
+        RlMon *mon = i == 6 ? &state->offer : &state->party[i];
+        from_be(&mon->exp, 4); from_be(&mon->dvs, 2);
+        from_be(&mon->cur_hp, 2); from_be(&mon->max_hp, 2);
+        for (j = 0; j < 5; j++) {
+            from_be(&mon->stat_exp[j], 2);
+            from_be(&mon->current_stats[j], 2);
+        }
+    }
+    return 1;
+}
+
+static int validate_current_reload(const char *note_path, const char *state_path,
+                                   const char *precommit_path) {
+    ScState expected, precommit;
+    ScSnapshot snapshot;
+    ScSaveDevice device = {NULL, reload_open, reload_read, reload_write};
+    unsigned i, node;
+    int status;
+    if (!sc_catalog.graph || sc_catalog.graph->count != 388 ||
+        sc_catalog.graph->pickup_count != 5 ||
+        !sc_catalog.graph->review_identity || !sc_catalog.graph->legacy_review_identity ||
+        strcmp(sc_catalog.graph->review_identity,
+               "cc2fc13257f1e82205661a8fb282cddc0257f3f8a261a48a2650e29c45a4ee83") ||
+        strcmp(sc_catalog.graph->legacy_review_identity,
+               "42abbcfced4b4e824b8495b0579b0b443d14715001e85d5700588b7a534eb42e") ||
+        !read_exact(note_path, reload_note, sizeof(reload_note)) ||
+        !read_current_state(state_path, &expected) ||
+        !read_current_state(precommit_path, &precommit)) {
+        fputs("Current six reload ABI/catalog/input refusal\n", stderr);
+        return 1;
+    }
+    if (expected.moon_stones || expected.moon_stones_spent ||
+        precommit.moon_stones || precommit.moon_stones_spent) {
+        fputs("Current six reload unexpected stone inventory\n", stderr);
+        return 1;
+    }
+    for (i = 0; i < 5; i++) {
+        node = sc_catalog.graph->pickups[i].node;
+        if ((expected.completed[node / 8] | precommit.completed[node / 8]) &
+            (1U << (node % 8))) {
+            fputs("Current six reload unexpected stone pickup\n", stderr);
+            return 1;
+        }
+    }
+    status = sc_storage_load(&device, &sc_catalog, &snapshot);
+    if (status != SC_SAVE_OK || snapshot.interrupted || snapshot.wire_version != 2 ||
+        !sc_state_valid(&expected, &sc_catalog) ||
+        precommit.phase != SC_BATTLE || precommit.party_count != 6 ||
+        precommit.encounter != 58 || precommit.encounter_variant || precommit.learn_mask ||
+        precommit.defeated_mask != 3 ||
+        sc_finish(&precommit, &sc_catalog, SC_WIN, precommit.encounter_variant) != SC_OK ||
+        !sc_state_valid(&precommit, &sc_catalog) ||
+        memcmp(&precommit, &expected, sizeof(expected)) ||
+        memcmp(&expected, &snapshot.state, sizeof(expected))) {
+        fprintf(stderr, "Current v2/648 full-state/precommit mismatch: %d\n", status);
+        return 1;
+    }
+    puts("Current v2/648 reload and canonical full-state precommit transition: OK");
     return 0;
 }
 
@@ -120,6 +199,8 @@ int main(int argc, char **argv) {
     unsigned i, target = SC_NO_ENCOUNTER, count;
     if (argc == 4 && !strcmp(argv[1], "--validate-reload"))
         return validate_reload(argv[2], argv[3]);
+    if (argc == 5 && !strcmp(argv[1], "--validate-current-reload"))
+        return validate_current_reload(argv[2], argv[3], argv[4]);
     assert(sc_ember_checkpoint(&state, &sc_catalog, trace, NULL) == SC_OK);
     assert(sc_state_valid(&state, &sc_catalog));
     assert(state.party_count == 1 && state.rival_branch == 0);

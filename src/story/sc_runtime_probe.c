@@ -9,6 +9,10 @@ const RlU32 gScProbeCompiledSize = sizeof(gScProbe);
 const RlU32 gScProbePartyOffset = (RlU32)&((ScState *)0)->party;
 const RlU32 gScProbePartyCountOffset = (RlU32)&((ScState *)0)->party_count;
 const RlU32 gScProbeMonSize = sizeof(RlMon);
+const RlU32 gScProbeStateSize = sizeof(ScState);
+const RlU32 gScProbeSnapshotSize = sizeof(ScSnapshot);
+const RlU32 gScProbeInventoryOffset = (RlU32)&((ScState *)0)->moon_stones;
+const RlU32 gScProbeSpentOffset = (RlU32)&((ScState *)0)->moon_stones_spent;
 const RlU32 gScBridgeProbeSize = sizeof(gScBridgeProbe);
 int gScProbeActive;
 #ifdef STORY_SIX_PROBE
@@ -25,6 +29,16 @@ ScSixCombatStorage gScSixCombatStorage;
 const RlU32 gScSixEventSize = sizeof(ScSixEvent);
 const RlU32 gScSixTerminalSize = sizeof(ScSixTerminal);
 const RlU32 gScSixCombatSize = sizeof(ScSixCombatStorage);
+const RlU32 gScSixPrecommitSize = sizeof(gScSixCombatStorage.precommit);
+const RlU32 gScSixCombatMemberSize = sizeof(gScSixCombatStorage.combat);
+const RlU32 gScSixCombatMemberOffset = (RlU32)&((ScSixCombatStorage *)0)->combat;
+const RlU32 gScSixPrecommitOffset = (RlU32)&((ScSixCombatStorage *)0)->precommit;
+const RlU32 gScSixBridgeStorageSize = sizeof(gScSixBridgeStorage);
+const RlU32 gScSixProgressStorageSize = sizeof(gScSixProgressStorage);
+const RlU32 gScSixBridgeViewsOffset = (RlU32)&((ScSixBridgeStorage *)0)->views;
+const RlU32 gScSixTerminalOffset = (RlU32)&((ScSixBridgeStorage *)0)->terminal;
+const RlU32 gScSixEventOffset = (RlU32)&((ScSixProgressStorage *)0)->event;
+const RlU32 gScSixControlSize = sizeof(gScSixControl);
 const RlU32 gScSixLaunchSize = sizeof(RlLaunchResult);
 const RlU32 gScSixLaunchPlayerOffset = (RlU32)&((RlLaunchResult *)0)->player;
 const RlU32 gScSixLaunchEnemyOffset = (RlU32)&((RlLaunchResult *)0)->enemy;
@@ -45,6 +59,9 @@ const RlU32 gScProbeEmberProfile = 1;
 #endif
 #ifdef STORY_SIX_PROBE
 const RlU32 gScProbeSixProfile = 1;
+#endif
+#ifdef STORY_SERVICE_CANDIDATE
+const RlU32 gScProbeServiceProfile = 1;
 #endif
 static ScState resident;
 #ifdef STORY_SIX_PROBE

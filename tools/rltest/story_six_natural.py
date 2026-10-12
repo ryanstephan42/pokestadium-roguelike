@@ -192,15 +192,18 @@ def native_named(raw):
 
 
 def terminal_proof(emu, decode_mon):
+    from .story_probe import read_exact, verify_current_story_abi
+    verify_current_story_abi(emu, six=True)
     require(emu.read_u32("gScSixTerminalSize") == 696 and
             emu.read_u32("gScSixCombatSize") == 732, "Six terminal ABI mismatch")
-    raw = emu.read("gScSixBridgeStorage", 696)
+    raw = read_exact(emu, "gScSixBridgeStorage", 696)
     count, enemies, outcome, valid = struct.unpack_from(">4I", raw)
     require((count, enemies, outcome, valid) == (6, 2, 1, 1),
             "Six terminal raw/count/outcome proof unavailable")
     mapping = list(raw[16:22])
     require(sorted(mapping) == list(range(6)), "Six terminal compact mapping mismatch")
-    precommit = emu.read("gScSixCombatStorage", 644)
+    precommit = read_exact(emu, "gScSixCombatStorage", 648)
+    require(precommit[644:648] == bytes(4), "Six precommit inventory/padding changed")
     party = [decode_mon(precommit[168 + i * 68:236 + i * 68]) for i in range(6)]
     originals = [native_named(raw[24 + i * 84:108 + i * 84]) for i in range(8)]
     for i in range(6):
@@ -211,7 +214,7 @@ def terminal_proof(emu, decode_mon):
     require(emu.read_u32("gScSixLaunchSize") == 828 and
             emu.read_u32("gScSixLaunchPlayerOffset") == 12 and
             emu.read_u32("gScSixLaunchEnemyOffset") == 420, "Six launcher-result compiled ABI mismatch")
-    launch = emu.read("gRlLastBattleResult", 828)
+    launch = read_exact(emu, "gRlLastBattleResult", 828)
     require(list(launch[:3]) == [outcome, count, enemies] and list(launch[3:9]) == mapping,
             "Actual launcher-result outcome/count/index mismatch")
     converted = [decode_mon(launch[12 + i * 68:80 + i * 68]) for i in range(6)]
@@ -246,6 +249,14 @@ def run(emu, directory, before, probe):
     require_canonical_combat(combat, party, target, json.loads((directory / "six-data.json").read_text()))
     budget = SixBudget(emu.frame)
     terminal = None
+    service_profile = "gScProbeServiceProfile" in emu.symbols.addresses
+    service_entry = probe.read_service_lifecycle(emu) if service_profile else None
+    if service_profile:
+        require(service_entry["starts"] == service_entry["ready"] == 1 and
+                service_entry["active"] == 1 and not service_entry["failed"] and
+                all(not service_entry[key] for key in ("drains", "revokes", "retires")) and
+                service_entry["scope_generation"] and service_entry["module_generation"],
+                "Two-phase service not freshly started/ready at entry")
 
     def capture(history, label):
         nonlocal terminal
@@ -257,10 +268,12 @@ def run(emu, directory, before, probe):
                    participants=list(emu.read("gScProbeSixBridge", 7)),
                    memory=probe.memory_evidence(emu, r),
                    save_sha256=hashlib.sha256(probe.save_ram(emu)[1]).hexdigest(), machine=None)
-        row["bridge_storage_raw"] = emu.read("gScSixBridgeStorage", 736).hex()
-        row["combat_storage_raw"] = emu.read("gScSixCombatStorage", 732).hex()
-        row["event_storage_raw"] = emu.read("gScSixProgressStorage", 416).hex()
-        row["launcher_storage_raw"] = emu.read("gRlLastBattleResult", 828).hex()
+        row["service_lifecycle"] = probe.read_service_lifecycle(emu) if service_profile else None
+        probe.verify_current_story_abi(emu, six=True)
+        row["bridge_storage_raw"] = probe.read_exact(emu, "gScSixBridgeStorage", 736).hex()
+        row["combat_storage_raw"] = probe.read_exact(emu, "gScSixCombatStorage", 732).hex()
+        row["event_storage_raw"] = probe.read_exact(emu, "gScSixProgressStorage", 416).hex()
+        row["launcher_storage_raw"] = probe.read_exact(emu, "gRlLastBattleResult", 828).hex()
         row["budget"] = dict(start=budget.start, frame=emu.frame,
                              accepted_holds=dict(budget.holds), resume_ids=sorted(budget.resumed),
                              tentative_hold=label.startswith("hold-"))
@@ -342,6 +355,16 @@ def run(emu, directory, before, probe):
                 row["control"]["pause_id"] == len(budget.holds), "Incomplete six natural terminal/learning proof")
         require(terminal["party"] == row["party"], "Commit altered native/precommit party carry")
         committed = row["state"]
+        if service_profile:
+            lifecycle = row["service_lifecycle"]
+            require(all(lifecycle[key] == 1 for key in
+                        ("starts", "ready", "drains", "revokes", "retires")) and
+                    all(not lifecycle[key] for key in ("pending", "active", "failed")) and
+                    all(lifecycle[key] == service_entry[key] for key in
+                        ("scope_generation", "module_generation")),
+                    "Two-phase service terminal did not drain/revoke/retire with zero pending token")
+        require(len(committed) == 648 and committed[644:648] == bytes(4),
+                "Six terminal inventory/padding changed")
         expected_completed = bytearray(raw[38:102])
         expected_completed[58 // 8] |= 1 << (58 % 8)
         expected_retired = bytearray(raw[102:166])
@@ -358,9 +381,10 @@ def run(emu, directory, before, probe):
         note = b"".join(after[base + page * 256:base + (page + 1) * 256] for page in pages)
         note_path = directory / "six_natural-terminal-note.bin"
         note_path.write_bytes(note)
-        codec = probe.ROOT / "build/story/test_story_ember"
-        checked = subprocess.run([str(codec), "--validate-reload", str(note_path),
-                                  str(directory / "six_natural-terminal-state.bin")],
+        codec = directory / "six-current-codec"
+        checked = subprocess.run([str(codec), "--validate-current-reload", str(note_path),
+                                  str(directory / "six_natural-terminal-state.bin"),
+                                  str(directory / "six_natural-precommit-state.bin")],
                                  capture_output=True, text=True)
         (directory / "six_natural-codec.log").write_text(checked.stdout + checked.stderr)
         require(checked.returncode == 0, "Terminal SC01 codec/full-state mismatch")
