@@ -56,6 +56,9 @@ static int mon_valid(const RlMon *mon, const ScCatalog *catalog) {
     const ScSpecies *species;
     RlMon minimum;
     unsigned i;
+#ifdef SC_STORY_PACKED_MOVES
+    if (!sc_moves_packed(mon)) return 0;
+#endif
     if (!mon->species || mon->species > 151 || !mon->level || mon->level > 100 ||
         mon->fainted > 1 || mon->fainted != (mon->cur_hp == 0) ||
         !mon->max_hp || mon->cur_hp > mon->max_hp || mon->held_relic != RL_NO_SLOT ||

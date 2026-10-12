@@ -1,6 +1,27 @@
 /* PURE. Team materialization runs only while the cold catalog is owned. */
 #include "sc_core.h"
 
+void sc_compact_moves(RlMon *mon) {
+    unsigned i, slot = 0;
+    for (i = 0; i < 4; i++) {
+        if (!mon->moves[i]) continue;
+        mon->moves[slot] = mon->moves[i];
+        mon->pp[slot] = mon->pp[i];
+        mon->max_pp[slot++] = mon->max_pp[i];
+    }
+    for (; slot < 4; slot++)
+        mon->moves[slot] = mon->pp[slot] = mon->max_pp[slot] = 0;
+}
+
+int sc_moves_packed(const RlMon *mon) {
+    unsigned i, empty = 0;
+    for (i = 0; i < 4; i++) {
+        if (!mon->moves[i]) empty = 1;
+        else if (empty) return 0;
+    }
+    return 1;
+}
+
 int sc_make_mon(const ScCatalog *catalog, const ScTemplate *input,
                  RlU16 random_dvs, RlMon *output) {
     const ScSpecies *species;
@@ -22,7 +43,11 @@ int sc_make_mon(const ScCatalog *catalog, const ScTemplate *input,
     mon.held_relic = RL_NO_SLOT;
     mon.exp = sc_xp(mon.level, mon.growth);
     for (i = 0; i < 5; i++) mon.base_stats[i] = species->base[i];
+#ifdef SC_STORY_PACKED_MOVES
+    if (input->moves[0] || input->moves[1] || input->moves[2] || input->moves[3]) {
+#else
     if (input->moves[0]) {
+#endif
         for (i = 0; i < 4; i++) mon.moves[i] = input->moves[i];
     } else {
         for (i = 1; i < 4; i++) if (input->moves[i]) return SC_INVALID;
@@ -48,6 +73,9 @@ int sc_make_mon(const ScCatalog *catalog, const ScTemplate *input,
         if (move > 165 || (move && !catalog->pp[move])) return SC_INVALID;
         mon.pp[i] = mon.max_pp[i] = catalog->pp[move];
     }
+#ifdef SC_STORY_PACKED_MOVES
+    sc_compact_moves(&mon);
+#endif
     if (!mon.moves[0]) return SC_INVALID;
     sc_recalculate(&mon, 0);
     *output = mon;

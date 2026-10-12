@@ -412,3 +412,11 @@ not rewritten. Subsequent story builds must pass
 map/ELF/ROM copies and `rebaseline.json` are pinned by the new seal. Without
 the old map bytes, this is equality of all consumed facts, not a claimed
 raw-map diff.
+
+User decision after run11: story moves stay packed like Red/Blue. Learning
+fills the first empty slot; only a full moveset offers replacement choices.
+Transfer/import compacts in original order with PP/max-PP travelling with
+the move. Saves containing gaps are refused as invalid, not silently
+truncated. The sequential package compacts its own prepared checkpoints;
+the shared historical fixture and frozen c399 are unchanged. The old
+six-probe build excludes the new rule; vanilla/normal roguelike are unchanged.

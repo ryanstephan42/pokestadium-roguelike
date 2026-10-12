@@ -246,6 +246,11 @@ int sc_learn_pp(ScState *state, const RlU8 pp[166], unsigned party_slot,
     if (!move || move > 165 || !pp[move]) return SC_INVALID;
     if (accept) {
         for (i = 0; i < 4; i++) if (state->party[party_slot].moves[i] == move) return SC_DUPLICATE;
+#ifdef SC_STORY_PACKED_MOVES
+        sc_compact_moves(&state->party[party_slot]);
+        for (i = 0; i < 4; i++)
+            if (!state->party[party_slot].moves[i]) { move_slot = i; break; }
+#endif
         state->party[party_slot].moves[move_slot] = (RlU8)move;
         state->party[party_slot].pp[move_slot] = state->party[party_slot].max_pp[move_slot] = pp[move];
     }

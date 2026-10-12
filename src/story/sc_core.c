@@ -390,6 +390,9 @@ int sc_recruit(ScState *state, const ScCatalog *catalog, unsigned outgoing_slot,
     }
     if (!confirmed) return SC_PENDING;
     state->party[slot] = state->offer;
+#ifdef SC_STORY_PACKED_MOVES
+    sc_compact_moves(&state->party[slot]);
+#endif
     state->evolution_mask &= (RlU8)~(1U << slot);
     if (state->party_count < 6) state->party_count++;
     return resolve_offer(state, catalog);
@@ -411,6 +414,9 @@ int sc_transfer(ScState *state, const ScCatalog *catalog, unsigned donor_move,
     state->party[party_slot].moves[move_slot] = (RlU8)move;
     state->party[party_slot].pp[move_slot] = catalog->pp[move];
     state->party[party_slot].max_pp[move_slot] = catalog->pp[move];
+#ifdef SC_STORY_PACKED_MOVES
+    sc_compact_moves(&state->party[party_slot]);
+#endif
     return resolve_offer(state, catalog);
 }
 

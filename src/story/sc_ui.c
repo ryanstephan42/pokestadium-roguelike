@@ -231,7 +231,12 @@ static void show(ScUi *ui, unsigned screen) {
                 number(label + 5, mon->moves[i]);
                 number(label + 12, mon->pp[i]);
                 number(label + 16, mon->max_pp[i]);
-                row(ui, label, i, screen == SC_UI_DONOR && !mon->moves[i]);
+                row(ui, label, i, (screen == SC_UI_DONOR && !mon->moves[i])
+#ifdef SC_STORY_PACKED_MOVES
+                    || (screen == SC_UI_LEARN && !mon->moves[3] &&
+                        (mon->moves[i] || (i && !mon->moves[i - 1])))
+#endif
+                    );
             }
             if (screen == SC_UI_LEARN) row(ui, "Decline learning", 4, 0);
             break;
@@ -604,7 +609,13 @@ static int input_body(ScUi *ui, unsigned pressed) {
             break;
         case SC_UI_LEARN:
             ui->move = id;
+#ifdef SC_STORY_PACKED_MOVES
+            confirm(ui, SC_UI_LEARN_MOVE, id == 4 ? "Decline this learned move?" :
+                ui->state.party[ui->slot].moves[id] ?
+                "Replace this move with pending level-up move?" : "Learn in the first empty move slot?");
+#else
             confirm(ui, SC_UI_LEARN_MOVE, id == 4 ? "Decline this learned move?" : "Replace this move with pending level-up move?");
+#endif
             break;
         case SC_UI_EVOLVE:
             if (id == 255 && ui->postbattle_active && ui->state.phase == SC_BATTLE)

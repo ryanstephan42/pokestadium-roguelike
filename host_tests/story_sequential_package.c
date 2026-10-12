@@ -90,12 +90,25 @@ int main(int argc, char **argv) {
     assert(argc == 2 && sizeof(void *) == 4 && sizeof(unsigned) == 4);
     assert(sc_six_checkpoint(&normal, &sc_catalog, NULL, NULL) == SC_OK);
     assert(sc_six_transform_checkpoint(&transform, &sc_catalog, NULL, NULL) == SC_OK);
+    for (i = 0; i < normal.party_count; i++) sc_compact_moves(&normal.party[i]);
+    for (i = 0; i < transform.party_count; i++) sc_compact_moves(&transform.party[i]);
     for (i = 0; i < sc_catalog.count; i++)
         if (!strcmp(sc_catalog.encounters[i].id, "PewterGym/TEXT_PEWTERGYM_BROCK")) target = i;
     assert(target != SC_NO_ENCOUNTER && sc_available(&normal, &sc_catalog, target));
     assert(sc_available(&transform, &sc_catalog, target) && transform.party_count == 6);
     assert(transform.party[0].species == 132 && transform.party[0].moves[0] == 144);
     assert(sc_state_valid(&normal, &sc_catalog) && sc_state_valid(&transform, &sc_catalog));
+    {
+        ScState gapped = normal;
+        assert(normal.party[0].moves[2] == 52 && !normal.party[0].moves[3]);
+        gapped.party[0].moves[3] = gapped.party[0].moves[2];
+        gapped.party[0].pp[3] = gapped.party[0].pp[2];
+        gapped.party[0].max_pp[3] = gapped.party[0].max_pp[2];
+        gapped.party[0].moves[2] = gapped.party[0].pp[2] = gapped.party[0].max_pp[2] = 0;
+        assert(!sc_state_valid(&gapped, &sc_catalog));
+        sc_compact_moves(&gapped.party[0]);
+        assert(!memcmp(&gapped, &normal, sizeof(normal)));
+    }
     write_save(argv[1], "normal-route.sc01", &normal, 0);
     write_save(argv[1], "normal-interrupted.sc01", &normal, 1);
     write_save(argv[1], "transform-route.sc01", &transform, 0);
