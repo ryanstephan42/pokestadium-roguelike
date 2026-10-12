@@ -3,10 +3,6 @@
 #include "sc_graph.h"
 
 #define SC_SAVE_MAGIC 0x31304353U
-/* Controller Pak font; distinct from STADIUM RL/RL01. */
-const RlU8 sc_save_name[16] = {44,45,26,29,34,46,38,15,44,45,40,43,50,0,0,0};
-const RlU8 sc_save_extension[4] = {47,17,0,0};
-
 typedef struct ScWire {
     RlU8 *write;
     const RlU8 *read;

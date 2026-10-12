@@ -38,6 +38,11 @@ backend. The probe retains its synchronous static-backing lifecycle and now
 calls the extracted implementation. This package does not add a build hook;
 the owner must link the backend alongside the probe or native adapter.
 
+The shared story note name/extension live with the resident CRC helper in
+`sc_crc.c`, not the cold codec in `sc_save.c`. The resident backend needs these
+unchanged identity bytes even when the codec is unloaded. The linked residency
+checker must reject resident references into cold storage.
+
 Zeroed `ScNativePak` backing belongs to the caller. Binding fixes the controller;
 begin/end acquire/release `Cont_BlockEepromQueue` around the entire storage
 transaction. Only one serialized, non-reentrant session may be active. Device
@@ -98,6 +103,28 @@ Host compilation of the unchanged text-formatting body suppresses its existing
 32-bit pointer/sign/format/decomp warnings only in that translation unit; the
 checked acquisition/getter and other adapter TUs retain `-Werror`. Text-format
 rendering is not exercised by those native-resource fixtures.
+
+## Combined lower-pool admission blocker
+
+The integrated Moon/UI layout after the identity-storage correction has
+`heap_BSS_START = 0x80127450`. Even allowing the entire lower 4 MiB up to
+`0x80400000`, only 2,984,880 bytes remain; actual reservations can only reduce
+that ceiling. The simultaneously retained accepted display (1,360,288 bytes),
+cold story RAM image (204,192 bytes), and linked native fragment 62 RAM image
+(815,216 bytes) leave at most 605,184 bytes.
+
+The original BATL entry additionally allocates two 131,072-byte display-list
+workspaces (`func_80005E40(0x20000, 0)`) and three 320-by-240 16-bit color images
+plus one same-sized depth image (`func_80007444(0, 1, 3, 1, 2, 1)`).
+Those payloads alone need 876,544 bytes, exceeding that remainder by
+**271,360 bytes**, before their headers/scopes, fonts/icons/text, models,
+archives, or loader staging. This is a conservative source/link lower-bound
+refusal, not a measured native peak or completed stack budget.
+
+The accepted all-lower-pool display therefore cannot be joined unchanged to
+this native layout. Any relocation of its retained buffers into admitted
+Expansion Pak storage must preserve exact ownership, task fencing and borrowed
+state restoration; an 8 MiB machine alone does not enlarge the lower pool.
 The `STORY_NATIVE_UI` branch uses checked font control/archive/glyph and text
 archive/substitution-table acquisition instead of the legacy unchecked helpers.
 Pool cleanup callbacks restore borrowed font, text and renderer globals only
