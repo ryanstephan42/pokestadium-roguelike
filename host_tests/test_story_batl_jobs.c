@@ -192,7 +192,12 @@ Fragment* func_80019204(MainPoolState* pool, BinArchive* archive, s32 index, u32
         Fragment* f = (Fragment*)r - 1;
         r[0].unk_00 = 1;
         r[0].unk_02 = fx_shape == 3 ? 256 : fx_shape == 4 ? -1 : fx_shape == 5 ? 0 : 200;
-        r[0].unk_04 = base + 0x40;
+        /* shapes 13..16: published payload at the last aligned word, one past the end, misaligned, NULL */
+        r[0].unk_04 = fx_shape == 13   ? base + 0x18000 - 4
+                      : fx_shape == 14 ? base + 0x18000
+                      : fx_shape == 15 ? base + 0x42
+                      : fx_shape == 16 ? NULL
+                                       : base + 0x40;
         r[1].unk_00 = fx_shape == 2 ? 1 : 0;
         r[1].unk_02 = 201;
         r[1].unk_04 = base + 0x40;
@@ -587,10 +592,12 @@ static void fx_cases(int c) {
         return;
     }
     if (c >= 22) {
-        if (c == 22) {
+        if (c == 22 || c == 34) {
             CHECK(!guarded(do_fx_ready));
-            CHECK(D_843920C0[200] == fx_buf[0] + 0x40 && D_843920C0[110] == fx_buf[0] + 0x5000 + 0x80);
-            printf("EFFECT case 22: record list ending exactly at the buffer end published\n");
+            CHECK(D_843920C0[200] == fx_buf[0] + (c == 22 ? 0x40 : 0x18000 - 4) &&
+                  D_843920C0[110] == fx_buf[0] + 0x5000 + 0x80);
+            printf("EFFECT case %d: %s published\n", c,
+                   c == 22 ? "record list ending exactly at the buffer end" : "payload at the last buffer word");
             return;
         }
         CHECK(guarded(do_fx_ready) && D_843920C0[200] == NULL && D_843920C0[110] == NULL);
@@ -598,7 +605,10 @@ static void fx_cases(int c) {
                c == 23   ? "list running past the buffer end"
                : c == 24 ? "slot id 256"
                : c == 25 ? "negative slot id"
-                         : "non-terminal zero-slot record (C830 would spin)");
+               : c == 26 ? "non-terminal zero-slot record (C830 would spin)"
+               : c == 35 ? "payload one past the buffer end"
+               : c == 36 ? "misaligned payload"
+                         : "NULL payload");
         return;
     }
     CHECK(!guarded(do_fx_ready));
@@ -656,7 +666,7 @@ int main(int argc, char** argv) {
         model_buf[0] = aligned_alloc(64, 0x3C000);
         workers[0].unk_04[0] = (s32)model_buf[0];
     }
-    if (c < 10 || (c >= 19 && c <= 21) || (c >= 27 && c <= 29) || c >= 31) {
+    if (c < 10 || (c >= 19 && c <= 21) || (c >= 27 && c <= 29) || (c >= 31 && c <= 33)) {
         model_cases(c);
     } else {
         fx_cases(c);
