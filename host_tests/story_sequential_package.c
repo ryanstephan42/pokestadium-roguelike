@@ -115,7 +115,10 @@ int main(int argc, char **argv) {
     printf(",\"ui\":{");
     FIELD(ScUi, state); FIELD(ScUi, postbattle_ledger); FIELD(ScUi, postbattle_combat);
     FIELD(ScUi, screen); FIELD(ScUi, pending_save); FIELD(ScUi, postbattle_active);
-    FIELD(ScUi, operation_id); SIZE(ScUi);
+    FIELD(ScUi, operation_id); FIELD(ScUi, list); FIELD(ScUi, ids);
+    FIELD(ScUi, labels); FIELD(ScUi, operation); SIZE(ScUi);
+    printf(",\"list\":{");
+    FIELD(RlUiList, count); FIELD(RlUiList, cursor); SIZE(RlUiList);
     printf(",\"state\":{");
     FIELD(ScState, party); FIELD(ScState, party_count); FIELD(ScState, phase);
     FIELD(ScState, encounter); FIELD(ScState, encounter_variant); SIZE(ScState);

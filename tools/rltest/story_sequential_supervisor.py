@@ -110,7 +110,7 @@ def stop_tree(process):
         time.sleep(.005)
 
 
-def supervise(command, log, seconds=180, clock=time.monotonic):
+def supervise(command, log, seconds=180, clock=time.monotonic, on_exit=None):
     if not 0 < seconds <= 180:
         raise HarnessError("Watchdog cannot exceed approved 180 seconds")
     enable_subreaper()
@@ -165,7 +165,13 @@ def supervise(command, log, seconds=180, clock=time.monotonic):
                 except BrokenPipeError as error:
                     raise HarnessError("Sequential worker exited before frame acknowledgement") from error
     finally:
-        stop_tree(process)
+        reaped = False
+        try:
+            stop_tree(process)
+            reaped = not adopted_children()
+        finally:
+            if on_exit is not None:
+                on_exit(budget, clock() - started, reaped)
 
 
 def reserve_frames(stream_in, stream_out, scenario, frames):

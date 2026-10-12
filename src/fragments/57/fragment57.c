@@ -2670,6 +2670,9 @@ s16 func_82D067A0(void) {
     s16 var_s0;
 
     var_s0 = -1;
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    gScCampaignMenuReady = 0;
+#endif
     D_82D0ABA4 = 0;
     func_82D06014();
     D_82D06FA0 = 0;
@@ -2688,6 +2691,9 @@ s16 func_82D067A0(void) {
 
     while (var_s0 == -1) {
         while (var_s0 < 0) {
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+            gScCampaignMenuReady = var_s0 == -1 && D_82D06FA0 <= 4;
+#endif
             func_800290B4();
             if (var_s0 == -1) {
                 var_s0 = func_82D063E4();
@@ -2696,6 +2702,9 @@ s16 func_82D067A0(void) {
             }
             func_82D053F4(i, var_s0 == -1);
         }
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+        gScCampaignMenuReady = 0;
+#endif
         D_82D06FA0 = var_s0;
 
         if (D_82D06FA0 == 4) {

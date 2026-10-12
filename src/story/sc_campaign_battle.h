@@ -9,6 +9,7 @@ extern int gScProbeActive;
 /* Set by the resident campaign launcher only around rl_start_battle for the
    admitted RUNNING operation; never by ordinary RL or the probe. */
 extern int gScCampaignBattle;
+extern int gScCampaignMenuReady;
 /* Story service/BATL predicate for the native battle fragment. */
 #define SC_STORY_BATTLE (gScProbeActive || gScCampaignBattle)
 /* Player-side native->story slot mapping for the active story battle. */

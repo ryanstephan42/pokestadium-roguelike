@@ -29,8 +29,13 @@ native ELF before capture; source layout is not a native artifact seal.
 The native OS/lifetime prefix is larger than the HOST seams: IDO confirms
 control size **4,104**, versus HOST **3,768**, with sequential fields shifted
 by **336** bytes. Never pass the unbound HOST control offsets to an emulator.
-The compiled diagnostic table adds 304 read-only bytes in this opt-in probe
-configuration; it does not change normal vanilla/roguelike configurations.
+The compiled diagnostic tables add 468 read-only bytes in this opt-in probe
+configuration: 83 shared layout words and 34 native-only lifetime/scheduler
+words. The latter cannot use the substituted HOST OS/display types. Binding
+checks their actual ELF/ROM bytes, map address, exact source-defined
+snapshot/frame/span leaf layouts and nonoverlapping fields inside the native
+control prefix. The reviewed control4104/+336 rule is unchanged. Normal
+vanilla/roguelike configurations have neither table.
 
 The normal route checkpoint uses Red, Standard healing, Charmander, seed 42,
 and the existing legal six-party prehistory through the lab rival, three
@@ -50,8 +55,8 @@ Current reproducible pins:
 | Normal route, win/loss input checkpoint | `e21f6b6e740c4d981ba6dc1f9147bf163adca492ed72c71d19b0d2b62030ea30` |
 | Normal interrupted, loss reload expected checkpoint | `180dcef711d1968afe49eb0ad18b4468ff1d3ffb99352a778f74bf8b96847d96` |
 | Transform route checkpoint | `246906f5edbc2e1e6648c3c7f19969e6e365bcb28de5642f9973f45146275b4c` |
-| Exact source-derived controller-input policy file | `328d16e9605bc6d6dbdf898e93ce1c9514f1d249052f0f7cc07db886a736a5ad` |
-| Source-package 32-bit layout/proof JSON (includes mon/event offsets) | `71e30bb97870dfb1378a51b6ff4f5996018dd8a1107b4b814b8a381f4b0abad6` |
+| Exact source-derived controller-input policy file | `b0cb767d6ffe1d499b946f87a9b2a8f5fc36931d2047c49f41ab996a4998384c` |
+| Source-package 32-bit layout/proof JSON (includes mon/event/menu offsets) | `3633070e34da87204eef22b31fa7dd3137609e83c958d6f60394273d3bee59e4` |
 | Normal route journal note | `9753609d39d19521f9ba910edd1025eb247d041bd850475e5cf86e78eda74272` |
 | Normal interrupted journal note | `21b21dd6ab6b2d5e4a2e320e915af85cecde6d579ebc9b2d2e8883bf167274a3` |
 | Transform route journal note | `3d3dd757918ab6b98e61e5d2e0b7cc84386c0be676e800e35c6527099dcc52e4` |
@@ -60,8 +65,79 @@ Current reproducible pins:
 reload and reachable Transform **policies**, not a proven core-calibrated
 schedule. Win uses Charmander's actual Ember in slot 3, not a fabricated Water
 Gun on level-five Squirtle. Loss proposes legal non-damaging choices where
-available; a native outcome is never forced or assumed. Both outcomes must be
+available; the pinned Diglett knows only Scratch, so the worker uses the first
+actual legal move when no reviewed non-damaging move remains. A native outcome
+is never forced or assumed. Both outcomes must be
 observed; a different outcome fails that scenario.
+
+## Composed scenario worker (requires separate execution approval)
+
+`run_story_sequential.py` composes the reviewed Linux supervisor and the actual
+`story_sequential_worker.py`. It does not authorize itself. After the source
+delta, fresh native link, authority fixed point, binding and seal are reviewed,
+the separately approved exclusive reservation uses:
+
+```sh
+python3 -m tools.rltest.run_story_sequential \
+  --seal build/story/CANDIDATE-native-seal.json \
+  --seal-sha256 APPROVED_SEAL_SHA256 \
+  --package build/story/CANDIDATE-source-package \
+  --binding build/story/CANDIDATE/sequential-binding.json \
+  --core /absolute/path/to/mupen64plus_next_libretro.so \
+  --core-sha256 APPROVED_CORE_SHA256 \
+  --out build/story/CANDIDATE-one-reservation \
+  --exclusive-approved-reservation
+```
+
+Every child inherits the same supervisor streams and starts a fresh OS
+process/core: win, carry reload, loss, its terminal reload (both share the loss
+cap), then Transform. Only one core is alive at a time. `Frontend` runs one
+frame *inside its constructor*; the worker's subclass leases that frame before
+`retro_run`, not by attaching a budget after construction. The supervisor
+clock already includes worker startup, core loading, calibration and all
+reloads. Native C stdout is redirected to stderr so it cannot corrupt the
+frame protocol. All exits report reserved/observed frames, monotonic time,
+scenario statuses, actual carry-note hash, artifact hashes and exact-tree
+reaping. Unknown frames after a killed incomplete step remain unknown, not0.
+
+The worker verifies the external seal/core pins and all sealed source/artifact
+hashes before loading a core. It converts only that fresh core's formatted
+empty Pak, using the hash-bound real HOST journal note; cold reload restores
+only the private actual save container. During calibration, candidate
+RetroPad/right-stick mappings are hypotheses: actual native controller
+`buttonPressed` bits establish mappings. Missing buttons/Pak acceptance abort.
+There are no guessed C aliases or silent fallbacks. Menu entry waits for the
+guarded diagnostic `gScCampaignMenuReady` at fragment57's actual top-page
+input loop, not a guessed fade delay. UI rows/cursor/IDs/labels are read through
+the newly bound menu fields; choices are confirmed by normal controller input.
+
+Every battle frame goes through the read-only sequential observer. Before
+battle input, the native-only witnesses expose retained joined-cleanup flags
+and the last atomic scheduler snapshot: completed fallback fence, no pending
+work/tasks/queue completions, VI on the resident fallback, crash framebuffer
+outside retired UI spans, freed UI storage/display scope and an unmapped story
+image. Missing/stale proof aborts. These are observed retained scheduler facts,
+not a proof of every allocator epoch, overall heap fit or GPU correctness.
+Move/party inputs require actual unlocked native menus, live HP/PP/disable
+guards and observed mode3/slot acknowledgement, including transient ACKs
+during the held frame. Native-to-story mapping comes from the actual launcher,
+not an assumption that story slot0 equals native slot0.
+
+Winning replay declines each learning/evolution choice through explicit rows,
+then declines the reward and saves through UI. Carry reload compares the
+complete observed committed state plus all party values, without healing.
+Loss preserves the interrupted journal; its fresh-process Continue compares
+the exact prebattle state with only phase changed to terminal. No separate
+terminal save is invented. Transform must actually change the live move set
+to the opponent's; selected Transform alone is not a pass. This proves battle
+data observation/carry, not visual animation fidelity.
+
+HOST composition tests run the real worker orchestration, private Pak/save
+handling, report/cold comparisons and supervisor against fake core buffers and
+labelled UI/result seams. Direct fixtures exercise constructor leasing, native
+mapping, transient acknowledgement, bound menu selection, calibration,
+retained scheduler refusals and external-pin refusal. These tests do not load
+a ROM and are not native gameplay evidence.
 
 The carry-reload artifact must be the actual win journal from the same approved
 reservation. Its hash is recorded on successful commit and checked unchanged

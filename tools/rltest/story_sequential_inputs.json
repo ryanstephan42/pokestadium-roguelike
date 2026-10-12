@@ -7,7 +7,7 @@
   "controller": 1,
   "press_frames": 1,
   "release_frames": 1,
-  "native_button_masks": {"N64_A": 32768, "N64_B": 16384, "C_UP": 8, "C_RIGHT": 1, "C_DOWN": 4, "C_LEFT": 2},
+  "native_button_masks": {"N64_A": 32768, "N64_B": 16384, "C_UP": 8, "C_RIGHT": 1, "C_DOWN": 4, "C_LEFT": 2, "L": 32, "R": 16, "UP": 2048, "DOWN": 1024, "START": 4096},
   "move_slots": ["C_UP", "C_RIGHT", "C_DOWN", "C_LEFT"],
   "six_party_slots": ["C_UP", "C_LEFT", "N64_B", "C_RIGHT", "C_DOWN", "N64_A"],
   "native_acknowledgement": "unlocked actual menu mode1 move/action1 or mode2 party; after edge/release require mode3 and selected native slot; never assume a press succeeded",
@@ -15,7 +15,7 @@
   "supervisor": "one dedicated Linux subreaper; deadline starts before worker/core boot; every fresh frontend binds counted step before first frame; reserve frame batches before stepping; carry counters across reloads; pidfd kill/reap detached descendants on every exit",
   "checkpoint_scope": "legal-pure-HOST-prehistory-not-native-wins",
   "entry": [
-    {"when": "Menu Select top page", "button": "R"},
+    {"when": "Menu Select top page with source-bound gScCampaignMenuReady == 1", "button": "R"},
     {"when": "SC_UI_MENU cursor New", "button": "DOWN"},
     {"when": "SC_UI_MENU cursor Continue", "button": "N64_A"},
     {"when": "SC_UI_REGIONS", "select_id": "PewterGym"},
@@ -39,7 +39,7 @@
     "loss": {
       "frame_limit": 5000,
       "checkpoint": "normal-route.sc01 in a separate isolated story save",
-      "battle_policy": "use Charmander slot 0 Growl move 45 in move slot 1 with C_RIGHT at unlocked move menu and other legal non-damaging actions; no forced outcome",
+      "battle_policy": "prefer Charmander story slot 0 via the observed native mapping; use Growl45 or other actual non-damaging moves (Tail Whip39, Leer43, Sand Attack28, String Shot81, Splash150); if none is available, use the first actually legal move slot (the pinned Diglett only knows Scratch). A natural win/draw refuses this loss scenario; no forced outcome",
       "required_outcome": "SC_LOSS then fresh Continue SC_LOST",
       "required_state": "normal-interrupted.sc01 prebattle party and progression, terminal; no earned mutation"
     },

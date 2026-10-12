@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 int gScCampaignBattle;
+int gScCampaignMenuReady;
 ScCampaignRun gScCampaignRun;
 
 static RlU8 battle_map[6];

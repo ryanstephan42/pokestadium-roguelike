@@ -99,6 +99,55 @@ def verify_layout(elf, rom, abi, keys):
                 witness=hashlib.sha256(raw).hexdigest())
 
 
+def bind_lifecycle_words(keys, words, prefix):
+    require(len(keys) == len(words), "Lifecycle witness count mismatch")
+    result = {}
+    for (group, key), word in zip(keys, words):
+        result.setdefault(group, {})[key] = word
+    # Native-only lifetime: HOST substitutes OS/display/retirement types.
+    # Concrete leaf records remain source-defined, not an arbitrary ABI shift.
+    fixed = {
+        "snapshot": dict(size=92, frames=0, fallback=48, vi_current=52, vi_next=56,
+                         crash_frame=60, waiting=64, requests=68, completions=72,
+                         events=76, rsp_state=80, rdp_state=84, task_completions=88),
+        "frame": dict(size=16, rsp=1, rdp=2, work=4, task=8, image=12),
+        "span": dict(size=8, pixels=0, bytes=4),
+    }
+    require(set(result) == {"lifecycle", *fixed}, "Lifecycle schema differs")
+    for group, expected in fixed.items():
+        require(result[group] == expected, f"Native {group} ABI differs")
+    offsets = result["lifecycle"]
+    require(set(offsets) == {
+        "memory_live", "memory_storage", "lifetime_live", "display_acquired",
+        "display_scope", "retirement_acquired", "retirement_pending", "backing_retired",
+        "snapshot_valid", "fallback_completed", "snapshot", "spans"},
+        "Lifecycle control field schema differs")
+    require(len(set(offsets.values())) == len(offsets), "Lifecycle fields overlap")
+    for key, offset in offsets.items():
+        size = 92 if key == "snapshot" else 16 if key == "spans" else 4
+        require(offset % 4 == 0 and 0 <= offset <= prefix - size,
+                "Native lifecycle field outside control prefix")
+    ranges = [(offset, offset + (92 if key == "snapshot" else 16 if key == "spans" else 4))
+              for key, offset in offsets.items()]
+    ranges.sort()
+    require(all(a[1] <= b[0] for a, b in zip(ranges, ranges[1:])),
+            "Native lifecycle field ranges overlap")
+    return result
+
+
+def verify_lifecycle(elf, rom, native):
+    keys = layout_keys((ROOT / "src/story/sc_observer_lifecycle.inc").read_text())
+    symbol = elf.symbol("gScCampaignLifecycleLayout")
+    require(symbol[2] == len(keys) * 4, "Lifecycle linked witness size mismatch")
+    raw = elf.read(symbol[1], symbol[2])
+    require(elf.rom_read(rom, symbol[1], symbol[2]) == raw,
+            "Lifecycle ROM witness differs from ELF")
+    result = bind_lifecycle_words(keys, struct.unpack(">" + "I" * len(keys), raw),
+                                 native["control"]["sequential_request"])
+    result["witness_sha256"] = hashlib.sha256(raw).hexdigest()
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("package", "elf", "rom", "map", "out"):
@@ -128,8 +177,12 @@ def main():
         require(symbols.address(name) == elf.symbol(name)[1],
                 f"Sequential map/ELF symbol mismatch: {name}")
     native_abi = bound.pop("abi")
+    native_lifecycle = verify_lifecycle(elf, args.rom.read_bytes(), native_abi)
+    require(symbols.address("gScCampaignLifecycleLayout") ==
+            elf.symbol("gScCampaignLifecycleLayout")[1], "Lifecycle map/ELF mismatch")
     result = dict(scope="linked-layout binding only; not catalog/heap/fence/Pak or execution acceptance",
                   binding=bound, abi=native_abi, package_sha256=hashlib.sha256(raw).hexdigest(),
+                  native_lifecycle=native_lifecycle,
                   elf_sha256=hashlib.sha256(args.elf.read_bytes()).hexdigest(),
                   map_sha256=hashlib.sha256(args.map.read_bytes()).hexdigest(),
                   rom_sha256=hashlib.sha256(args.rom.read_bytes()).hexdigest())

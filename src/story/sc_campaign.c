@@ -22,6 +22,15 @@ const RlU32 gScCampaignObserverLayout[] = {
 #undef SC_VALUE
 #undef SC_OBSERVER_OFFSET
 };
+#ifndef STORY_CAMPAIGN_STUBS_H
+const RlU32 gScCampaignLifecycleLayout[] = {
+#define SC_OBSERVER_OFFSET(type, member) ((unsigned long)&(((type *)0)->member))
+#define SC_VALUE(group, key, expression) expression,
+#include "sc_observer_lifecycle.inc"
+#undef SC_VALUE
+#undef SC_OBSERVER_OFFSET
+};
+#endif
 #endif
 static const ScNativeOperation zero_operation;
 static const ScNativeTerminal zero_terminal;
