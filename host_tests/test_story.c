@@ -277,6 +277,73 @@ static void test_ko_and_learning(void) {
     }
 }
 
+static void test_postbattle_ko_ledger(void) {
+    ScKoLedger ledger;
+    ScCombat combat, wrong_combat;
+    ScState captured, after_capture;
+    ScTemplate input = {1, 6, {0, 0, 0, 0}, 1, 0xffff};
+    RlU32 old_exp, award, second_award;
+    unsigned i, denominator;
+
+    setup();
+    /* Repeated entries make a bounded synthetic multi-KO/loss fixture. */
+    fixtures[0].teams[2].count = 3;
+    fixtures[0].teams[2].mons[1] = fixtures[0].teams[2].mons[0];
+    fixtures[0].teams[2].mons[2] = fixtures[0].teams[2].mons[0];
+    assert(sc_make_mon(&catalog, &input, 0, &state.party[0]) == SC_OK);
+    state.party[0].exp = sc_xp(7, RL_MEDIUM_SLOW) - 1;
+    state.party[1] = state.party[0];
+    state.party[1].cur_hp = 0;
+    state.party[1].fainted = 1;
+    state.party_count = 2;
+    assert(sc_begin(&state, &catalog, 0, 2) == SC_OK);
+    assert(sc_combat_prepare(&combat, &state, &catalog) == SC_OK);
+    sc_ko_ledger_init(&ledger);
+    captured = state;
+    assert(sc_ko_ledger_record(&ledger, 0, combat.team.count, state.party_count,
+                               3, 1) == SC_OK);
+    assert(sc_ko_ledger_record(&ledger, 1, combat.team.count, state.party_count,
+                               3, 1) == SC_OK);
+    assert(sc_ko_ledger_record(&ledger, 0, combat.team.count, state.party_count,
+                               3, 1) == SC_DUPLICATE);
+    assert(sc_ko_ledger_record(&ledger, 2, combat.team.count, state.party_count,
+                               1, 2) == SC_INVALID);
+    assert(ledger.count == 2 && ledger.next == 0);
+    assert(memcmp(&state, &captured, sizeof(state)) == 0);
+    after_capture = state;
+    wrong_combat = combat;
+    wrong_combat.encounter++;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &wrong_combat) == SC_INVALID);
+    assert(ledger.next == 0 && memcmp(&state, &after_capture, sizeof(state)) == 0);
+
+    denominator = 2;
+    old_exp = state.party[0].exp;
+    award = (RlU32)(combat.enemy_species[0].yield / denominator) *
+        combat.team.mons[0].level / 7;
+    award += award / 2;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &combat) == SC_PENDING);
+    assert(ledger.next == 1 && state.phase == SC_LEARNING);
+    assert(sc_ko_ledger_record(&ledger, 2, combat.team.count, state.party_count,
+                               1, 1) == SC_INVALID);
+    assert(state.party[0].level == 7 && state.party[0].exp == old_exp + award);
+    assert(state.learn_moves[0] == 73);
+    for (i = 0; i < 5; i++)
+        assert(state.party[0].stat_exp[i] == combat.enemy_species[0].base[i] / denominator);
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &combat) == SC_PENDING);
+    assert(ledger.next == 1);
+    assert(sc_learn(&state, &catalog, 0, 3, 1) == SC_OK);
+
+    old_exp = state.party[0].exp;
+    second_award = (RlU32)(combat.enemy_species[1].yield / denominator) *
+        combat.team.mons[1].level / 7;
+    second_award += second_award / 2;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &combat) == SC_OK);
+    assert(ledger.next == ledger.count && state.party[0].exp == old_exp + second_award);
+    assert(state.defeated_mask == 3);
+    assert(sc_finish(&state, &catalog, SC_LOSS, 2) == SC_OK);
+    assert(state.phase == SC_LOST);
+}
+
 static void test_healing_and_loss(void) {
     ScGate gate;
     unsigned difficulty;
@@ -752,6 +819,7 @@ int main(void) {
     test_graph_reward();
     test_transfer();
     test_ko_and_learning();
+    test_postbattle_ko_ledger();
     test_healing_and_loss();
     test_evolution();
     test_failed_inputs_do_not_mutate();
