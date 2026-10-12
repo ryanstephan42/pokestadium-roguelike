@@ -36,6 +36,19 @@ int sc_job_model_root_ok(unsigned int buffer, unsigned int root, unsigned int ty
                          unsigned int entry);
 #define SC_JOB_ROOT_NODE_BYTES 0x18u
 
+/* Provenance of one fresh model load, recorded on the loader thread by func_80019484: the job it
+ * served, the 920000 archive index it loaded, the FRAGMENT that index returned and the header
+ * func_80019328 built from it. A worker has at most one model job in flight (unk_01 bit 0). */
+typedef struct {
+    unsigned int state; /* 0 empty, 1 recorded, 2 a second load arrived before admission */
+    unsigned int job, index, fragment, header;
+} ScJobTicket;
+void sc_job_ticket_put(ScJobTicket* t, unsigned int job, unsigned int index, unsigned int fragment,
+                       unsigned int header);
+/* consumes the ticket; 1 only when it records exactly this job/index/fragment/header */
+int sc_job_ticket_take(ScJobTicket* t, unsigned int job, unsigned int index, unsigned int fragment,
+                       unsigned int header);
+
 /* Effect (type 2) completion: every requested 8cc000 entry produced a record list inside the
  * worker's own effect buffer, followed by the NULL terminator. */
 int sc_job_fx_complete(unsigned int size, unsigned int buffer, unsigned int expected, const short* requests,

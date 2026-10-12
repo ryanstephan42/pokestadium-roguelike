@@ -35,6 +35,8 @@ u32 Memmap_GetStoryBattleMapGeneration(void);
 struct sp18_func_800198E4;
 int sc_batl_job_admit(unk_D_86002F58_004_000_010 *, struct sp18_func_800198E4 *);
 void sc_batl_job_fatal(u32);
+/* loader thread, func_80019484: provenance ticket for a fresh model load */
+void sc_batl_model_loaded(const void *, const void *, s32, const void *, const void *);
 enum { SC_BATL_JOB_REFUSED = 1, SC_BATL_JOB_UNPUBLISHED = 2, SC_BATL_FX_SEND = 3, SC_BATL_FX_REQUEST = 4,
        SC_BATL_FX_PUBLISH = 5, SC_BATL_FX_STALE = 6 };
 int sc_batl_fx_send(unk_D_86002F58_004_000_010 *);

@@ -249,6 +249,9 @@ void func_80019484(unk_func_80019600* arg0) {
 #ifdef ROGUELIKE
         rl_geo_image_set(NULL);
 #endif
+#ifdef STORY_SERVICE_CANDIDATE
+        sc_batl_model_loaded(arg0->queue, arg0, arg0->unk_02, sp24, arg0->unk_08);
+#endif
     } else {
         arg0->unk_08 = 0;
     }

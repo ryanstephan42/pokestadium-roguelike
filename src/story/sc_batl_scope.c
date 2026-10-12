@@ -22,6 +22,7 @@ static struct {
     u32 bound, armed, taken, offset, live, generation, drained;
 } loader;
 static ScFxTable fx;
+static ScJobTicket model_tickets[2];
 static u32 fatal_code;
 
 static int roots_match(int capture) {
@@ -248,6 +249,7 @@ int sc_batl_loader_disarm(const void *worker0, const void *worker1) {
     loader.drained = 0;
     loader.live = 1;
     sc_fx_reset(&fx);
+    model_tickets[0].state = model_tickets[1].state = 0;
     return 1;
 }
 
@@ -311,6 +313,10 @@ static int model_done(unk_D_86002F58_004_000_010 *worker, sp18_func_800198E4 *jo
     n = header[3];
     roots = *(u32 *const *)(header + 8);
     entry = *(const u32 *)(header + 0x14);
+    /* fresh result must be the loader's own load of archive index request-1 for this job */
+    if (loader.live &&
+        !sc_job_ticket_take(&model_tickets[story_worker(worker)], (u32)job, job->unk_02, entry, (u32)header))
+        return 0;
     if (!sc_job_model_header_ok(v.buffer, entry, n, (u32)roots)) return 0;
     for (i = 0; i < n; ++i) {
         const u8 *root = (const u8 *)roots[i];
@@ -320,6 +326,15 @@ static int model_done(unk_D_86002F58_004_000_010 *worker, sp18_func_800198E4 *jo
                                   root[0] == 0xE ? *(const u32 *)(root + 0x28) : 0, entry)) return 0;
     }
     return 1;
+}
+
+void sc_batl_model_loaded(const void *queue, const void *job, s32 index, const void *fragment,
+                          const void *header) {
+    int i;
+    if (!loader.live || header == NULL) return;
+    for (i = 0; i < 2; ++i)
+        if (loader.workers[i] && queue == &((const unk_D_86002F58_004_000_010 *)loader.workers[i])->unk_30)
+            sc_job_ticket_put(&model_tickets[i], (u32)job, (u32)(u16)index, (u32)fragment, (u32)header);
 }
 
 int sc_batl_job_admit(unk_D_86002F58_004_000_010 *worker, sp18_func_800198E4 *job) {

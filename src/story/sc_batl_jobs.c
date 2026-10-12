@@ -28,6 +28,28 @@ int sc_job_model_header_ok(unsigned int buffer, unsigned int entry, unsigned int
            sc_job_in(buffer, SC_JOB_MODEL_BYTES, roots, nroots * 4u);
 }
 
+void sc_job_ticket_put(ScJobTicket* t, unsigned int job, unsigned int index, unsigned int fragment,
+                       unsigned int header) {
+    if (t->state != 0) {
+        t->state = 2;
+        return;
+    }
+    t->job = job;
+    t->index = index;
+    t->fragment = fragment;
+    t->header = header;
+    t->state = 1;
+}
+
+int sc_job_ticket_take(ScJobTicket* t, unsigned int job, unsigned int index, unsigned int fragment,
+                       unsigned int header) {
+    int ok = t->state == 1 && job != 0 && t->job == job && t->index == index && fragment != 0 &&
+             t->fragment == fragment && header != 0 && t->header == header;
+
+    t->state = 0;
+    return ok;
+}
+
 int sc_job_model_root_ok(unsigned int buffer, unsigned int root, unsigned int type, unsigned int owner,
                          unsigned int entry) {
     if (!sc_job_in(buffer, SC_JOB_MODEL_BYTES, root, SC_JOB_ROOT_NODE_BYTES)) {
