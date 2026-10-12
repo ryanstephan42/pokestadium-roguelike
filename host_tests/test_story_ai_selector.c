@@ -25,7 +25,11 @@ typedef char HostChoiceSize[(sizeof(unk_D_843C60C0) == 0x14) ? 1 : -1];
 typedef char HostSpeciesSize[(sizeof(unk_D_80070F84) == 0x17) ? 1 : -1];
 
 unk_D_80070F84 D_80070FA0[151];
+#ifdef SC_AI_HOST_MOVE_TABLE_EXTERNAL
+extern unk_D_80072B00 D_80072B00[165];
+#else
 unk_D_80072B00 D_80072B00[165];
+#endif
 u8 D_8438AC60[0x50], D_8438ACD4[0x1A], D_8438ACF0[0xF9];
 unk_D_8438ACB8 D_8438ACB8[13];
 static unk_D_84390010 sides[2];

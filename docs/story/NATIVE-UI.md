@@ -952,3 +952,24 @@ ownership. Decided: uniform Stadium AI level 0x20 for every trainer (no
 invented class table), exhaustive canonical-party HOST admission sweep, and
 per-KO learning kept; if whole-stack evidence shows the nested gate depth is
 unsafe, move the held presentation to the BATL top-level frame loop.
+
+### Canonical-party AI sweep (HOST)
+
+`host_tests/run_story_ai_party_sweep.sh OUT` builds every reachable campaign party
+(361 encounters, 379 encounter variants, 933 mons, 133 distinct species; the 391
+stored parties include 39 unreferenced, which are not reachable and not swept) with
+`sc_make_mon` (`host_tests/story_ai_party_table.c`) and drives each through the real
+private selector and decision service on the extracted native fragment-62 AI closure:
+per team, one selection per fainted-prefix depth (identity/reversed compact mappings),
+a zero-PP selection, and prepare → accept → shutdown with bank-unchanged checks.
+Result on host and ASan/UBSan: 1312 selections (599 switches, 379 Struggle), 379
+prepared/accepted decisions, 0 refusals; no party is limited or substituted. The
+player side is one fixed fixture party, so matchup-dependent choices are not covered.
+
+Native finding: when the evaluated mon has no damaging move (e.g. the Mt. Moon
+Magikarp with Splash only), `func_84378B0C` leaves the move at 0 and
+`func_84380B40 → func_8437865C → func_84376C90` reads `D_80072B00[-1]`. This is
+vanilla Stadium behaviour. In the vanilla ELF (0x80072AFA), the sweep baseline ELF
+and candidate ELF `1804f58e…` (0x8008DB5A), those six bytes are zero (decomp anchor
+`D_80072AFF`). The runner checks this and the sweep reproduces the layout
+(`SC_AI_HOST_MOVE_TABLE_EXTERNAL`) rather than reading an unrelated host global.
