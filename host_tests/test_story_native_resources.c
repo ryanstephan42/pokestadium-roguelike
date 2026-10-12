@@ -21,6 +21,7 @@ static ScUiDriver unrelated_driver;
 static ScUiBattleRequest request;
 static RlU8 bytes[32768], original[32768];
 static unsigned reads, writes, allocated, locks, unlocks, logs, frames;
+static int write_error;
 static int error, fail_at, plug_error, alloc_error, ui_error, scope_error;
 static MainPool pool;
 static MainPoolState states[4];
@@ -85,6 +86,7 @@ s32 __osContRamWrite(OSMesgQueue *queue, int channel, u16 block, u8 *in, int for
     assert(queue == &gSIEventMesgQueue && channel == 0 && block < 1024 && !force);
     assert(locks == unlocks + 1 && (block == 24 || (block >= 40 && block < 88)));
     writes++;
+    if (write_error) return write_error;
     if (fail_at && reads + writes == (unsigned)fail_at) return error;
     memcpy(bytes + block * 32, in, 32); return 0;
 }
@@ -723,7 +725,9 @@ static void operation_loop(void) {
     ScNativeCampaignEvent replay;
     ScBattleSnapshot party[6];
     ScTemplate starter;
-    unsigned i, region = 0, encounter, before;
+    ScState settled;
+    unsigned i, region = 0, encounter, before, submitted, before_writes;
+    int snapshots_ok;
     fixture(); memset(&life, 0, sizeof(life)); memset(&display, 0, sizeof(display));
     memset(&life_storage, 0, sizeof(life_storage)); memset(&life_operation, 0, sizeof(life_operation));
     life.live = life.memory.live = 1; life.memory.storage = &life_storage;
@@ -784,14 +788,44 @@ static void operation_loop(void) {
     assert(loop_choose(1) == SC_OK && resumes == before + 1 && !life.loop.held_operation);
     assert(life_operation.phase == SC_NATIVE_OPERATION_RUNNING && !life_operation.queued);
     assert(!memcmp(&ui.state, &life_storage.settled, sizeof(ui.state)) && op_clean());
+    /* terminal DRAINED: produced once by the owner, finished once by the loop */
+    assert(sc_native_operation_drain(&life_operation, &life.loop.backing, SC_LOSS) == SC_OK);
+    assert(op_clean() && life_operation.queued);
+    settled = ui.state; before = resumes; submitted = submissions;
+    write_error = 99;
+    assert(sc_native_loop_step(&life.loop) == SC_OK && op_clean());
+    assert(ui.screen == SC_UI_SAVE_ERROR && ui.pending_save && !driver.launched);
+    assert(life_operation.phase == SC_NATIVE_OPERATION_IDLE && !life_operation.queued);
+    assert(!life.loop.drained_operation && life.loop.event_serial == 3);
+    /* save-error frames, including failed A retries, poll the owner but never replay DRAINED */
+    for (i = 0; i < 4; i++) {
+        controller.buttonPressed = (i & 1) ? RL_UI_A : 0;
+        assert(sc_native_loop_step(&life.loop) == SC_OK && op_clean());
+        assert(life.loop.event_serial == 3 && ui.screen == SC_UI_SAVE_ERROR && ui.pending_save);
+    }
+    controller.buttonPressed = 0;
+    write_error = 0;
+    for (i = 0; i < settled.party_count; i++) {
+        assert(ui.state.party[i].exp == settled.party[i].exp);
+        assert(ui.state.party[i].level == settled.party[i].level);
+    }
+    assert(ui.state.defeated_mask == settled.defeated_mask && !ui.state.learn_mask);
+    assert(sc_native_operation_drain(&life_operation, &life.loop.backing, SC_LOSS) == SC_INVALID);
+    snapshots_ok = sc_native_operation_observe(&life_operation, &life.loop.backing, party, 0, 0, 0);
+    assert(snapshots_ok == SC_INVALID && op_clean());
+    before_writes = writes;
+    assert(loop_choose(0) == SC_OK && !ui.pending_save && writes > before_writes);
+    assert(ui.state.phase == SC_LOST && op_clean() && life.loop.event_serial == 3);
+    assert(resumes == before && submissions == submitted && !driver.launched);
+    for (i = 0; i < settled.party_count; i++) assert(ui.state.party[i].exp == settled.party[i].exp);
     /* replay of a delivered event written into the clean output is refused */
     controller.buttonPressed = 0;
     loop_event = replay;
     assert(sc_native_loop_step(&life.loop) == SC_INVALID && op_clean());
     assert(life_operation.phase == SC_NATIVE_OPERATION_FAILED && life.memory.failed);
-    assert(life.loop.event_serial == 2);
+    assert(life.loop.event_serial == 3);
     choose_loop = &loop;
-    puts("Owner loop: actual ScNativeLoop -> sc_native_operation queued OBSERVE/LEARNING delivery, held resume, clean output, all-byte queued injection and replay refusal; DRAINED owner terminal pending; HOST only; OK");
+    puts("Owner loop: actual ScNativeLoop -> sc_native_operation queued OBSERVE/LEARNING delivery, held resume, owner DRAINED loss finished once across save-error retry frames with no replay/XP/resume/resubmit, clean output, all-byte queued injection and replay refusal; HOST only; OK");
 }
 
 int main(void) {

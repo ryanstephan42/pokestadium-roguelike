@@ -221,13 +221,28 @@ be refused. `bash host_tests/run_story_native_resources.sh` drives the actual
 - resume runs through the owner;
 - the buffer is zero after each step;
 - each of the event bytes injected before delivery is refused;
-- a replayed delivered event is refused.
+- a replayed delivered event is refused;
+- an owner DRAINED loss finishes once. Under a persistent Pak write fault, idle
+  and A-retry save-error frames neither replay DRAINED nor change XP/levels,
+  resume or resubmit, and the final retry saves the settled state.
 
-DRAINED has no owner producer yet, so it is not tested through the loop.
-Its lifetime view is explicitly not a target ABI fixture; actual IDO compilation
-uses the production lifetime header. This unit does not launch native combat,
-publish DRAINED, or authorize release. Actual callback/dispatcher wiring,
-service/BATL retirement, complete stack/fit, and native validation remain required.
+`sc_native_operation_drain(op, backing, outcome)` is the terminal producer. It
+returns PENDING while an event is queued or a learning hold is outstanding, and
+INVALID without failing if no operation is running. It fail-stops on an outcome
+above DRAW, a dirty output buffer, serial exhaustion, or unsettled UI ownership,
+and when a trial `sc_finish` of the settled state is not OK (so WIN requires
+every enemy KO). On success it queues exactly one DRAINED event and enters
+DRAINING, where observe and submit are refused. Delivering DRAINED returns the
+operation to IDLE; `last_operation` prevents operation-id reuse. LOSS and DRAW
+are not checked against party HP, because Stadium allows forfeit and draw.
+Drain does not check worker/service/permit retirement or the BATL scope pop
+itself, so its caller must already hold that retirement authority.
+
+Lifetime validation is injected in HOST, which is explicitly not a target ABI
+fixture; actual IDO compilation uses the production lifetime header. This unit
+does not launch native combat or call drain from the actual retirement path.
+Actual callback/dispatcher wiring, service/BATL retirement, complete stack/fit,
+and native validation remain required.
 
 ## Current build authority inputs
 

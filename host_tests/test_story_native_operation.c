@@ -186,6 +186,88 @@ static void request_mutations(void) {
     }
 }
 
+static void settle_learning(void) {
+    unsigned slot;
+    lifetime.loop.held_operation = operation.operation;
+    lifetime.loop.held_generation = operation.held_serial;
+    lifetime.loop.held_presented = 1;
+    while (storage.ui.state.learn_mask)
+        for (slot = 0; slot < 6; ++slot)
+            if (storage.ui.state.learn_mask & (1U << slot))
+                assert(sc_learn_pp(&storage.ui.state, storage.request.progression.pp,
+                    slot, 0, 0) == SC_OK);
+    assert(sc_native_operation_resume(&operation, &lifetime.loop.backing, operation.operation,
+        operation.held_serial, &storage.ui.state, &storage.request.progression) == SC_OK);
+}
+
+/* Terminal producer: exactly one DRAINED after settled observations; WIN only
+   when the actual sc_finish accepts the settled battle; then IDLE. */
+static void drain(void) {
+    ScNativeCampaignBacking *b = &lifetime.loop.backing;
+    ScBattleSnapshot party[6];
+    ScNativeOperation control;
+    ScNativeCampaignStorage previous;
+    unsigned enemy, outcome;
+    for (outcome = 0; outcome < 4; ++outcome) {
+        initialize();
+        assert(sc_native_operation_drain(&operation, b, SC_LOSS) == SC_INVALID);
+        assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+        snapshots(party);
+        assert(sc_native_operation_observe(&operation, b, party, 0, 0, 1) == SC_OK);
+        control = operation; previous = storage;
+        assert(sc_native_operation_drain(&operation, b, SC_LOSS) == SC_PENDING);
+        assert(!memcmp(&operation, &control, sizeof(control)) && !memcmp(&storage, &previous, sizeof(storage)));
+        consume();
+        if (outcome == SC_WIN) {
+            assert(sc_native_operation_drain(&operation, b, SC_WIN) == SC_INVALID);
+            assert(operation.phase == SC_NATIVE_OPERATION_FAILED && lifetime.memory.failed);
+            initialize();
+            assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+            for (enemy = 0; enemy < storage.request.enemy_count; ++enemy) {
+                snapshots(party);
+                assert(sc_native_operation_observe(&operation, b, party, 0, enemy, 0) == SC_OK);
+                if (operation.phase == SC_NATIVE_OPERATION_HELD) {
+                    assert(sc_native_operation_drain(&operation, b, SC_WIN) == SC_PENDING);
+                    consume();
+                    assert(sc_native_operation_drain(&operation, b, SC_WIN) == SC_PENDING);
+                    settle_learning();
+                } else consume();
+            }
+        }
+        if (outcome == 3) {
+            assert(sc_native_operation_drain(&operation, b, 3) == SC_INVALID);
+            assert(operation.phase == SC_NATIVE_OPERATION_FAILED);
+            continue;
+        }
+        assert(sc_native_operation_drain(&operation, b, outcome) == SC_OK);
+        assert(operation.phase == SC_NATIVE_OPERATION_DRAINING && operation.queued && event_clean());
+        assert(operation.pending.kind == SC_NATIVE_EVENT_DRAINED &&
+               operation.pending.outcome == outcome && operation.pending.generation == operation.serial);
+        assert(sc_native_operation_drain(&operation, b, outcome) == SC_PENDING);
+        snapshots(party);
+        assert(sc_native_operation_observe(&operation, b, party, 0, 0, 1) == SC_PENDING);
+        assert(sc_native_operation_submit(&operation, b, b->request) == SC_PENDING);
+        assert(sc_native_operation_poll(&operation, b, b->event) == SC_OK);
+        assert(storage.event.kind == SC_NATIVE_EVENT_DRAINED && storage.event.outcome == outcome);
+        assert(storage.event.operation_id == 7 && operation.phase == SC_NATIVE_OPERATION_IDLE);
+        assert(!operation.operation && operation.last_operation == 7 && !operation.queued);
+        assert(sc_native_operation_poll(&operation, b, b->event) == SC_INVALID);
+        assert(operation.phase == SC_NATIVE_OPERATION_FAILED && event_clean());
+    }
+    initialize();
+    assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+    assert(sc_native_operation_drain(&operation, b, SC_DRAW) == SC_OK);
+    operation.pending.outcome = 4;
+    assert(sc_native_operation_poll(&operation, b, b->event) == SC_INVALID && event_clean());
+    initialize();
+    assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+    assert(sc_native_operation_drain(&operation, b, SC_LOSS) == SC_OK);
+    assert(sc_native_operation_poll(&operation, b, b->event) == SC_OK);
+    memset(b->event, 0, sizeof(*b->event));
+    assert(sc_native_operation_submit(&operation, b, b->request) == SC_INVALID);
+    assert(operation.phase == SC_NATIVE_OPERATION_IDLE);
+}
+
 int main(void) {
     ScNativeCampaignBacking *b = &lifetime.loop.backing;
     ScNativeCampaignStorage previous;
@@ -306,7 +388,8 @@ int main(void) {
     assert(operation.phase == SC_NATIVE_OPERATION_FAILED && operation.held_serial);
     request_mutations();
     output_mutations();
+    drain();
     assert(notices);
-    puts("NATIVE OPERATION HOST PASSED: canonical copies, all-byte accepted-request mutation refusals at submit/observe/poll/resume, held-before-delivery, owner-retained queued identity with all-byte clean-output/replay/identity refusals, exact learning replay, monotonic/refusal policy; lifetime validation injected, no native launch/drain");
+    puts("NATIVE OPERATION HOST PASSED: canonical copies, all-byte accepted-request mutation refusals at submit/observe/poll/resume, held-before-delivery, owner-retained queued identity with all-byte clean-output/replay/identity refusals, single DRAINED producer with WIN/sc_finish and settlement refusals, exact learning replay, monotonic/refusal policy; lifetime validation injected, no native launch/retirement");
     return 0;
 }

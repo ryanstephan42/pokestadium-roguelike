@@ -162,14 +162,22 @@ int sc_native_operation_poll(ScNativeOperation *operation,
     if (operation->phase == SC_NATIVE_OPERATION_IDLE ||
         operation->pending.operation_id != operation->operation ||
         operation->pending.generation != operation->serial ||
-        (operation->pending.kind != SC_NATIVE_EVENT_OBSERVE &&
-         operation->pending.kind != SC_NATIVE_EVENT_LEARNING) ||
-        ((operation->pending.kind == SC_NATIVE_EVENT_LEARNING) !=
-         (operation->phase == SC_NATIVE_OPERATION_HELD &&
-          operation->held_serial == operation->serial)))
+        !(operation->pending.kind == SC_NATIVE_EVENT_OBSERVE ?
+              operation->phase == SC_NATIVE_OPERATION_RUNNING :
+          operation->pending.kind == SC_NATIVE_EVENT_LEARNING ?
+              operation->phase == SC_NATIVE_OPERATION_HELD &&
+              operation->held_serial == operation->serial :
+          operation->pending.kind == SC_NATIVE_EVENT_DRAINED &&
+              operation->phase == SC_NATIVE_OPERATION_DRAINING &&
+              operation->pending.outcome <= SC_DRAW))
         return fail(operation, "Story operation: retained queued identity changed");
     *event = operation->pending;
     operation->queued = 0;
+    if (event->kind == SC_NATIVE_EVENT_DRAINED) {
+        /* Delivered once; the battle no longer owns the request. */
+        operation->phase = SC_NATIVE_OPERATION_IDLE;
+        operation->operation = operation->serial = operation->held_serial = 0;
+    }
     return SC_OK;
 }
 
@@ -222,6 +230,41 @@ int sc_native_operation_resume(ScNativeOperation *operation,
         return fail(operation, "Story operation: settlement changed campaign values");
     operation->held_serial = 0;
     operation->phase = SC_NATIVE_OPERATION_RUNNING;
+    return SC_OK;
+}
+
+int sc_native_operation_drain(ScNativeOperation *operation,
+                              const ScNativeCampaignBacking *backing, unsigned outcome) {
+    ScNativeCampaignStorage *storage;
+    ScState trial;
+    int status = live(operation, backing);
+    if (status != SC_OK) return status;
+    if (operation->queued || operation->phase == SC_NATIVE_OPERATION_HELD)
+        return refusal(SC_PENDING, "Story operation: result before delivery/learning settled");
+    if (operation->phase != SC_NATIVE_OPERATION_RUNNING)
+        return refusal(SC_INVALID, "Story operation: no running battle to drain");
+    storage = operation->lifetime->memory.storage;
+    if (outcome > SC_DRAW || operation->serial == ~(RlU32)0)
+        return fail(operation, "Story operation: invalid terminal result");
+    if (!clean(backing->event))
+        return fail(operation, "Story operation: event output written while idle");
+    if (!backing->driver->launched || backing->driver->operation_id != operation->operation ||
+        backing->ui->operation_id != operation->operation ||
+        backing->ui->pending_save || !backing->ui->request_ready ||
+        storage->settled.phase != SC_BATTLE || storage->settled.learn_mask ||
+        !equal(&backing->ui->state, &storage->settled, sizeof(storage->settled)) ||
+        !equal(&backing->ui->bridge, &operation->bridge, sizeof(operation->bridge)))
+        return fail(operation, "Story operation: unsettled terminal ownership");
+    trial = storage->settled;
+    if (sc_finish(&trial, backing->catalog, outcome, trial.encounter_variant) != SC_OK)
+        return fail(operation, "Story operation: result contradicts observed battle");
+    clear(&operation->pending);
+    operation->pending.operation_id = operation->operation;
+    operation->pending.generation = ++operation->serial;
+    operation->pending.kind = SC_NATIVE_EVENT_DRAINED;
+    operation->pending.outcome = outcome;
+    operation->phase = SC_NATIVE_OPERATION_DRAINING;
+    operation->queued = 1;
     return SC_OK;
 }
 #endif
