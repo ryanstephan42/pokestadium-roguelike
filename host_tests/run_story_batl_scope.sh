@@ -22,9 +22,9 @@ for engine in host san; do
     extra=()
     if [[ "$engine" == san ]]; then extra=(-fsanitize=address,undefined -g); fi
     gcc "${flags[@]}" "${extra[@]}" host_tests/test_story_batl_scope.c \
-        src/story/sc_batl_scope.c src/memmap.c \
+        src/story/sc_batl_scope.c src/story/sc_batl_jobs.c src/memmap.c \
         -Wl,--gc-sections -lm -o "$out/scope-$engine" > "$out/$engine-build.log" 2>&1
-    for failure in 0 1 2 3 4 5 6 7 8 9 10 11 12; do
+    for failure in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
         UBSAN_OPTIONS=halt_on_error=1 ASAN_OPTIONS=detect_leaks=1 \
             "$out/scope-$engine" "$failure" | tee "$out/$engine-$failure.log"
     done

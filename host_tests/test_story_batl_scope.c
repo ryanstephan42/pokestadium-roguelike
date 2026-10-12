@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
     ScBatPermit first = {0,0}, second = {0,0}, copied, wrong;
     ScBatImports imports;
     uintptr_t base = (uintptr_t)&original_clock;
-    unsigned failed = argc > 1 && atoi(argv[1]);
+    unsigned failed = argc > 1 ? (unsigned)atoi(argv[1]) : 0;
     unsigned i;
     unk_D_800AE540_1194 alternate_registration;
     unk_D_800AE540_0004 alternate_group;
@@ -156,19 +156,48 @@ int main(int argc, char **argv) {
     assert(!sc_batl_scope_close() && !sc_batl_scope_map_change());
     if (failed >= 10) {
         unsigned j;
+        static unk_D_86002F58_004_000_010_024 live_header[2];
+        static s16 empty_request[2] = { -1, -1 };
+        static u32 empty_results[2];
+        static u8 fx_span[2][16];
         for (i = 0; i < 2; ++i) {
             workers[i].unk_01 = 3;
+            /* completed jobs the real admission accepts: an explicit live-cache model token and a
+             * complete (empty) effect request */
+            live_header[i].unk_00 = 25;
+            workers[i].unk_24 = &live_header[i];
+            workers[i].unk_18 = (uintptr_t)fx_span[i];
             for (j = 0; j < 2; ++j) {
                 jobs[i][j].unk_00 = j + 1;
                 jobs[i][j].unk_04 = (uintptr_t)(j ? &workers[i].unk_50 : &workers[i].unk_30);
+                jobs[i][j].unk_14 = j ? 0x18000 : 0x3C000;
             }
+            jobs[i][0].unk_02 = 24;
+            jobs[i][0].unk_0C = (uintptr_t)&live_header[i];
+            jobs[i][0].unk_18 = workers[i].unk_2C;
+            jobs[i][1].unk_08 = (uintptr_t)empty_results;
+            jobs[i][1].unk_0C = (uintptr_t)empty_request;
+            jobs[i][1].unk_10 = workers[i].unk_18;
         }
         assert(sc_batl_scope_drain(&first) == 0);
         assert(!sc_batl_worker_admit(&workers[0]) && first.ticket && !freed);
         for (i = 0; i < 2; ++i) for (j = 0; j < 2; ++j) ready[i][j] = 1;
         if (failed == 11) jobs[0][0].unk_00 = 2;
         if (failed == 12) jobs[0][0].unk_04 = (uintptr_t)&workers[1].unk_30;
-        if (failed == 10) {
+        if (failed == 13 || failed == 14) {
+            /* refused (size 0) model job / partial effect request: visible stop, nothing cleared */
+            if (failed == 13) jobs[0][0].unk_14 = 0;
+            else empty_request[0] = 5;
+            expected_stop = 1;
+            if (!setjmp(stop_return)) {
+                sc_batl_scope_drain(&first);
+                assert(0);
+            }
+            expected_stop = 0;
+            /* 14: the valid cache model job of worker 0 drains first; only the effect job stays */
+            assert(workers[0].unk_01 == (failed == 13 ? 3 : 2) && freed == (failed == 13 ? 0 : 1));
+            assert(first.ticket && !sc_batl_worker_admit(&workers[0]));
+        } else if (failed == 10) {
             assert(sc_batl_scope_drain(&first) == 1 && freed == 4);
             assert(!workers[0].unk_01 && !workers[1].unk_01);
             assert(sc_batl_scope_retire(&first));
