@@ -41,7 +41,7 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
     int status;
     if (!loop || loop->acquired || !display || display->acquired ||
         !owner || !owner->acquire || !owner->validate ||
-        !owner->submit || !owner->poll || !owner->resume || !owner->release)
+        !owner->submit || !owner->poll || !owner->resume || !owner->retire_display || !owner->release)
         return fail(NULL, SC_INVALID, "Story loop: owner acquisition callbacks unavailable");
     loop->prepared = loop->exited = loop->queued = loop->held_presented = 0;
     loop->held_operation = loop->held_generation = loop->event_operation = loop->event_serial = 0;
@@ -60,7 +60,7 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
         return fail(NULL, SC_INVALID, "Story loop: incomplete admitted backing tuple");
     if (b->driver->bound || b->native_ui->acquired || b->native_ui->prepared || b->pak->bound)
         return fail(NULL, SC_INVALID, "Story loop: backing already owns another lifetime");
-    status = sc_native_display_acquire(display);
+    status = sc_native_display_acquire(display, b->framebuffer);
     if (status != SC_OK) return status;
     loop->display_acquired = 1;
     status = sc_native_pak_bind(b->pak, 0);
@@ -196,6 +196,11 @@ int sc_native_loop_close(ScNativeLoop *loop) {
     b = &loop->backing;
     if (loop->prepared && (!loop->exited || loop->held_operation || loop->queued ||
         loop->drained_operation)) return SC_PENDING;
+    if (loop->pak_bound && b->pak->session) return SC_PENDING;
+    if (loop->display_acquired) {
+        status = sc_native_display_retire(loop->display, &loop->owner, b);
+        if (status != SC_OK) return status;
+    }
     if (loop->resources_acquired) {
         func_8000771C();
         status = sc_native_ui_release(b->native_ui, loop->prepared ? b->driver : NULL, 1);

@@ -136,7 +136,8 @@ or visible-campaign acceptance are included.
 ## Coordinated presentation loop and checked display
 
 `sc_native_loop.[ch]` consumes the owner ABI imported from exact `08766a8` and
-`5869a454`. The caller supplies zeroed external loop/display control; `open`
+`5869a454`, with framebuffer/retirement extensions `723b302` and `88fe18f`.
+The caller supplies zeroed external loop/display control; `open`
 acquires the exact arena-issued backing tuple, validates it, then acquires
 display, Pak binding, retained UI resources and the existing operation-ID driver.
 `step` and `close` return `ScStatus`. A failed open retains the lease until a
@@ -163,37 +164,68 @@ DRAINED must come from the owner's worker/service/permit retirement and BATL pop
 It dispatches finish; unavailable Pak acquisition retains the drained operation
 without polling a successor. Once finish starts a journal transaction, save
 retry belongs solely to the UI and never replays that event/reward. Close
-requires campaign exit and no queued/held/drained work, completes real task
-fences, retires graphics before owner backing, and retains the lease on owner
-release PENDING. Owner validate refusal never authorizes cleanup.
+requires campaign exit and no queued/held/drained work and refuses retirement
+during a Pak session. It closes display admission once, fences work, restores
+borrowed stage/image/rectangle/workspace state, and calls the mandatory owner's
+`retire_display` before popping any graphics/resource/display scope. PENDING or
+refusal retains all scopes, descriptors, pixels and controls; retries do not
+resubmit closure or reopen input. Every cleanup retry revalidates retirement,
+even after an earlier SC_OK. Final cleanup emits no new display task or swap.
+Owner release follows cleanup and must revalidate retirement; PENDING retains
+the lease and external controls. Owner validate refusal never authorizes cleanup.
 
-`sc_native_display.[ch]` checks actual workspace/context/framebuffer allocations.
+`sc_native_display.[ch]` checks actual workspace/context allocations and two
+owner-admitted upper-arena framebuffer spans. Each span must be exactly 614,400
+bytes, 64-byte aligned, mapped cached KSEG0 wholly within
+`[0x80400000, 0x807da7e0)`, without overflow or overlap. Shape checks do not
+establish allocator ownership: owner acquire/validate owns admission and exact
+lease identity. The display embeds two image descriptors in external control
+backing and initializes them with unchanged `func_800062E4`, without allocating
+or touching pixels. No second arena, lower-pool fallback or pool enlargement
+is introduced.
 The story-only workspace helper captures and restores borrowed workspace/head;
 per-frame activation preserves the retained next-frame command prefix and
 restores the paused native workspace. Guarded raw stage/image helpers restore
 the captured stage pointer, framebuffer pointer and clipping rectangle without
 emitting commands or copying fade/frame state into a borrowed context. Each
 submitted UI frame is fenced before resume; stage-close submissions are fenced
-again before scope retirement. Ordinary stage/workspace/framebuffer functions,
+again before owner retirement. **A task fence does not retire VI scanout.**
+The owner callback must actually submit/drive an admitted previous or safe
+fallback framebuffer, drain A8C/A9C/AAC and queued task/descriptor references,
+and check actual VI current/next outside both spans. A NULL previous context
+is not safety evidence. Owner authority must prevent new lease-referencing
+submissions racing between the check and cleanup. The UI cannot fabricate
+that scheduler/allocator authority. Ordinary stage/workspace/framebuffer functions,
 signatures and default code paths remain unchanged.
 
-IDO layout facts: loop 128 bytes, display 136 bytes, event 80 bytes. Own frames
-are loop open/step/close 80/64/32 bytes, private poll 64, private finish 32;
-display acquire/begin/end/release 56/32/32/32; checked workspace acquisition 40.
+IDO layout facts: loop 148 bytes, display 176 bytes, event 80 bytes. Own frames
+are loop open/step/close 80/64/48 bytes, private poll 64, private finish 32;
+display acquire/begin/end/retire/release 64/32/32/32/24;
+private span validation 40; checked workspace acquisition 40.
 These exclude callees, owner callbacks, interrupt/OS/task stacks and full peak.
 Display requests two 65,536-byte workspaces, a 76-byte restoration record,
-a 36-byte stage context and two 614,480-byte framebuffer records
-(640 * 480 * 2 pixels + 16-byte header + 64 alignment allowance).
-Requested total is 1,360,144 bytes; the tracked pool's 16-byte rounding/headers
-and 32-byte scope record bring display scope consumption to 1,360,288 bytes.
-Fonts/icons/text, UI arena backing, BATL and owner storage are additional.
+and a 36-byte stage context: 131,184 requested bytes. Actual tracked pool
+rounding/headers/scope consume 32 + 96 + 131,104 + 64 = **131,296 bytes**.
+The predecessor's two lower framebuffer records cost 1,228,992 bytes including
+their headers/alignment; removing them reduces its 1,360,288-byte scope by that
+amount. The owner's two upper pixel spans cost 1,228,800 bytes, separately.
+External loop/display/descriptor backing belongs to the owner and must be
+counted once, not again as lower display allocations. Fonts/icons/text, other
+UI arena backing, BATL, safe fallback and owner storage are additional.
 This is not combined candidate fit approval.
 
 `bash host_tests/run_story_native_display.sh` exercises actual acquisition and
 tracked workspace/context/framebuffer/restore function slices against synthetic
-pool/OS/command outcomes: seven finite scope/allocation failures, borrowed
-globals, preserved child context, open-frame/top-scope refusal and retirement
-fences. The resource runner also compiles full display and guarded native helper
+pool/OS/command outcomes: seven invalid-span refusals, five finite scope/allocation
+failures, exact descriptors, borrowed globals, allocation-free child frames and
+preserved child context. Retirement tests execute tracked `func_8000152C` and
+`func_800015A8` scheduler bodies with simulated OS task/VI completion, an admitted
+fixture fallback descriptor, delayed VI current/next, physical/KSEG aliases,
+closure-once PENDING, refusal/no pop and revalidation when VI returns after OK.
+Both NULL and non-NULL previous-context cases are covered. This is scheduler
+transition HOST evidence, **not the production owner callback or native VI
+retirement proof**; that implementation and admission lock remain owner-owned.
+The resource runner also compiles full display and guarded native helper
 TUs with IDO. Its owner-bound loop fixtures cover post-Pak submission retry,
 ignored pending payload, serial exhaustion/staleness, held KO presentation,
 learning and resume retry, drained finish/save retry, validate refusal and

@@ -449,6 +449,8 @@ static ScState resumed_state;
 static ScCombat resumed_combat;
 static unsigned learned_move;
 static unsigned begins, ends, fences;
+static int retirement_status;
+static unsigned retirements;
 static int poll_event(void *p, const ScNativeCampaignBacking *b, ScNativeCampaignEvent *out) {
     (void)p; assert(b->event == out);
     if (poll_status != SC_OK) { out->kind = SC_NATIVE_EVENT_DRAINED; return poll_status; }
@@ -471,7 +473,9 @@ static int resume_event(void *p, const ScNativeCampaignBacking *b, RlU32 operati
     resumes++;
     return resume_status;
 }
-int sc_native_display_acquire(ScNativeDisplay *d) {
+int sc_native_display_acquire(ScNativeDisplay *d, const ScNativeFramebufferSpan framebuffer[2]) {
+    assert(framebuffer[0].bytes == SC_NATIVE_FRAMEBUFFER_BYTES &&
+           framebuffer[1].bytes == SC_NATIVE_FRAMEBUFFER_BYTES);
     main_pool_push_state(0); d->scope = pool.mainState; d->acquired = 1; return SC_OK;
 }
 int sc_native_display_begin(ScNativeDisplay *d) { (void)d; begins++; return begin_status; }
@@ -480,7 +484,15 @@ int sc_native_display_end(ScNativeDisplay *d) {
     if (end_validate_refusal) { validate_status = SC_UNAVAILABLE; end_validate_refusal = 0; }
     return end_status;
 }
+int sc_native_display_retire(ScNativeDisplay *d, const ScNativeCampaignOwner *owner,
+                             const ScNativeCampaignBacking *b) {
+    int status = owner->retire_display(owner->context, b, d->images);
+    if (status == SC_OK) d->retired = 1;
+    else d->closing = 1;
+    return status;
+}
 int sc_native_display_release(ScNativeDisplay *d) {
+    assert(d->retired);
     assert(d->scope == pool.mainState); main_pool_pop_state(0); d->acquired = 0; return SC_OK;
 }
 void func_8000771C(void) { fences++; }
@@ -489,6 +501,9 @@ static int acquire_backing(void *p, ScNativeCampaignBacking *b) {
     memset(&ui, 0, sizeof(ui)); memset(&driver, 0, sizeof(driver));
     b->ui = &ui; b->driver = &driver; b->request = &request; b->native_ui = &native;
     b->pak = &pak; b->event = &loop_event; b->catalog = &sc_catalog; b->seed = 123; b->lease_id = 1;
+    b->framebuffer[0].pixels = (RlU8 *)0x80400000U;
+    b->framebuffer[1].pixels = (RlU8 *)0x80500000U;
+    b->framebuffer[0].bytes = b->framebuffer[1].bytes = SC_NATIVE_FRAMEBUFFER_BYTES;
     return SC_OK;
 }
 static int validate_backing(void *p, const ScNativeCampaignBacking *b) {
@@ -504,11 +519,21 @@ static int submit_request(void *p, const ScNativeCampaignBacking *b, const ScUiB
 static int release_backing(void *p, const ScNativeCampaignBacking *b) {
     (void)p; assert(!native.acquired && !display.acquired && b->lease_id == 1); return release_status;
 }
+static int retire_display(void *p, const ScNativeCampaignBacking *b, const unk_D_80068BB0 *images) {
+    (void)p;
+    assert(b->ui == &ui && images == display.images && !pak.session);
+    assert(display.acquired && depth >= 1);
+    if (loop.resources_acquired) assert(native.acquired && pak.bound && depth == 2);
+    retirements++;
+    return retirement_status;
+}
 static void presentation_loop(void) {
     ScNativeCampaignOwner calls;
+    unsigned before_retirements;
     fixture();
     calls.context = NULL; calls.submit = submit_request; calls.poll = poll_event; calls.resume = resume_event;
     calls.acquire = acquire_backing; calls.validate = validate_backing; calls.release = release_backing;
+    calls.retire_display = retire_display;
     assert(sc_native_loop_open(&loop, &display, &calls) == SC_OK);
     assert(sc_native_loop_close(&loop) == SC_PENDING && !fences);
     poll_status = SC_UNAVAILABLE;
@@ -522,6 +547,20 @@ static void presentation_loop(void) {
     assert(sc_native_loop_step(&loop) == SC_OK && ui.list.cursor == 2);
     controller.buttonPressed = RL_UI_A;
     assert(sc_native_loop_step(&loop) == SC_OK && loop.exited && driver.exit_requested);
+    retirement_status = SC_PENDING;
+    assert(sc_native_loop_close(&loop) == SC_PENDING && native.acquired && display.acquired && depth == 2);
+    retirement_status = SC_UNAVAILABLE;
+    assert(sc_native_loop_close(&loop) == SC_UNAVAILABLE && native.acquired && display.acquired && depth == 2);
+    retirement_status = SC_OK;
+    driver.exit_requested = 0;
+    assert(sc_native_loop_close(&loop) == SC_PENDING && native.acquired && display.acquired);
+    retirement_status = SC_PENDING;
+    assert(sc_native_loop_close(&loop) == SC_PENDING && native.acquired && display.acquired);
+    retirement_status = SC_OK; driver.exit_requested = 1;
+    before_retirements = retirements;
+    assert(sc_native_pak_begin(&pak) == SC_SAVE_OK);
+    assert(sc_native_loop_close(&loop) == SC_PENDING && retirements == before_retirements);
+    assert(sc_native_pak_end(&pak) == SC_SAVE_OK);
     release_status = SC_PENDING;
     assert(sc_native_loop_close(&loop) == SC_PENDING && loop.acquired && !native.acquired);
     validate_status = SC_UNAVAILABLE;
@@ -578,6 +617,7 @@ static void loop_battle(void) {
     calls.context = NULL; calls.submit = submit_request; calls.poll = poll_event;
     calls.resume = resume_event; calls.acquire = acquire_backing;
     calls.validate = validate_backing; calls.release = release_backing;
+    calls.retire_display = retire_display;
     assert(sc_native_loop_open(&loop, &display, &calls) == SC_OK);
     assert(loop_choose(1) == SC_OK && loop_choose(3) == SC_OK &&
            loop_choose(5) == SC_OK && loop_choose(1) == SC_OK);

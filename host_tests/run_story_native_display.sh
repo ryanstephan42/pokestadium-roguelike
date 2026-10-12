@@ -24,6 +24,10 @@ end = source.index("\nunk_func_80007444* func_800075F8(", start)
 start = source.index("void func_800075F8SetStory(")
 end = source.index("\n#endif", start)
 (out / "context-restore-body.inc").write_text(source[start:end])
+source = Path("src/dp_intro.c").read_text()
+start = source.index("void func_8000152C(")
+end = source.index("\nvoid func_800017E4(", start)
+(out / "scheduler-body.inc").write_text(source[start:end])
 PY
 flags=(-DSTORY_NATIVE_UI -DROGUELIKE -std=gnu89 -Wall -Wextra -Werror
     -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-int-conversion

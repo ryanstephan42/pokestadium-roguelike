@@ -1,8 +1,8 @@
 #ifndef SC_NATIVE_LOOP_H
 #define SC_NATIVE_LOOP_H
 #ifdef STORY_NATIVE_UI
-#include "sc_native_owner.h"
 #include "sc_native_display.h"
+#include "sc_native_owner.h"
 typedef struct ScNativeLoop {
     ScNativeCampaignOwner owner;
     ScNativeCampaignBacking backing;

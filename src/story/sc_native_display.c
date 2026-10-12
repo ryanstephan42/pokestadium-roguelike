@@ -9,10 +9,26 @@
 static ScNativeDisplay *sDisplay;
 static int error(const char *message) { HAL_Printf(8, 8, "%s", message); return SC_UNAVAILABLE; }
 
-int sc_native_display_acquire(ScNativeDisplay *display) {
+static int spans_valid(const ScNativeFramebufferSpan framebuffer[2]) {
+    unsigned i;
+    uintptr_t start[2], end[2];
+    if (!framebuffer) return 0;
+    for (i = 0; i < 2; i++) {
+        start[i] = (uintptr_t)framebuffer[i].pixels;
+        if (framebuffer[i].bytes != SC_NATIVE_FRAMEBUFFER_BYTES ||
+            (start[i] & 63) || start[i] < 0x80400000U ||
+            start[i] > 0x807DA7E0U - SC_NATIVE_FRAMEBUFFER_BYTES) return 0;
+        end[i] = start[i] + SC_NATIVE_FRAMEBUFFER_BYTES;
+        if (end[i] <= start[i]) return 0;
+    }
+    return end[0] <= start[1] || end[1] <= start[0];
+}
+
+int sc_native_display_acquire(ScNativeDisplay *display, const ScNativeFramebufferSpan framebuffer[2]) {
     MainPoolState *before;
     unsigned i;
-    if (!display || sDisplay || display->acquired) return error("Story display: acquisition identity unavailable");
+    if (!display || sDisplay || display->acquired || !spans_valid(framebuffer))
+        return error("Story display: acquisition identity/spans unavailable");
     before = main_pool_get_pool()->mainState;
     main_pool_push_state(0);
     display->scope = main_pool_get_pool()->mainState;
@@ -24,12 +40,13 @@ int sc_native_display_acquire(ScNativeDisplay *display) {
     display->screen = func_80007444(1, 0, 2, 0, 2, 0);
     if (!display->screen) goto failed;
     for (i = 0; i < 2; i++) {
-        display->screen->unk_18[i] = func_80006314(0, IMAGE_SIZE_BITS_16b, 640, 480, MEMORY_POOL_RIGHT);
-        if (!display->screen->unk_18[i]) goto failed;
+        func_800062E4(&display->images[i], 0, IMAGE_SIZE_BITS_16b, 640, 480,
+                     (u32)framebuffer[i].pixels);
+        display->screen->unk_18[i] = &display->images[i];
     }
     guOrtho(&display->projection, 0.0f, 640.0f, 480.0f, 0.0f, -2.0f, 2.0f, 1.0f);
     func_8001E6E8(&display->viewport, 640, 480);
-    display->acquired = 1; display->active = display->frame = 0;
+    display->acquired = 1; display->active = display->frame = display->closing = display->retired = 0;
     sDisplay = display;
     return SC_OK;
 failed:
@@ -40,7 +57,7 @@ failed:
 
 int sc_native_display_begin(ScNativeDisplay *display) {
     MainPoolState *scope;
-    if (!display || sDisplay != display || !display->acquired || display->frame)
+    if (!display || sDisplay != display || !display->acquired || display->frame || display->closing)
         return error("Story display: frame identity invalid");
     for (scope = main_pool_get_pool()->mainState; scope && scope != display->scope; scope = scope->prev) {}
     if (!scope) return error("Story display: retained scope unavailable");
@@ -79,25 +96,54 @@ int sc_native_display_end(ScNativeDisplay *display) {
     return SC_OK;
 }
 
+int sc_native_display_retire(ScNativeDisplay *display, const ScNativeCampaignOwner *owner,
+                             const ScNativeCampaignBacking *backing) {
+    MainPoolState *scope;
+    unsigned i;
+    int status;
+    if (!display || sDisplay != display || !display->acquired || display->frame ||
+        !owner || !owner->validate || !owner->retire_display || !backing)
+        return error("Story display: retirement identity unavailable");
+    status = owner->validate(owner->context, backing);
+    if (status != SC_OK) return status;
+    if (!spans_valid(backing->framebuffer)) return error("Story display: retirement spans invalid");
+    for (i = 0; i < 2; i++)
+        if (display->screen->unk_18[i] != &display->images[i] ||
+            display->images[i].img_p != backing->framebuffer[i].pixels ||
+            display->images[i].fmt != 0 || display->images[i].size != IMAGE_SIZE_BITS_16b ||
+            display->images[i].width != 640 || display->images[i].height != 480 ||
+            display->images[i].depth_p)
+            return error("Story display: retirement descriptors changed");
+    for (scope = main_pool_get_pool()->mainState; scope && scope != display->scope; scope = scope->prev) {}
+    if (!scope) return error("Story display: retirement scope unavailable");
+    if (!display->closing) {
+        if (display->active) {
+            if (!func_80005E40ActivateChecked()) return error("Story display: retirement workspace unavailable");
+            func_8000771C();
+            func_800075F8SetStory(display->screen);
+            func_800076C0();
+            func_8000771C();
+            func_800075F8SetStory(display->previous);
+            if (!func_80005E40SuspendChecked())
+                return error("Story display: retirement workspace restoration failed");
+        }
+        func_800075F8SetStory(display->previous);
+        func_8000648CRestoreStory(display->previous_image, &display->previous_rect);
+        display->closing = 1;
+    }
+    status = owner->retire_display(owner->context, backing, display->images);
+    display->retired = status == SC_OK;
+    return status;
+}
+
 int sc_native_display_release(ScNativeDisplay *display) {
     if (!display || sDisplay != display || !display->acquired || display->frame ||
-        main_pool_get_pool()->mainState != display->scope)
+        !display->retired || main_pool_get_pool()->mainState != display->scope)
         return error("Story display: retirement order invalid");
-    if (display->active) {
-        if (!func_80005E40ActivateChecked()) return error("Story display: retirement workspace unavailable");
-        func_8000771C();
-        func_800075F8SetStory(display->screen);
-        func_800076C0();
-        if (display->previous) func_80007678(display->previous);
-        func_8000771C();
-        if (!func_80005E40SuspendChecked()) return error("Story display: retirement workspace restoration failed");
-    }
-    func_800075F8SetStory(display->previous);
-    func_8000648CRestoreStory(display->previous_image, &display->previous_rect);
     main_pool_pop_state(0);
     display->scope = NULL; display->screen = display->previous = NULL;
     display->previous_image = NULL;
-    display->acquired = display->active = 0; sDisplay = NULL;
+    display->acquired = display->active = display->closing = display->retired = 0; sDisplay = NULL;
     return SC_OK;
 }
 #endif

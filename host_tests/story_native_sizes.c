@@ -9,3 +9,5 @@ unsigned sc_request_bytes(void) { return sizeof(ScUiBattleRequest); }
 unsigned sc_loop_bytes(void) { return sizeof(ScNativeLoop); }
 unsigned sc_display_bytes(void) { return sizeof(ScNativeDisplay); }
 unsigned sc_event_bytes(void) { return sizeof(ScNativeCampaignEvent); }
+unsigned sc_backing_bytes(void) { return sizeof(ScNativeCampaignBacking); }
+unsigned sc_owner_bytes(void) { return sizeof(ScNativeCampaignOwner); }

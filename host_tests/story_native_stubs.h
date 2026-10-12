@@ -3,6 +3,7 @@
 #define _COMMON_H
 #define _MEMORY_H_
 #define _STAGE_LOADER_H_
+#define _6BC0_H_
 #define _1CF30_H_
 #define _3FB0_H_
 #include <stddef.h>
