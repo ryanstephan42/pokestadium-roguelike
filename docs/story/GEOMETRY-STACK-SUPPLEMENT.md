@@ -658,7 +658,7 @@ The N5→N6 remaps of the v3, prefix, SC and site lists report no SHIFT. The sta
 | `check_story_frames.py` | OK; the frames are identical to N5. |
 | Route totals | Unchanged: story **6272**, probe **6328**, ordinary **6288** of callable 6352. |
 | `renderrec.py` | Handler table `0x8008b674`. CBmax **1144**, terminal 1184. |
-| `cmd8weight.py` | Wmax **5208**. Stadium archive `0x595d50`: Wmax 648. |
+| `cmd8weight.py` | Wmax **5208** as recorded here is **stale** (see v11): the tool substituted a 10⁶ placeholder for 21 unbound local fragment-31 callbacks, so the real N6 output was 1002776, an unknown depth. Stadium archive `0x595d50`: Wmax 648. |
 | `cmd8depth` | The maximum root is still `func_81001E24` at 1144. `func_81000420` is 1024, as before. The new CI path through `func_81002F38` reaches a worst of 224, via `rl_ci_fail`/`osStopThread`. |
 | `scenechain.py` / `cmd8domain.py` | 632. 56 operands, 0 anomalies. |
 | `cmd8scan-v2.py` | 622053 candidates, **0 hits** (4 and 8 MiB). |
@@ -740,7 +740,7 @@ Reachability of counter ≥ 3 is **not** asserted. This is fail-closed admission
 
 **Item D (callback 0x140 output):** the frame list emitted through `32F94` uses at most 19 Gfx = 152 of 320 bytes.
 
-**CI texture-owned extent (closed statically).**
+**CI texture-owned extent (witness; ownership withdrawn in v11 — only the initialized window and palette barrier are accepted).**
 - `n7-ci-extent-witness.py` authenticates the N5/N7 ROMs and the N7 ELF.
 - Archive `920000` table and entry 183 bytes are identical in N5 and N7.
 - The texture-owned extent `[8ff0f9d8, 8ff32c60)` = 0x23288 has:
@@ -789,6 +789,89 @@ Remaps and stage runs:
 - cmdA/cmd17 payloads and the remaining callback argument schemas.
 - Effect whole-turn history.
 - Stadium 144 / BD9C 592; the two fragment43 sites.
+- Lower keys 2–6; co-occurrence, fit/contiguity and native/gate.
+
+## v11 fragment-31 relocation regeneration, sticky shadow refusal; N8 refresh (static)
+
+All changes are behind `ROGUELIKE`. Vanilla `make` still reports `build/pokestadium-us.z64: OK`.
+
+**Corrections to v9/v10 (N5–N7).**
+- **fragment-31 bindings were stale.** From `ae9115b` onward the fragment-31 layout changed but its relocation table, header and raw `j` thunk table were still the vanilla ones:
+  - The 60-entry thunk table at offset `0x20–0x200` kept vanilla targets. 21 admitted local `0x810` thunks pointed at old offsets inside other functions (e.g. `81000180` → `81002f38`, but `func_81002F38` was at `81003090`).
+  - `rl_relocate_archive_imports` repairs only `[0x84300000, 0x84400000)` targets. That correctly repaired the 30 admitted `0x843` imports and nothing else. `Memmap_RelocateFragment` rebases without changing offsets.
+  - The header still held vanilla `relocOffset/sizeInRom/sizeInRam` = `0x47e0/0x5480/0x4be0` against an actual layout of `0x4a70/0x5710/0x4e70`. Both loaders read `relocOffset`, so N5–N7 would read a relocation count from code bytes.
+  - The direct-function HOST and IDO acceptance in v9/v10 (CI helper, getter, phase/counter) therefore did **not** certify the installed callback-table path on N5–N7.
+- **Wmax 5208 for N6/N7 was stale.** `cmd8weight.py` used a 10⁶ placeholder for an unbound callback, so the N7 output was 1002776, an unknown depth, and `cmd8domain.py` printed 21 `NO-FUNC-SYMBOL-AT-ADDR` lines. Verification passed only because the stage compared output identity.
+- **CI texture-owned extent is withdrawn.** The v10 witness (no relocation slot/target, one HI/LO target, a heuristic Gfx walk that stops on unlisted opcodes) does not establish object ownership or exhaust reachable segmented operands. Only the initialized 144008-byte window with worst end 144000 and the palette barrier remain accepted. Closing ownership needs a positive asset object size/format proof or an exhaustive root-qualified consumer decode.
+
+**Commits since N7 (`cf0f6d3`):**
+
+| Commit | Change |
+|---|---|
+| `304a8e1` | Sticky shadow refusal. An out-of-domain `(u16)counter >= 3` latches `rl_shadow_dead[row]`, and a dead row refuses every later admission until `func_80032670` resets the counter and calls `rl_shadow_slot_reset(row)`. A non-latched s16 counter could previously wrap from 3 to 0 after 65533 mode-2 refusals and admit a stale self-marked slot (UI review). |
+| `82fde6d` | `RL_REGEN_FRAGMENTS` defaults to `62 31`. fragment-31's relocation table and header are regenerated from the linked ELF. Each raw local/foreign `j` thunk is rebound to the linked address of the vanilla function its vanilla word targeted. `0x843` imports are left raw for the existing runtime repair (no double repair). `check_native_thunks.py` fails the build on any unbound thunk. |
+| `26acadc` | `check_installed_thunks.py` runs on the final ROM. It requires the header to match the map, simulates the exact `rl_relocate_archive_imports` rule, derives each expected target independently (vanilla ROM word → vanilla function → linked address), and checks the opcode and the loader R26 entry. |
+
+HOST evidence for the shadow latch (`host_tests/test_shadow_slot.py`):
+- The 1437 in-domain lines are identical, with 66 refusals.
+- The 65533-refusal wrap fixture now stays refused until reset, and reset re-admits.
+- Mutants removing the latch or the reset are rejected.
+
+IDO evidence on N8:
+- `rl_shadow_slot_reset` @ `80033840` clears `rl_shadow_dead[row & 1]`. The static helper follows it @ `80033854`, with `sltiu row<2`, `andi 0xffff`/`slti 3` and a latching store, the dead check, then `lw 0x130` versus `+0x138`.
+- `func_80032670` @ `800335e0` executes `sh zero` to the counter and then `jal rl_shadow_slot_reset`.
+- Reachability of counter ≥ 3 and the reset cadence are still not asserted.
+
+**N8 candidate:** fixed point v102 = v103 (v101 changed).
+
+| Artifact | SHA256 |
+|---|---|
+| ELF | `86b4f537c5217b9bf3c8f06b4e7828c521d1d0bd5d673f3e5ebb1a72ba55705b` |
+| ROM | `f227d4c4db14af67352c03204dc1762c4ec8e06ad0f6fe7349ed720e5f41c5f1` |
+| Map | `957064ccd5fab3afcf8938ab03a29de818c9989cdb2598dd497b608dce68b34d` |
+
+The fragment-31 header is now `0x4a70/0x5740/0x4e70`, matching the map.
+
+Installed bindings:
+- `check_installed_thunks.py` on N8: **60 bindings PASS** (24 local, 32 import, 4 foreign), including all **56** operands from the validator's post-repair witness.
+- On N7 it rejects the stale header; `check_native_thunks.py` on N7 rejects the stale local thunks.
+- Mutants rejected: stale local word `08400bce`, opcode swap, vanilla header, dropped loader entry, unmapped `0x843`, pre-mapped `0x843` (double repair).
+
+Stage tools now fail closed:
+- `cmd8weight.py` no longer uses a placeholder. Any unbound callback or callback without a computed depth makes the run exit 1 with `Wmax UNBOUNDED` and lists it.
+- `cmd8domain.py` exits 1 unless every admitted operand binds to a function symbol after the import repair.
+- On N7 both reject: 21 unresolved callbacks across 28 layouts.
+
+Remaps and stage runs:
+- The N7→N8 remaps of the v3, prefix, SC and 20-site lists report no SHIFT or MISMATCH.
+- `remapres2.py` now masks hex immediates. The fragment43 ROM `%hi` (`lui 0x28/0x29`) previously caused a false MISMATCH.
+- The stage GEN run and an independent fresh-scratch run both end with VERIFY PASSED (101 OK).
+
+| Artifact | Result on N8 |
+|---|---|
+| Handler table | `0x8008b824`. |
+| Stadium archive | `0x595f30`. |
+| Geo size table | `0x800986b0`. |
+| `cmd8domain.py` | 56 operands, 0 anomalies, **0 unresolved** bindings. |
+| `cmd8weight.py` | Wmax **5208** with all 56 callbacks bound (0 unresolved). Stadium archive: Wmax 648 (18 layouts). This is the first refresh in which 5208 is a real bound rather than a masked placeholder. |
+| `renderrec.py` | CBmax **1144**, terminal 1184. |
+| `cmd8depth` | `func_81000420` stays 1024 (64 functions). |
+| `cmd8scan-v2.py` | 622260 candidates, **0 hits** (4 and 8 MiB). |
+| SC closure | `sc_cold_entry` **2832** (594 functions). |
+| Other normalised outputs | Identical to N7 apart from addresses and `anon_` names. `cmd8super` lists 2 more superset candidates from the new code words. |
+
+**Lower-pool static key 1:**
+- gPool is at `0x8012e190`.
+- The pool is `[0x8012e1a0, 0x803ffff0)`, capacity **2956880** (−96 versus N7).
+- fragment62 still charges 815648 at ROM `[0x3109f0, 0x39fec0)`.
+- Arithmetic-only remainder: 547648 − 96 = **547552**. This is not a fit claim.
+
+**Still open after v11:**
+- CI texture ownership (see the corrections above).
+- Deferred items A (recursive borrowed G_DL with inherited segment state), C (alternate-image/flag-4 last-task lifetime) and E (synthesised or replaced streams and writers).
+- `14D70` segment-1 shadow targets.
+- cmdA/cmd17 payloads and the remaining callback argument schemas.
+- Effect whole-turn history; Stadium 144 / BD9C 592; the two fragment43 sites.
 - Lower keys 2–6; co-occurrence, fit/contiguity and native/gate.
 
 ## Not claimed
