@@ -160,7 +160,7 @@ def fragment_block(header_obj, frag_objs, relocs_obj, name="fragmentRL", vram=RL
 
 # Data-only segments loaded solely through their linker ROM symbols (ASSET_LOAD);
 # story persistent-image builds relocate them past the overlays.
-TAIL_SEGMENTS = ("transfer_pak_error_ui", "snap_mode_ui", "copyright")
+TAIL_SEGMENTS = ("transfer_pak_error_ui", "snap_mode_ui", "copyright", "_7820E0")
 
 
 def gen(args):

@@ -1,6 +1,7 @@
 import unittest
 
-from tools.rl.gen_rl_ld import remap_build_paths
+from pathlib import Path
+from tools.rl.gen_rl_ld import remap_build_paths, TAIL_SEGMENTS
 
 
 class LinkerPathTests(unittest.TestCase):
@@ -16,6 +17,11 @@ class LinkerPathTests(unittest.TestCase):
         self.assertEqual(remap_build_paths(text, "build_rl"),
                          "build_rl/src/main.o(.text); build_rl/src/roguelike/rl_battle.o(.text); rebuild/a.o")
         self.assertEqual(remap_build_paths(text, "build"), text)
+
+    def test_story_only_tail_defers_symbol_loaded_ai_data(self):
+        self.assertIn("_7820E0", TAIL_SEGMENTS)
+        source = Path("src/fragments/62/fragment62_361050.c").read_text()
+        self.assertIn("(u32)_7820E0_ROM_START + arg0 * 0x48", source)
 
 
 if __name__ == "__main__":
