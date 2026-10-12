@@ -26,7 +26,9 @@ typedef struct {
     ScMaBlock blocks[SC_MA_SLOTS];
 } ScMaArena;
 
-/* Backing maps physical [0x400000,end); host storage is not native admission. */
+/* Arena control must be zero-initialized before its first init. Preserve it
+   across shutdown/reentry so generation and ticket exhaustion remain binding.
+   Backing maps physical [0x400000,end); host storage is not native admission. */
 int sc_ma_init(ScMaArena *, ScMaU32 memory, unsigned char *, ScMaU32 bytes);
 int sc_ma_alloc(ScMaArena *, ScMaU32 bytes, ScMaHandle *);
 int sc_ma_staging(ScMaArena *, ScMaHandle, ScMaLease *);
