@@ -13,6 +13,10 @@ operand given with --operands), it:
   4. requires the repaired target to equal it, to be a linked function start, and the opcode
      to be unchanged.
 Memmap_RelocateFragment then only rebases the 0x81 segment; offsets are not changed.
+The entry path is gated positively as well: the header magic/headerSize and its inst[0..1]
+(j to the stub at BASE+0x20; nop) must equal vanilla, the header jump's loader R26 entry must
+be present iff vanilla has one, and the stub at BASE+0x20 must be a checked binding to the linked
+address of the vanilla entry function.
 
 Usage: check_installed_thunks.py <rom> <elf> <map> <vanilla_rom> <vanilla_map> [--operands FILE]
 FILE lists hex operand addresses (first hex token of each BIND line works).
@@ -94,7 +98,15 @@ def main():
     checked = sorted(set(raw) | {op - BASE for op in operands})
     loader = {e & 0xFFFFFF for e in r26}
 
-    failures, kinds = [], {"local": 0, "import": 0, "foreign": 0}
+    failures, kinds, entry = [], {"local": 0, "import": 0, "foreign": 0}, None
+    head, vhead = rom[start:start + 0x14], vrom[vstart:vstart + 0x14]
+    inst0, = struct.unpack_from(">I", head)
+    if head != vhead or head[8:16] != b"FRAGMENT" or inst0 >> 26 != 2 or target(inst0) != BASE + lo:
+        failures.append(f"entry header {head.hex()} vs vanilla {vhead.hex()} (want j {BASE + lo:08X}; nop)")
+    if (0 in loader) != (0 in {e & 0xFFFFFF for e in vr26}):
+        failures.append("entry header jump: loader R26 entry differs from vanilla")
+    if lo not in checked:
+        failures.append(f"entry stub {BASE + lo:08X}: not a checked binding")
     for off in checked:
         word, = struct.unpack_from(">I", rom, start + off)
         vword, = struct.unpack_from(">I", vrom, vstart + off)
@@ -120,11 +132,14 @@ def main():
                             f"{vt:08X} {name or 'NO-FUNC'} -> {want or 0:08X}")
             continue
         kinds[kind] += 1
+        if off == lo:
+            entry = name
         if "--report" in sys.argv:
             print(f"BIND {BASE + off:08X} raw {raw_t:08X} repaired {repaired:08X} {name} {kind} PASS")
     if failures:
         print("\n".join(failures))
         sys.exit(f"check_installed_thunks: {len(failures)} failures")
+    print(f"check_installed_thunks: entry j {BASE + lo:08X} -> stub -> {entry} {by_name[entry]:08X} PASS")
     print(f"check_installed_thunks: {len(checked)} bindings PASS ({kinds}); operands {len(operands)}")
 
 
