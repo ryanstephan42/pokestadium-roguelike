@@ -1,6 +1,7 @@
 #include "story_native_stubs.h"
 #include "src/story/sc_native_operation.h"
 #include "src/story/sc_native_terminal.h"
+#include "src/story/sc_persist.h"
 #include "tools/rltest/story_six_fixture.h"
 #include <assert.h>
 #include <stdarg.h>
@@ -394,6 +395,21 @@ static void terminal(void) {
 }
 
 ScNativeLaunchHook *gScNativeLaunchHook;
+/* Persistent mapping stand-in: the actual loader has its own test. */
+static int persist_code = 1, persist_failed;
+static unsigned persist_pins;
+int sc_persist_code(ScPersistFn fn) { return fn && persist_code; }
+int sc_persist_pin(unsigned kind) {
+    if (kind != SC_PERSIST_PIN_HOOK || !persist_code) return 0;
+    ++persist_pins;
+    return 1;
+}
+int sc_persist_unpin(unsigned kind) {
+    if (kind != SC_PERSIST_PIN_HOOK || !persist_pins) return 0;
+    --persist_pins;
+    return 1;
+}
+int sc_persist_fail(void) { persist_failed = 1; return 1; }
 
 /* Drives the binding exactly as the rl_battle.c call sites do: arm before the
    RLBT push, drain after the pop with raw flags, abort on init failure. */
@@ -408,17 +424,22 @@ static void launch_hook(void) {
     initialize(); memset(&t, 0, sizeof(t)); memset(&bind, 0, sizeof(bind));
     assert(!gScNativeLaunchHook);
     assert(sc_native_terminal_install(&bind, &t, &operation, 0) == SC_INVALID && !gScNativeLaunchHook);
+    /* callbacks outside the published persistent image never install */
+    persist_code = 0;
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_INVALID &&
+           !gScNativeLaunchHook && !persist_pins);
+    persist_code = 1;
     t.failed = 1;
     assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_INVALID && !gScNativeLaunchHook);
     t.failed = 0;
-    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_OK);
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_OK && persist_pins == 1);
     h = gScNativeLaunchHook;
     assert(h == &bind.hook && h->context == &bind && bind.status == SC_PENDING);
     assert(sc_native_terminal_install(&other, &t, &operation, b) == SC_INVALID && gScNativeLaunchHook == h);
     assert(sc_native_terminal_uninstall(&other) == SC_INVALID && gScNativeLaunchHook == h);
     /* arm refuses without a running operation: launcher returns before push */
     assert(h->arm(h->context) != SC_OK && t.failed);
-    assert(sc_native_terminal_uninstall(&bind) == SC_OK && !gScNativeLaunchHook);
+    assert(sc_native_terminal_uninstall(&bind) == SC_OK && !gScNativeLaunchHook && !persist_pins);
     /* normal LOSS: arm, one service cycle, drain from raw flags, uninstall */
     memset(&t, 0, sizeof(t));
     assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
@@ -594,6 +615,8 @@ int main(void) {
     drain();
     terminal();
     launch_hook();
+    assert(!persist_pins && !persist_failed);
+    puts("terminal install gated on persistent-image callbacks; HOOK pin held until uninstall");
     assert(notices);
     puts("NATIVE OPERATION HOST PASSED: canonical copies; all-byte request mutation refusals at submit/observe/poll/resume, held-before-delivery, owner-retained queued identity with all-byte clean-output/replay/identity refusals, single DRAINED producer with WIN/sc_finish and settlement refusals, terminal authority with raw-flag outcome, per-field forged-retirement refusal and finish-once, resident launch-hook binding; lifetime validation and retirement witness injected, no native launch");
     return 0;

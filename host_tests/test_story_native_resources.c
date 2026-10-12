@@ -8,6 +8,7 @@
 #include "../src/story/sc_native_loop.h"
 #include "../src/story/sc_native_operation.h" /* lifetime view injected by prelude */
 #include "../src/story/sc_native_terminal.h"
+#include "../src/story/sc_persist.h"
 #include "../src/story/sc_rl_ui.h" /* stubs bind the SC-private UI names */
 #include "../src/controller.h"
 
@@ -694,6 +695,10 @@ static ScNativeTerminalWitness life_witness;
 static int life_pool;
 void sc_native_terminal_witness(ScNativeTerminalWitness *w) { *w = life_witness; }
 ScNativeLaunchHook *gScNativeLaunchHook;
+int sc_persist_code(ScPersistFn fn) { (void)fn; return 0; }
+int sc_persist_pin(unsigned kind) { (void)kind; return 0; }
+int sc_persist_unpin(unsigned kind) { (void)kind; return 0; }
+int sc_persist_fail(void) { return 0; }
 static void life_arm(void) {
     memset(&life_terminal, 0, sizeof(life_terminal));
     assert(sc_native_terminal_arm(&life_terminal, &life_operation) == SC_OK);
@@ -869,7 +874,10 @@ int main(void) {
     scope_error = 0; ui_error = 1;
     assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE && !depth);
     ui_error = 0;
+    assert(!sc_native_resources_outstanding());
     assert(sc_native_ui_acquire(&native, &pak) == SC_OK && depth == 1);
+    /* a live restore record pins the caller-slot owner's mapping */
+    assert(sc_native_resources_outstanding() == 1);
     assert(sc_native_ui_acquire(&native, &pak) == SC_INVALID);
     assert(sc_native_ui_prepare(&native, &ui, &sc_catalog, 123) == SC_OK);
     assert(sc_native_ui_prepare(&native, &ui, &sc_catalog, 999) == SC_UNAVAILABLE);
@@ -913,6 +921,7 @@ int main(void) {
     controller.buttonPressed = RL_UI_A;
     assert(sc_native_ui_input(&native, &driver) == SC_OK && driver.exit_requested);
     assert(sc_native_ui_release(&native, &driver, 1) == SC_OK && !depth);
+    assert(!sc_native_resources_outstanding());
     assert(sc_native_ui_release(&native, &driver, 1) == SC_INVALID && !depth);
     assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE);
     assert(sc_native_pak_release(&pak) == SC_SAVE_OK);
@@ -920,7 +929,10 @@ int main(void) {
     child_learning();
     presentation_loop();
     loop_battle();
+    assert(!sc_native_resources_outstanding() && !depth);
     operation_loop();
+    /* scopes left held by the owner keep their restore record outstanding */
+    assert(depth && sc_native_resources_outstanding() == 1);
     puts("Story native resource adapter: real backend with synthetic OS/Pak/font outcomes; OK");
     return 0;
 }

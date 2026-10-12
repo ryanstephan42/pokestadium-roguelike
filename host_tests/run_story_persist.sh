@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Persistent story mapping: HOST normal + strict ASan/UBSan, then IDO compile of
+# the actual resident loader, native backend and cold-call exclusion.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+out="${1:?fresh output directory}"
+test ! -e "$out"
+mkdir -p "$out"
+sources=(host_tests/test_story_persist.c src/story/sc_persist.c src/story/sc_module_arena.c)
+flags=(-std=c89 -pedantic -Wall -Wextra -Werror -D_POSIX_C_SOURCE=200112L -I.
+    -DSTORY_NATIVE_UI -DSTORY_SERVICE_CANDIDATE)
+for mode in host san; do
+    extra=(-O2)
+    if [[ "$mode" == san ]]; then
+        extra=(-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer)
+    fi
+    gcc "${flags[@]}" "${extra[@]}" "${sources[@]}" -o "$out/persist-$mode"
+    UBSAN_OPTIONS=halt_on_error=1 ASAN_OPTIONS=detect_leaks=1 \
+        "$out/persist-$mode" | tee "$out/$mode.log"
+done
+target_flags=(-c -G 0 -non_shared -Xcpluscomm -nostdinc -Wab,-r4300_mul
+    -DVERSION_US=1 -DSTORY_NATIVE_UI -DSTORY_NATIVE_PROBE -DSTORY_SERVICE_CANDIDATE -DROGUELIKE
+    -Ihost_tests/story_ido_include -Iinclude -Isrc -Isrc/libnaudio -Iassets/us -I. -Ibuild
+    -Ilib/ultralib/include -Ilib/ultralib/include/PR -Ilib/ultralib/include/ido
+    -fullwarn -woff 624,649,838,712,516,513,596,564,594
+    -mips2 -EB -D_MIPS_SZLONG=32 -DNDEBUG -D_FINALROM -DN_MICRO -DF3DEX_GBI_2
+    -DBUILD_VERSION=VERSION_I_P -DLANGUAGE_C -D_LANGUAGE_C -O2)
+for unit in sc_persist sc_persist_native sc_cold_load sc_native_terminal sc_native_resources; do
+    tools/ido/linux/7.1/cc "${target_flags[@]}" "src/story/$unit.c" -o "$out/$unit.o" \
+        > "$out/$unit-ido.log" 2>&1
+    mips-linux-gnu-objdump -dr "$out/$unit.o" > "$out/$unit-disassembly.txt"
+done
+sha256sum "$out"/*.o > "$out/ido-objects.sha256"
+echo "STORY PERSIST RUNNER PASSED"

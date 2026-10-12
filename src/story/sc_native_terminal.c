@@ -1,5 +1,6 @@
 #if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
 #include "sc_native_terminal.h"
+#include "sc_persist.h"
 
 static int stop(ScNativeTerminal *terminal, const char *message) {
     terminal->failed = 1;
@@ -100,6 +101,11 @@ int sc_native_terminal_install(ScNativeTerminalBinding *b, ScNativeTerminal *ter
     if (!b || !terminal || !operation || !backing || gScNativeLaunchHook ||
         terminal->armed || terminal->failed)
         return SC_INVALID;
+    /* Callbacks must be in the published persistent image, never transient
+       cold_invoke storage; the pin keeps it mapped until uninstall. */
+    if (!sc_persist_code((ScPersistFn)hook_arm) || !sc_persist_code((ScPersistFn)hook_drain) ||
+        !sc_persist_code((ScPersistFn)hook_abort) || !sc_persist_pin(SC_PERSIST_PIN_HOOK))
+        return SC_INVALID;
     b->hook.context = b;
     b->hook.arm = hook_arm;
     b->hook.drain = hook_drain;
@@ -117,6 +123,10 @@ int sc_native_terminal_uninstall(ScNativeTerminalBinding *b) {
     if (!b || gScNativeLaunchHook != &b->hook || !b->terminal || b->terminal->armed)
         return SC_INVALID;
     gScNativeLaunchHook = 0;
+    if (!sc_persist_unpin(SC_PERSIST_PIN_HOOK)) {
+        sc_persist_fail();
+        return SC_INVALID;
+    }
     return SC_OK;
 }
 #endif

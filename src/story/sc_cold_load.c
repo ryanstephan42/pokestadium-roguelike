@@ -4,6 +4,12 @@
 #include "src/memory.h"
 #include "src/memmap.h"
 #include "sc_runtime_probe.h"
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_UI)
+#include "sc_persist.h"
+#define SC_PERSIST_HELD() sc_persist_holds_fragment()
+#else
+#define SC_PERSIST_HELD() 0
+#endif
 #ifdef STORY_AI_PROTOTYPE
 #include "sc_ai_runtime.h"
 #include "sc_ai_lease.h"
@@ -20,7 +26,8 @@ static int cold_invoke(ScColdRequest *request, u8 *rom_start, u8 *rom_end, unsig
 #ifdef STORY_AI_PROTOTYPE
     unsigned token;
 #endif
-    if (!request || calling || gScProbeActive) {
+    /* A persistent story mapping owns 0xe9 until release; never remap it. */
+    if (!request || calling || gScProbeActive || SC_PERSIST_HELD()) {
         osSyncPrintf("story probe: invalid/reentrant cold call\n");
         return 0x100 + SC_INVALID;
     }
