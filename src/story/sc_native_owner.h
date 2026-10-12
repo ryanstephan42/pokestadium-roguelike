@@ -3,6 +3,7 @@
 
 #ifdef STORY_NATIVE_UI
 #include "sc_native_ui.h"
+#include "sc_module_arena.h"
 #include "src/6BC0.h"
 
 enum ScNativeEventKind {
@@ -33,6 +34,8 @@ typedef struct ScNativeCampaignBacking {
     ScNativePak *pak;
     ScNativeCampaignEvent *event;
     const ScCatalog *catalog;
+    /* Campaign arena owning this backing; UI resources take their upper slab from it. */
+    ScMaArena *arena;
     RlU32 seed, lease_id;
     ScNativeFramebufferSpan framebuffer[2];
 } ScNativeCampaignBacking;

@@ -28,6 +28,7 @@ static void tuple(ScNativeMemory *memory, ScNativeCampaignBacking *backing) {
     backing->pak = &storage->pak;
     backing->event = &storage->event;
     backing->catalog = memory->catalog;
+    backing->arena = memory->arena;
     backing->seed = memory->seed;
     backing->lease_id = memory->lease.ticket;
     backing->framebuffer[0].pixels = pixels;
@@ -122,7 +123,8 @@ int sc_native_memory_validate(ScNativeMemory *memory,
     if (backing->ui != expected.ui || backing->request != expected.request ||
         backing->driver != expected.driver || backing->native_ui != expected.native_ui ||
         backing->pak != expected.pak || backing->event != expected.event ||
-        backing->catalog != expected.catalog || backing->seed != expected.seed ||
+        backing->catalog != expected.catalog || backing->arena != expected.arena ||
+        backing->seed != expected.seed ||
         backing->lease_id != expected.lease_id)
         return SC_INVALID;
     for (i = 0; i < 2; i++)
