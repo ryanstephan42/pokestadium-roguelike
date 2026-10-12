@@ -606,6 +606,7 @@ an empty working directory and changed/duplicate import-policy refusal.
 Historical/default and isolated-corrected paths keep their frozen historical
 ELF/import checks. Generated image/header/manifests stay in ignored evidence
 directories; regenerate and relink to a header fixed point after layout changes.
+The launch-wiring candidate reached the fixed point at v32 == v33.
 
 ## Retained crash-screen reference
 
@@ -858,3 +859,56 @@ Helper own frames: acquire/check/step/abort-release/finalize 24/32/40/24/32;
 private identity checks 64, private inspection 48. DP seam own frames:
 acquire/snapshot/enqueue/quiescent/poll/release 32/40/40/32/24/32.
 These are individual function frames, not full call-chain or interrupt peaks.
+
+## Menu → campaign battle launch wiring (source/HOST/IDO only)
+
+`STATE_STORY_CAMPAIGN` (0x32, `include/variables.h`) is entered from Menu
+Select only through `sc_campaign_menu_hook` (R, not L, at a non-title state,
+while the runner is idle). It exists only in `STORY_SERVICE_CANDIDATE` +
+`STORY_NATIVE_UI` builds; ordinary RL entry/exit and the vanilla build are
+unchanged (`make` OK, `make rl` OK). The resident runner
+`src/story/sc_campaign_run.c` drives the installed/pinned path —
+`sc_campaign_open` (persistent SC mapping, arena, story load) → step loop →
+`rl_start_battle` with the campaign request → `sc_campaign_close` → return to
+Menu Select. No probe-only flag selects the battle. A missing 8 MiB arena
+refuses before any load (strict 4 MiB story refusal preserved) and returns.
+
+Inside BATL, fragment 62 gate/after sites call `sc_campaign_battle_gate`/
+`sc_campaign_battle_after` only while the campaign predicate holds. A KO
+observation is queued through `sc_campaign_observe`; an owner-held operation
+pauses battle logic (nested story presentation) and the deferred post-logic
+frame resumes with the retained result. Failures fail-stop:
+pre-arm/mapping refusal, init abort or refused drain after arm
+(`settle_refused`: drained, status not OK/PENDING → `sc_campaign_fail_stop`;
+hook, mapping and pins are retained, close is refused), invalid frame, or
+refused observation. A PENDING drain retains the hook and is retried; close is
+held until release/quiescence.
+
+Connected HOST test: `host_tests/run_story_campaign_run.sh OUT` (normal +
+ASan/UBSan + IDO compile of the actual runner). Actual units: runner,
+installer, adapter, persist, arena. **Substituted native seams** (labelled in
+`host_tests/story_campaign_run_seams.h`): RL battle types/`rl_start_battle`,
+controller, game state, `osGetCount`/`osSyncPrintf`, SC mapping/capture/
+publish-live, the loop/lifetime/operation/terminal stubs of
+`test_story_campaign.c`, and a scripted launch-hook binding. It is not a
+native execution or an installed-hook trace.
+
+ROM capacity: the RL linker asserts `__romPos <= 0x7C0000`. At `dd0d715` the
+margin was 160 B and launch wiring overflowed it. Candidate builds only
+(`tools/rl/gen_rl_ld.py`) move `snap_mode_ui` (0x1B00) and `copyright`
+(0x940) to the ROM tail (0x02086040–0x02088480); margin is now 4448 B. These
+assets are not exercised by any native run yet.
+
+RAM: resident main grew; `gPool` moved 0x8012b370 (UI ledger 133c36b) →
+0x8012c730, i.e. −5056 B from the ledger's 395728 B lower headroom (≤390672 B
+before BATL headers/scopes, loader staging, models, archives, caller menu
+baseline). SC payload +64 B (cold image 221072); fragment 62 +320 B (transient).
+Runner IDO frames (TU-local): state 40 → launch 40 → `rl_start_battle`;
+in-battle gate 24 → tick 136 → adapter/capture/publish. External callee chains
+and the whole callback/interrupt stack peak are **not** summed; complete fit
+and stack remain unproven.
+
+Open questions: AI service for arbitrary trainers; nested story display inside
+BATL during holds; Menu Select → story display transition; persistent display
+failure busy-loop; tick-invalid fail-stop hangs intentionally; R at Menu
+Select may conflict with existing bindings; shared arena ownership.
