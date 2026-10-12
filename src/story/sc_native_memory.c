@@ -83,6 +83,11 @@ int sc_native_memory_acquire(ScNativeMemory *memory, ScMaArena *arena,
     memory->display = display;
     clear(mapped, controls());
     tuple(memory, backing);
+#ifndef SC_NATIVE_MEMORY_HOST
+    /* New exclusive pixels may reuse dirty CPU lines from an older data lease. */
+    osWritebackDCache(backing->framebuffer[0].pixels, 2U * SC_NATIVE_FRAMEBUFFER_BYTES);
+    osInvalDCache(backing->framebuffer[0].pixels, 2U * SC_NATIVE_FRAMEBUFFER_BYTES);
+#endif
     return SC_OK;
 }
 

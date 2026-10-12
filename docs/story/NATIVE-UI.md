@@ -140,7 +140,10 @@ fail-stop ownership. This is not native allocator/display admission.
 lease in that same arena: UI/request/Pak/driver/event, owned submitted/resume
 values, and two exact pixel spans. Alignment slack is charged once and does
 not overlap the callable image allocation. It zeros only controls, not pixel
-storage; no GPU/cache admission is inferred. Exact tuple validation refuses
+storage. The native path writes back then invalidates the newly exclusive,
+64-byte-aligned pixel range before publishing it, preventing old dirty CPU
+lines from later overwriting RDP output; this is not scheduler/VI admission.
+Exact tuple validation refuses
 changed pointers, sizes, seed, ticket and stale lifetimes. Acquisition OOM or
 ticket exhaustion publishes a completely zero output tuple.
 
