@@ -99,7 +99,7 @@ int sc_campaign_dispatch(unsigned command) {
     ScCampaignControl *c = sc_campaign_bound();
     ScNativeCampaignOwner calls;
     ScNativeLoop *loop;
-    int status;
+    int status, ended;
     if (!c) return SC_INVALID;
     loop = &c->lifetime.loop;
     switch (command) {
@@ -113,9 +113,13 @@ int sc_campaign_dispatch(unsigned command) {
         status = sc_native_operation_bind(&c->operation, &c->lifetime);
         if (status != SC_OK) return status;
         if (c->sequential_result_ready) {
+            status = sc_native_pak_begin(loop->backing.pak);
+            if (status != SC_SAVE_OK) return SC_UNAVAILABLE;
             status = sc_ui_resume_postbattle(loop->backing.ui, &c->sequential_request,
                 &c->sequential_state, &c->sequential_result, &c->sequential_ledger,
                 c->sequential_outcome);
+            ended = sc_native_pak_end(loop->backing.pak);
+            if (ended != SC_SAVE_OK) return SC_INVALID;
             if (status != SC_OK && status != SC_PENDING) return status;
             c->sequential_result_ready = 0;
             c->sequential_active = 0;

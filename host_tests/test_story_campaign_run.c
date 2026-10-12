@@ -27,6 +27,7 @@ ScMaArena *sc_service_native_arena(void) { return &arena; }
 static ScUi ui;
 static ScUiDriver driver;
 static ScUiBattleRequest request;
+static ScNativePak pak;
 static ScState before;
 static unsigned detached, reopened, battles, loader_binds, loader_unbinds;
 static int loader_bound, loader_refuse, loader_pinned, bad_frame, battle_loss;
@@ -70,6 +71,7 @@ int sc_ui_resume_postbattle(ScUi *target, const ScUiBattleRequest *r,
                             const ScState *state, const RlLaunchResult *result,
                             const ScKoLedger *ledger, unsigned outcome) {
     assert(target == &ui && mapped && shell_live && !loader_bound);
+    assert(pak_session);
     assert(!memcmp(state, &before, sizeof(before)));
     assert(r->operation_id == opid && ledger->operation_id == opid);
     assert(ledger->count == 2 && ledger->next == 0);
@@ -106,6 +108,7 @@ int sc_batl_loader_unbind(void) {
 static void bind_backing(void) {
     ScNativeCampaignBacking *b = &ctl()->lifetime.loop.backing;
     b->ui = &ui; b->driver = &driver; b->request = &request;
+    b->pak = &pak;
 }
 static void acquire_shell(void) {
     assert(mapped && !shell_live && !loader_bound);
@@ -252,6 +255,22 @@ static void full_cycle(void) {
     assert(!mapped && !shell_live);
 }
 static void loss_cycle(void) { battle_loss = 1; full_cycle(); }
+static void refused_postbattle_pak(void) {
+    ready(); state();
+    assert(gScCampaignRun.stage == SC_RUN_REOPEN);
+    pak_begin_status = SC_SAVE_IO;
+    assert(sc_campaign_open(&arena, 77) == SC_UNAVAILABLE);
+    assert(!pak_session && !reopened);
+    assert(ctl()->sequential_active && ctl()->sequential_result_ready);
+}
+static void refused_postbattle_pak_end(void) {
+    ready(); state();
+    assert(gScCampaignRun.stage == SC_RUN_REOPEN);
+    pak_end_status = SC_SAVE_IO;
+    assert(sc_campaign_open(&arena, 77) == SC_INVALID);
+    assert(!pak_session && reopened == 1);
+    assert(ctl()->sequential_active && ctl()->sequential_result_ready);
+}
 static void close_pending(void) {
     start(); state(); want_launch = 1; state(); state();
     release_status = SC_PENDING;
@@ -296,6 +315,8 @@ int main(void) {
     run(fail_stop_idle, "installer idle fail-stop");
     run(full_cycle, "close/unmap -> isolated BATL allocation -> capture -> release/reopen x2");
     run(loss_cycle, "loss result and ordered ledger handed to postbattle UI without mutation");
+    run(refused_postbattle_pak, "postbattle Pak refusal retains unconsumed result");
+    run(refused_postbattle_pak_end, "postbattle Pak release refusal retains unconsumed result");
     run(close_pending, "retirement/quiescence pending blocks battle allocation and launch");
     run(refused_loader, "refused BATL binding fail-stops without re-entry");
     run(pinned_loader, "pinned BATL storage prevents reopening");

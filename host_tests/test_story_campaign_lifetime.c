@@ -39,6 +39,12 @@ int sc_persist_native_enter(unsigned char *image, int arg0, unsigned arg1) {
 
 /* ---- HOST seams never reached once display acquisition is refused ---- */
 #define UNREACHED(what) assert(!what " reached after refused display acquisition")
+int sc_native_pak_begin(ScNativePak *p) {
+    (void)p; UNREACHED("Pak begin"); return SC_SAVE_IO;
+}
+int sc_native_pak_end(ScNativePak *p) {
+    (void)p; UNREACHED("Pak end"); return SC_SAVE_IO;
+}
 int sc_ui_resume_postbattle(ScUi *ui, const ScUiBattleRequest *request,
                             const ScState *state, const RlLaunchResult *result,
                             const ScKoLedger *ledger, unsigned outcome) {

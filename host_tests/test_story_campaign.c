@@ -13,6 +13,19 @@
 
 const ScCatalog sc_catalog;
 ScNativeLaunchHook *gScNativeLaunchHook;
+static int pak_session;
+static int pak_begin_status = SC_SAVE_OK, pak_end_status = SC_SAVE_OK;
+int sc_native_pak_begin(ScNativePak *pak) {
+    assert(pak && !pak_session);
+    if (pak_begin_status != SC_SAVE_OK) return pak_begin_status;
+    pak_session = 1;
+    return SC_SAVE_OK;
+}
+int sc_native_pak_end(ScNativePak *pak) {
+    assert(pak && pak_session);
+    pak_session = 0;
+    return pak_end_status;
+}
 
 #ifndef SC_CAMPAIGN_RUN_TEST
 int sc_ui_resume_postbattle(ScUi *ui, const ScUiBattleRequest *request,
