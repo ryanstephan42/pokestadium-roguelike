@@ -15,11 +15,14 @@
 #include "src/memory.h"
 #include "src/story/sc_batl_scope.h"
 #include "src/story/sc_batl_jobs.h"
+#include "src/roguelike/rl_geo_guard.h"
+#include <sys/mman.h>
 
 #define CHECK(x)                                                         \
     do {                                                                 \
         if (!(x)) {                                                      \
             printf("CHECK FAILED %s:%d %s\n", __FILE__, __LINE__, #x); \
+            fflush(NULL);                                                \
             abort();                                                     \
         }                                                                \
     } while (0)
@@ -122,6 +125,8 @@ static union {
 } pool_view;
 static MainPoolBlock pool_head;
 static int fail_load_at = -1, refuse_at = -1, bad_root, loads;
+/* fx_shape: effect list placed at the effect-buffer end on load fx_shape_at */
+static int fx_shape, fx_shape_at = -1;
 static u32 bound_buffer;
 void* func_80002DA4(MainPoolState* pool, s32 size) {
     bound_buffer = (u32)pool;
@@ -130,10 +135,33 @@ void* func_80002DA4(MainPoolState* pool, s32 size) {
     (void)size;
     return &pool_view;
 }
-void rl_geo_image_set(Fragment* f) {
-    (void)f;
+u32 osMemSize = 0x800000;
+/* rl_geo_refuse/rl_geo_image_set/rl_geo_recolor_admit extracted verbatim from src/geo_layout.c */
+#include "geo-image-extracted.inc"
+/* image_case: the model fragment is a FRAGMENT image in a fixed "RDRAM" page whose type-E
+ * recolor descriptor reaches past the image, so the real recolor admission refuses */
+static int image_case;
+static Fragment* rdram_image(void) {
+    static Fragment* f;
+    if (f == NULL) {
+        void* at = mmap((void*)0x80100000, 0x2000, PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+        CHECK(at == (void*)0x80100000);
+        f = at;
+        ((u32*)f->magic)[0] = 'FRAG';
+        ((u32*)f->magic)[1] = 'MENT';
+        f->headerSize = 0x20;
+        f->relocOffset = 0x1000;
+        f->sizeInRam = 0x2000;
+    }
+    return f;
 }
-void rl_loader_refuse_notify(void);
+/* clears always run the real scope reset; only the image fixture's load is a FRAGMENT image */
+void rl_geo_image_set(Fragment* f) {
+    if (f == NULL || image_case) {
+        geo_image_set(f);
+    }
+}
 /* mirrors rl_geo_refuse on the loader thread */
 static void parser_refuse(void) {
     rl_loader_refuse_notify();
@@ -151,9 +179,24 @@ Fragment* func_80019204(MainPoolState* pool, BinArchive* archive, s32 index, u32
     if (call == refuse_at) {
         parser_refuse();
     }
+    if (archive == D_800ABE10.unk_A04.unk_00 && image_case) {
+        return rdram_image();
+    }
     if (archive == D_800ABE10.unk_A04.unk_00) {
         memset(base, 0, 0x1000);
         return (Fragment*)base;
+    }
+    if (call == fx_shape_at) {
+        /* records occupy the last 16 bytes of the 0x18000 effect buffer */
+        arg1_func_80019420* r = (arg1_func_80019420*)(base + 0x18000 - 16);
+        Fragment* f = (Fragment*)r - 1;
+        r[0].unk_00 = 1;
+        r[0].unk_02 = fx_shape == 3 ? 256 : fx_shape == 4 ? -1 : fx_shape == 5 ? 0 : 200;
+        r[0].unk_04 = base + 0x40;
+        r[1].unk_00 = fx_shape == 2 ? 1 : 0;
+        r[1].unk_02 = 201;
+        r[1].unk_04 = base + 0x40;
+        return f;
     }
     {
         Fragment* f = (Fragment*)(base + 0x1000 * (index & 7));
@@ -179,6 +222,30 @@ s32 func_80019328(MemoryBlock* pool, Fragment* frag, arg1_func_80010CA8 tint) {
     u32* roots = (u32*)(base + 0x200);
     u8* root = base + 0x300;
     (void)pool;
+    if (image_case) {
+        /* the real geo_layout image scope is active for exactly this loader-thread image */
+        static unk_D_86002F34 node;
+        static RlGeoTexDesc tex[1];
+        CHECK(rl_geo_image_active() && sRlGeoImageLo == (u32)frag && sRlGeoImageHi == (u32)frag + 0x1000 &&
+              sRlGeoImageThread == &D_800ABE10.unk_000);
+        tex[0].kind = 0;
+        tex[0].type = 2;
+        tex[0].texels = 4;
+        tex[0].texture = (u32)frag + 0x1000 - 4; /* 8 bytes written, 4 past the image */
+        node.unk_00.unk_00 = 0xE;
+        node.unk_18 = (void*)tex;
+        node.unk_24 = 1;
+        node.unk_1C = NULL;
+        node.unk_25 = 0;
+        /* func_80019328's ROGUELIKE call before func_80018C40 */
+        rl_geo_recolor_admit(&node);
+        CHECK(0);
+    }
+    /* near-end type-E roots: 4 -> end-0x18 (node fits, root does not), 5 -> end-0x2C (exact),
+     * 6 -> end-0x28 (four bytes short); only bytes inside the buffer are written */
+    if (bad_root >= 4) {
+        root = base + 0x3C000 - (bad_root == 4 ? 0x18 : bad_root == 5 ? 0x2C : 0x28);
+    }
     (void)tint;
     memset(header, 0, 0x300);
     *(u16*)header = 0;
@@ -186,7 +253,9 @@ s32 func_80019328(MemoryBlock* pool, Fragment* frag, arg1_func_80010CA8 tint) {
     *(u32**)(header + 8) = roots;
     *(Fragment**)(header + 0x14) = frag;
     root[0] = 0xE;
-    *(u32*)(root + 0x28) = bad_root == 2 ? (u32)frag + 4 : (u32)frag;
+    if (bad_root < 4 || bad_root == 5) {
+        *(u32*)(root + 0x28) = bad_root == 2 ? (u32)frag + 4 : (u32)frag;
+    }
     roots[0] = bad_root == 1 ? (u32)base + 0x3C000 : (u32)root;
     if (bad_root == 3) {
         /* roots array outside the worker buffer, root itself valid */
@@ -237,7 +306,6 @@ static u8* D_84386E08[][5] = { { row_one, row_one, row_one, row_two, row_one } }
             sc_batl_job_fatal(code); \
         }                            \
     } while (0)
-#define ROGUELIKE
 #include "jobs-extracted.inc"
 
 static unk_D_86002F58_004_000_010 workers[2];
@@ -321,6 +389,9 @@ static void do_fx_request(void) {
     func_8432C9C0(&regs[fx_side], fx_row);
     func_8001C248((unk_func_8001C248*)&regs[fx_side]);
 }
+static void do_fx_send(void) {
+    func_8001C248((unk_func_8001C248*)&regs[fx_side]);
+}
 static void do_fx_ready(void) {
     func_8001C2D8((unk_func_8001C248*)&regs[fx_side]);
     CHECK(regs[fx_side].unk_1D & 0x10);
@@ -343,6 +414,26 @@ static void model_cases(int c) {
     unk_D_86002F58_004_000_010_024* first;
     model_request(0, 25);
     CHECK(boxes[box(&D_800ABE10.unk_9D0)].n == 1);
+    if (c == 29) {
+        sp18_func_800198E4* job = (sp18_func_800198E4*)boxes[box(&D_800ABE10.unk_9D0)].m[0];
+        int reply = box((OSMesgQueue*)job->unk_04);
+        image_case = 1;
+        loader();
+        /* refusal completed this job (size 0, no result) and cleared the image scope before any
+         * publication; the caller then stops visibly instead of waiting on the stopped loader */
+        CHECK(!rl_geo_image_active() && sRlGeoImageLo == 0 && sRlGeoImageHi == 0 && sRlGeoImageThread == NULL);
+        CHECK(boxes[reply].n == 1 && boxes[reply].m[0] == (OSMesg)job && job->unk_14 == 0 && job->unk_08 == 0);
+        CHECK(!(regs[0].unk_00 & 0x10) && regs[0].unk_14 == NULL && workers[0].unk_24 == NULL);
+        CHECK(model_ready(0) && stops == 1);
+        CHECK(!(regs[0].unk_00 & 0x10) && regs[0].unk_14 == NULL && workers[0].unk_24 == NULL);
+        printf("MODEL case 29: active-image recolor refusal -> notify -> scope cleared -> job completed -> "
+               "caller terminal stop\n");
+        return;
+    }
+    if (c == 28) {
+        /* queued job retargeted to worker 1's model buffer instead of worker 0's admitted buffer */
+        ((sp18_func_800198E4*)boxes[box(&D_800ABE10.unk_9D0)].m[0])->unk_10 = (s32)model_buf[1];
+    }
     if (c == 3) {
         fail_load_at = 0;
     }
@@ -352,8 +443,11 @@ static void model_cases(int c) {
     if (c == 5 || c == 6 || c == 7) {
         bad_root = c - 4;
     }
+    if (c >= 19 && c <= 21) {
+        bad_root = c - 15;
+    }
     loader();
-    if (c >= 3 && c <= 7) {
+    if ((c >= 3 && c <= 7) || c == 19 || c == 21 || c == 28) {
         CHECK(model_ready(0));
         CHECK(!(regs[0].unk_00 & 0x10) && regs[0].unk_14 == NULL && workers[0].unk_24 == NULL);
         CHECK(workers[0].unk_01 & 1);
@@ -364,6 +458,11 @@ static void model_cases(int c) {
     first = workers[0].unk_24;
     CHECK(first == (void*)(model_buf[0] + 0x100) && (void*)regs[0].unk_14 == first);
     CHECK((regs[0].unk_00 & 0x10) && !(workers[0].unk_01 & 1));
+    if (c == 20) {
+        CHECK(*(u32*)(model_buf[0] + 0x3C000 - 4) == (u32)model_buf[0]);
+        printf("MODEL case 20: type-E root ending exactly at the buffer end admitted\n");
+        return;
+    }
     CHECK(*(u32*)(model_buf[0] + 0x300 + 0x28) == (u32)model_buf[0]);
     if (c == 0) {
         printf("MODEL case 0: new load admitted (header/roots/owner in buffer) and readied\n");
@@ -378,6 +477,13 @@ static void model_cases(int c) {
         *(u16*)first = 27;
         CHECK(model_ready(0) && !(regs[0].unk_00 & 0x10));
         printf("MODEL case 8: queued cache token whose live header changed model stops\n");
+        return;
+    }
+    if (c == 27) {
+        /* live tint changed while the cache token is queued */
+        workers[0].unk_2C.raw ^= 1;
+        CHECK(model_ready(0) && !(regs[0].unk_00 & 0x10));
+        printf("MODEL case 27: queued cache token whose live tint changed stops\n");
         return;
     }
     if (c == 9) {
@@ -417,6 +523,21 @@ static void fx_cases(int c) {
     }
     fx_side = 0;
     fx_row = 1; /* entries 4,5 -> records 108/109 and 110/111 */
+    if (c == 30) {
+        /* both sides arm while nothing is pending; the later send must see the other side's request */
+        int q = box(&D_800ABE10.unk_9D0);
+        func_8432C9C0(&regs[0], fx_row);
+        func_8432C9C0(&regs[1], fx_row);
+        CHECK(!guarded(do_fx_send) && boxes[q].n == 1 && (workers[0].unk_01 & 2));
+        fx_side = 1;
+        CHECK(guarded(do_fx_send) && boxes[q].n == 1 && !(workers[1].unk_01 & 2) && !(regs[1].unk_1D & 0x40));
+        printf("EFFECT case 30: second side's send while the first is pending stops before queueing\n");
+        return;
+    }
+    if (c >= 22) {
+        fx_shape = c - 21;
+        fx_shape_at = loads;
+    }
     if (c == 11) {
         fail_load_at = loads + 1;
     }
@@ -443,6 +564,21 @@ static void fx_cases(int c) {
         CHECK(!hang && !(regs[0].unk_1D & 0x10) && D_843920C0[108] == NULL);
         printf("EFFECT case %d: %s request stops before any record is published\n", c,
                c == 11 ? "partial" : "refused");
+        return;
+    }
+    if (c >= 22) {
+        if (c == 22) {
+            CHECK(!guarded(do_fx_ready));
+            CHECK(D_843920C0[200] == fx_buf[0] + 0x40 && D_843920C0[110] == fx_buf[0] + 0x5000 + 0x80);
+            printf("EFFECT case 22: record list ending exactly at the buffer end published\n");
+            return;
+        }
+        CHECK(guarded(do_fx_ready) && D_843920C0[200] == NULL && D_843920C0[110] == NULL);
+        printf("EFFECT case %d: %s stops before publication\n", c,
+               c == 23   ? "list running past the buffer end"
+               : c == 24 ? "slot id 256"
+               : c == 25 ? "negative slot id"
+                         : "non-terminal zero-slot record (C830 would spin)");
         return;
     }
     CHECK(!guarded(do_fx_ready));
@@ -495,7 +631,12 @@ static void fx_cases(int c) {
 int main(int argc, char** argv) {
     int c = argc > 1 ? atoi(argv[1]) : 0;
     install();
-    if (c < 10) {
+    if (c >= 19 && c <= 21) {
+        /* exact-size model buffer so any read past its end is a sanitizer fault */
+        model_buf[0] = aligned_alloc(64, 0x3C000);
+        workers[0].unk_04[0] = (s32)model_buf[0];
+    }
+    if (c < 10 || (c >= 19 && c <= 21) || (c >= 27 && c <= 29)) {
         model_cases(c);
     } else {
         fx_cases(c);
