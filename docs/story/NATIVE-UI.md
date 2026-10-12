@@ -135,6 +135,21 @@ pre-pop retirement and final release protocol succeeds. Its host fixture maps
 the exact two-framebuffer payload with a 64-byte-aligned subrange even when the
 allocation starts only 32-byte-aligned, and separately checks retained
 fail-stop ownership. This is not native allocator/display admission.
+
+`sc_native_memory.[ch]` builds the private campaign tuple from one held data
+lease in that same arena: UI/request/Pak/driver/event, owned submitted/resume
+values, and two exact pixel spans. Alignment slack is charged once and does
+not overlap the callable image allocation. It zeros only controls, not pixel
+storage; no GPU/cache admission is inferred. Exact tuple validation refuses
+changed pointers, sizes, seed, ticket and stale lifetimes. Acquisition OOM or
+ticket exhaustion publishes a completely zero output tuple.
+
+Loop/display and retirement controls stay outside the freed allocation:
+`sc_native_loop_close` still accesses its control after the owner release
+callback returns. Memory release refuses outstanding UI/display/Pak work and
+requires the owner's real retirement callback while scheduler exclusion is
+held. Pending/refusal retains the whole lease. The focused host test uses a
+simulated retirement callback and therefore does not prove native VI safety.
 The `STORY_NATIVE_UI` branch uses checked font control/archive/glyph and text
 archive/substitution-table acquisition instead of the legacy unchecked helpers.
 Pool cleanup callbacks restore borrowed font, text and renderer globals only
