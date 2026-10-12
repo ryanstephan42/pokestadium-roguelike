@@ -106,7 +106,7 @@ rendering is not exercised by those native-resource fixtures.
 
 ## Combined lower-pool admission blocker
 
-The integrated Moon/UI layout after the identity-storage correction has
+The pre-successor Moon/UI link after the identity-storage correction has
 `heap_BSS_START = 0x80127450`. Even allowing the entire lower 4 MiB up to
 `0x80400000`, only 2,984,880 bytes remain; actual reservations can only reduce
 that ceiling. The simultaneously retained accepted display (1,360,288 bytes),
@@ -125,6 +125,16 @@ The accepted all-lower-pool display therefore cannot be joined unchanged to
 this native layout. Any relocation of its retained buffers into admitted
 Expansion Pak storage must preserve exact ownership, task fencing and borrowed
 state restoration; an 8 MiB machine alone does not enlarge the lower pool.
+
+The shared arena's `sc_ma_data` lease supports exclusive mutable,
+non-executable backing without publishing it as a callable module or leaving
+it in loader staging. It refuses execute mapping, module sealing, concurrent
+leases, release while held, stale tickets and exhaustion. This primitive does
+not certify GPU/VI retirement: the owner must retain it until the actual
+pre-pop retirement and final release protocol succeeds. Its host fixture maps
+the exact two-framebuffer payload with a 64-byte-aligned subrange even when the
+allocation starts only 32-byte-aligned, and separately checks retained
+fail-stop ownership. This is not native allocator/display admission.
 The `STORY_NATIVE_UI` branch uses checked font control/archive/glyph and text
 archive/substitution-table acquisition instead of the legacy unchecked helpers.
 Pool cleanup callbacks restore borrowed font, text and renderer globals only
