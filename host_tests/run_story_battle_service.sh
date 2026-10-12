@@ -6,12 +6,14 @@ mkdir -p "$out"
 baseline=.local/rltest/story-two-phase-consumer-v3
 authority="${2:-$baseline/image}"
 image="${3:-$baseline/image/image.bin}"
-bash host_tests/run_story_module_arena.sh "$out/arena"
-spans="$out/arena"
-if [[ $# == 4 ]]; then
-    python host_tests/generate_story_module_spans.py "$4" "$out/current-spans" --native
-    spans="$out/current-spans"
+selector="${5:-$baseline/selector}"
+if [[ $# -ge 4 ]]; then
+    test $# == 5
+    bash host_tests/run_story_module_arena.sh "$out/arena" "$4"
+else
+    bash host_tests/run_story_module_arena.sh "$out/arena"
 fi
+spans="$out/arena"
 python - "$out" <<'PY'
 from pathlib import Path
 import sys
@@ -39,10 +41,10 @@ flags=(-std=gnu89 -m32 -fwrapv -funsigned-char -fno-builtin
     -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI_2
     -DSTORY_SERVICE_CANDIDATE -DSTORY_NATIVE_PROBE -DSC_SERVICE_HOST
     -Iinclude -Isrc -I. -Ibuild -Iassets/us "-I$spans" "-I$out"
-    "-I$baseline/selector" "-I$authority"
+    "-I$selector" "-I$authority"
     -Ilib/ultralib/include -Ilib/ultralib/include/PR -Ilib/ultralib/include/ido
-    -include "$baseline/selector/host-stats-views.h"
-    -include "$baseline/selector/host-native-views.h")
+    -include "$selector/host-stats-views.h"
+    -include "$selector/host-native-views.h")
 for engine in host san; do
     extra=()
     if [[ "$engine" == san ]]; then
@@ -53,7 +55,7 @@ for engine in host san; do
             -c "host_tests/$source.c" -o "$out/$source-$engine.o"
     done
     gcc "${flags[@]}" "${extra[@]}" host_tests/test_story_battle_service.c \
-        "$baseline/selector/owned-closure.c" src/story/sc_ai_bank.c \
+        "$selector/owned-closure.c" src/story/sc_ai_bank.c \
         src/story/sc_ai_select.c src/story/sc_ai_decision.c src/story/sc_ai_overlay.c \
         src/story/sc_module_arena.c src/story/sc_batl_scope.c src/memmap.c \
         host_tests/story_private_rom_native.c "$out/story_real_ai_image-$engine.o" \

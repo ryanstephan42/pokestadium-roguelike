@@ -11,7 +11,7 @@ start = source.index("s32 func_80019B48(")
 end = source.index("\ns32 func_80019C08(", start)
 (Path(sys.argv[1]) / "worker-consumer.inc").write_text(source[start:end])
 PY
-baseline=.local/rltest/story-two-phase-consumer-v3/selector
+baseline="${2:-.local/rltest/story-two-phase-consumer-v3/selector}"
 flags=(-std=gnu89 -m32 -fwrapv -funsigned-char -fno-builtin
     -ffunction-sections -fdata-sections -DCC_CHECK -DNON_MATCHING -DAVOID_UB
     -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 -DSTORY_SERVICE_CANDIDATE

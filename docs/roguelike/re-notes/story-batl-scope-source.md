@@ -34,6 +34,15 @@ this drain, permit retirement, exact DATA/module authority, and reentry together
 The explicit zero-initialized native arena is preserved across reentry; live
 controls and allocation generations are never cleared to initialize another battle.
 
+For exact-current joined HOST review, invoke
+`bash host_tests/run_story_battle_service.sh OUT AUTHORITY IMAGE BUILD SELECTOR`.
+`AUTHORITY` and `IMAGE` must be generated from the supplied `BUILD` ELF;
+`SELECTOR` contains freshly generated closure and native/stat HOST views from that
+same ELF. The current route requires all five arguments and generates arena
+rights from `BUILD`, without running the historical allocator fixture first.
+`run_story_batl_scope.sh OUT SELECTOR` accepts the same explicit fixture directory.
+These are injected HOST calls, not execution of the image's relocated MIPS.
+
 `run_story_batl_scope.sh <fresh-output>` executes ten modes in each of normal
 and sanitizer builds: unchanged lifecycle/reentry, root change, real guarded
 map set/clear refusal, clock change, registration/group/metadata/count changes,
