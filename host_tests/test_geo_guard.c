@@ -1,4 +1,6 @@
+#define _GNU_SOURCE
 #include <stdio.h>
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <string.h>
 #include "rl_geo_guard.h"
@@ -75,6 +77,52 @@ int main(void) {
     CHECK(!rl_geo_state_ok(2, 2, 32));
     CHECK(!rl_geo_state_ok(2, 2, -1));
     CHECK(!admit_at(0, 0x07, 17, 2, 0));
+
+    /* payload pointers: cmd7 node (written via func_80012094), cmd8 callback (invoked).
+     * The N64 field is a 32-bit word, so the arena must sit below 4 GiB on the host. */
+    {
+        unsigned char* lo = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+        unsigned char* hi = lo + 256;
+        unsigned int* slot = (unsigned int*)(lo + 8);
+        unsigned int base = (unsigned int)(unsigned long)lo;
+
+        CHECK(lo != MAP_FAILED && (unsigned long)lo == base);
+        if (lo != MAP_FAILED && (unsigned long)lo == base) {
+            lo[4] = 0x07;
+            *slot = 0;
+            CHECK(rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base + 64;
+            CHECK(rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base;
+            CHECK(rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base + 256 - RL_GEO_NODE_BYTES;
+            CHECK(rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base + 256 - RL_GEO_NODE_BYTES + 4;
+            CHECK(!rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base + 256;
+            CHECK(!rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base + 66;
+            CHECK(!rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = 4;
+            CHECK(!rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base;
+            CHECK(!rl_geo_admit(lo + 4, lo + 4, hi, sizes, 2, 2, 0));
+            *slot = base + 64;
+            CHECK(!rl_geo_admit(lo + 4, lo, lo + 11, sizes, 2, 2, 0));
+            CHECK(!rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 32));
+
+            lo[4] = 0x08;
+            *slot = 0;
+            CHECK(rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = 0x86002F34U;
+            CHECK(rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = 0x86002F36U;
+            CHECK(!rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            *slot = base + 1;
+            CHECK(!rl_geo_admit(lo + 4, lo, hi, sizes, 2, 2, 0));
+            munmap(lo, 4096);
+        }
+    }
 
     if (failures) {
         return 1;

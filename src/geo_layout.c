@@ -59,6 +59,8 @@ static s16 gGeoLayoutReturnIndex;
 static u8* gGeoLayoutCommand;
 
 #ifdef ROGUELIKE
+typedef char sRlGeoNodeBytesCheck[(sizeof(GraphNode) == RL_GEO_NODE_BYTES) ? 1 : -1];
+
 static const u8 sRlGeoCommandSizes[RL_GEO_OPCODES] = {
     sizeof(unk_D_800ABE00_cmd0),
     sizeof(unk_D_800ABE00_cmd1),

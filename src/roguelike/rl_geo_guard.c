@@ -44,5 +44,17 @@ int rl_geo_admit(const unsigned char* cmd, const unsigned char* mem_lo, const un
     if (op == 0x06) {
         return node >= 1;
     }
+    if (op == 0x07 || op == 0x08) {
+        /* the N64 payload pointer is the 32-bit word at +4 (sizes[] already covers it) */
+        unsigned long ptr = *(const unsigned int*)(cmd + 4);
+
+        if (ptr == 0) {
+            return 1;
+        }
+        if ((ptr & 3) != 0) {
+            return 0;
+        }
+        return op == 0x08 || (ptr >= lo && ptr < hi && hi - ptr >= RL_GEO_NODE_BYTES);
+    }
     return 1;
 }
