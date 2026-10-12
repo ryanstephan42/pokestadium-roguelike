@@ -25,8 +25,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class FakeCore:
     """Real save-buffer and frame leases; no ROM is loaded or executed."""
 
-    def __init__(self, core, rom, map_path, out, *, options, timeout, frame_lease, prepare_save):
+    def __init__(self, core, rom, map_path, out, *, options, timeout, frame_lease, prepare_save,
+                 progress=None):
         self.options, self.frame_lease = options, frame_lease
+        self.progress = progress
         self.frame = 0
         self._sc_budget_bound = True
         self.held = [set(), set()]
@@ -46,8 +48,13 @@ class FakeCore:
         self.phase, self.exp = 0, 100
 
     def step(self, frames=1):
+        if self.progress:
+            self.progress.persist(self)
         self.frame_lease(frames)
         self.frame += frames
+        if self.progress:
+            self.progress.completed = self.frame
+            self.progress.persist(self)
 
     def read_u32(self, name):
         return 0x800000 if name == "osMemSize" else 4
@@ -83,6 +90,9 @@ class FakeScenario:
     def wait(self, predicate, description):
         self.emu.step(1)
         self.boundary = description
+
+    def boot_to_title(self):
+        self.wait(lambda: True, "fake-title")
 
     def press(self, name):
         self.emu.step(2)
@@ -152,6 +162,54 @@ class SequentialWorkerTests(unittest.TestCase):
                 worker.verify_candidate(path, path.parent, path, "0" * 64)
             with self.assertRaisesRegex(HarnessError, "approved external pin"):
                 worker.verify_candidate(path, path.parent, path, "")
+
+    def test_incremental_diagnostics_survive_denied_step_and_bound_video(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            progress = worker.Progress(out)
+            emu = types.SimpleNamespace(frame=1, framebuffer=(bytes(16), 2, 2, 8),
+                                        pixel_format=1, read_u32=lambda symbol: 1)
+            progress.completed = 1
+            for i in range(12):
+                progress.mark(f"boundary-{i}", emu)
+            self.assertEqual(len(list(out.glob("video-*.png"))), 8)
+            progress.witness = {"ledger": {"count": 1}}
+            progress.mark("waiting-title", emu)
+            with self.assertRaises(HarnessError):
+                progress.persist(emu)
+                raise HarnessError("Supervisor cap")
+            value = json.loads((out / "progress.json").read_text())
+            self.assertEqual(value["boundary"], "waiting-title")
+            self.assertEqual(value["witness"]["ledger"]["count"], 1)
+            worker.write_json(out / "win.attempted.json", {})
+            (out / "win").mkdir()
+            (out / "progress.json").replace(out / "win/progress.json")
+            report = collect(out, RunBudget(0, 180), 1, True)
+            self.assertEqual(report["scenarios"]["win"]["status"], "fail")
+            self.assertIsNone(report["frames_observed"])
+            self.assertEqual(report["frames_completed_persisted"], 1)
+
+    def test_intro_Start_reaches_title_without_waiting_for_full_movie(self):
+        class Intro:
+            frame = 120
+            held = [set(), set()]
+            progress = None
+            state = 1
+            def step(self, count):
+                self.frame += count
+                if self.held[0]:
+                    self.state = 2
+            def hold(self, name):
+                self.held[0].add(name)
+            def release(self, name):
+                self.held[0].clear()
+            def read_u32(self, symbol):
+                return self.state if symbol == "gCurrentGameState" else 0x80001000
+        scenario = worker.Scenario.__new__(worker.Scenario)
+        scenario.emu, scenario.progress = Intro(), None
+        scenario.boot_to_title()
+        self.assertEqual(scenario.emu.state, 2)
+        self.assertFalse(any(scenario.emu.held))
 
     def test_real_frontend_constructor_frame_is_leased_before_run(self):
         events = []

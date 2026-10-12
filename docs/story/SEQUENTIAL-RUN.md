@@ -100,6 +100,29 @@ frame protocol. All exits report reserved/observed frames, monotonic time,
 scenario statuses, actual carry-note hash, artifact hashes and exact-tree
 reaping. Unknown frames after a killed incomplete step remain unknown, not0.
 
+Before every frame lease, the worker atomically persists `progress.json`;
+completed frames are persisted separately after each return. Waits, input and
+individual calibration candidates are recorded before dispatch. The last
+32 observer transitions and last bound witness survive a cap kill without
+depending on `finally`. Up to eight rotating read-only video PNG slots capture
+boundaries and every500 waiting frames; files stay in private ignored output.
+Boot witnesses include game state, memory size, runner stage and menu readiness.
+An interrupted frame remains unverified; the report uses persisted completed
+frames and names the last boundary instead of inferring from reservations.
+
+Boot sends ordinary Start pulses every120 frames after initial logo startup
+while state1 still includes the fragment17 movie. Source `func_80029310` does
+not set title state2 until that movie returns; fragment17 `func_86B00C34`
+accepts Start/A/B when its stage permits. Waiting for state2 before sending any
+input can therefore waste the boot allocation. The pulse's actual native
+button-down value is recorded. Full button calibration still checks actual
+pressed bits at title; calibration itself may advance title, so subsequent
+Start pulses are limited to title state2 until the real menu is reached.
+The title loop has a30-tick readiness gate (`func_821009B4`); menu entry still
+requires the guarded input-ready witness, never a guessed fade delay.
+This is a source-derived stall hypothesis, not evidence recovered from the
+failed583b2d6 reservation.
+
 The worker verifies the external seal/core pins and all sealed source/artifact
 hashes before loading a core. It converts only that fresh core's formatted
 empty Pak, using the hash-bound real HOST journal note, only during pre-boot

@@ -12,8 +12,9 @@ import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
-from tools.rltest.frontend import Frontend, HarnessError
+from tools.rltest.frontend import Frontend, HarnessError, _png
 from tools.rltest.save_roundtrip import find_pak, save_ram
 from tools.rltest.story_probe import decode_mon, story_owned_changes
 from tools.rltest.story_sequential import ACTIVE, BATTLE, SequentialLedger, capture, field, require
@@ -29,20 +30,94 @@ EXTRA_MASKS = dict(UP=0x800, DOWN=0x400, R=0x10)
 STORY_STATE = 0x32
 
 
+def atomic_bytes(path, data):
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".", delete=False) as stream:
+        temporary = pathlib.Path(stream.name)
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+class Progress:
+    def __init__(self, directory):
+        self.directory = directory
+        self.boundary = "core-construction"
+        self.witness = None
+        self.transitions = []
+        self.snapshots = 0
+        self.last_snapshot = -500
+        self.last_boundary = None
+        self.completed = 0
+        self.details = {}
+        self.boot_witness = {}
+        self.persist()
+
+    def persist(self, emu=None):
+        state = None
+        error = None
+        if emu is not None and emu.frame:
+            try:
+                state = emu.read_u32("gCurrentGameState")
+                if isinstance(emu, Frontend):
+                    self.boot_witness = dict(
+                        game_state=state, os_mem_size=emu.read_u32("osMemSize"),
+                        runner_stage=emu.read_u32("gScCampaignRun"),
+                        menu_ready=emu.read_u32("gScCampaignMenuReady"))
+            except HarnessError as exc:
+                error = str(exc)
+        changed = self.last_boundary != self.boundary
+        if emu is not None and (changed or emu.frame - self.last_snapshot >= 500):
+            framebuffer = getattr(emu, "framebuffer", None)
+            if framebuffer is not None:
+                data, width, height, pitch = framebuffer
+                require(len(data) <= 4 * 1024 * 1024, "Diagnostic framebuffer exceeds bound")
+                slot = self.snapshots % 8
+                atomic_bytes(self.directory / f"video-{slot}.png",
+                             _png(data, width, height, pitch, emu.pixel_format))
+                self.snapshots += 1
+                self.last_snapshot = emu.frame
+                self.details["last_video"] = dict(slot=slot, frame=emu.frame,
+                                                 boundary=self.boundary)
+                self.details.setdefault("videos", {})[str(slot)] = self.details["last_video"]
+        self.last_boundary = self.boundary
+        row = dict(boundary=self.boundary, completed_frames=self.completed,
+                   game_state=state, read_error=error, witness=self.witness,
+                   transitions=self.transitions[-32:], details=self.details,
+                   boot_witness=self.boot_witness,
+                   snapshots_written=self.snapshots, snapshot_slots=8)
+        atomic_bytes(self.directory / "progress.json",
+                     (json.dumps(row, sort_keys=True) + "\n").encode())
+
+    def mark(self, boundary, emu=None, **details):
+        self.boundary = boundary
+        self.details.update(details)
+        self.persist(emu)
+
+
 class LeasedFrontend(Frontend):
     """Frontend construction itself runs frame one; lease it before dispatch."""
 
-    def __init__(self, *args, frame_lease, prepare_save, **kwargs):
+    def __init__(self, *args, frame_lease, prepare_save, progress=None, **kwargs):
         self.frame_lease = frame_lease
         self.prepare_save = prepare_save
+        self.progress = progress
         self._sc_budget_bound = True
         super().__init__(*args, **kwargs)
 
     def step(self, frames=1):
         if self.frame == 0:
+            if self.progress:
+                self.progress.mark("preboot-save-setup")
             self.prepare_save(self)
-        self.frame_lease(frames)
-        super().step(frames)
+        for _ in range(frames):
+            if self.progress:
+                self.progress.persist(self)
+            self.frame_lease(1)
+            super().step(1)
+            if self.progress:
+                self.progress.completed = self.frame
+                self.progress.persist(self)
 
 
 def digest(data):
@@ -226,6 +301,9 @@ def calibrate(emu):
     result = {}
     masks = {**MASKS, **EXTRA_MASKS}
     for binding in candidate_bindings():
+        if getattr(emu, "progress", None):
+            emu.progress.mark("button-calibration", emu, calibration_candidate=binding,
+                              calibrated=result)
         require(not any(emu.held) and not any(v for p in emu.analog for v in p),
                 "Calibration began with held input")
         apply_candidate(emu, binding, True)
@@ -267,6 +345,7 @@ class Scenario:
         self.native_ack = None
         self.mapping = None
         self.retirement = None
+        self.progress = getattr(emu, "progress", None)
         original = emu.step
 
         def observed_step(frames=1):
@@ -292,8 +371,13 @@ class Scenario:
                row["ui"]["ledger"]["next"] if row["ui"] else None)
         if self.last != key:
             self.transitions.append(row)
+            self.transitions = self.transitions[-32:]
             self.last = key
         self.boundary = f"stage-{row['stage']}-screen-{key[2]}"
+        if self.progress:
+            self.progress.witness = row
+            self.progress.transitions = self.transitions
+            self.progress.mark(self.boundary, self.emu)
         if row["stage"] == BATTLE and self.interrupted is None:
             self.interrupted = story_note(save_ram(self.emu)[1])
             (self.directory / "interrupted.note").write_bytes(self.interrupted)
@@ -310,11 +394,41 @@ class Scenario:
 
     def wait(self, predicate, description):
         # The supervisor alone controls the aggregate and scenario ceilings.
+        self.boundary = "waiting-" + description
+        if self.progress:
+            self.progress.mark(self.boundary, self.emu)
         while not predicate():
             self.emu.step(1)
         self.boundary = description
+        if self.progress:
+            self.progress.mark(description, self.emu)
+
+    def boot_to_title(self):
+        self.boundary = "waiting-title-with-intro-Start"
+        while self.emu.read_u32("gCurrentGameState") != 2:
+            state = self.emu.read_u32("gCurrentGameState")
+            if self.progress:
+                self.progress.mark(self.boundary, self.emu, boot_state=state)
+            # Fragment17 intro accepts Start; logo initialization itself does not.
+            if state == 1 and self.emu.frame >= 120 and self.emu.frame % 120 == 0:
+                self.emu.hold("START")
+                try:
+                    self.emu.step(2)
+                    pointer = self.emu.read_u32("gPlayer1Controller")
+                    require(0x80000000 <= pointer <= 0x80800000 - 0x24,
+                            "Intro Start controller unavailable")
+                    if self.progress:
+                        down = self.emu.read_u16(pointer + 6)
+                        self.progress.mark("intro-Start-observed", self.emu,
+                                           intro_start_button_down=down,
+                                           intro_start_verified=bool(down & 0x1000))
+                finally:
+                    self.emu.release("START")
+            self.emu.step(1)
 
     def press(self, name):
+        if self.progress:
+            self.progress.mark("press-" + name, self.emu)
         press_verified(self.emu, name, self.calibration, self.emu.step)
 
     def ui(self):
@@ -337,6 +451,9 @@ class Scenario:
         self.press("N64_A")
 
     def enter_continue(self):
+        while self.emu.read_u32("gCurrentGameState") == 2:
+            self.press("START")
+            self.emu.step(30)
         self.wait(lambda: self.emu.read_u32("gCurrentGameState") == 4 and
                   self.emu.read_u32("gScCampaignMenuReady") == 1, "Menu Select input-ready top page")
         self.press("R")
@@ -462,6 +579,7 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
     if terminal_reload:
         directory /= "terminal-reload"
     directory.mkdir()
+    progress = Progress(directory)
     abi = binding["abi"]
     abi["native_run_address"] = binding["binding"]["run"]
     abi["native_lifecycle"] = binding.get("native_lifecycle")
@@ -492,7 +610,8 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
     emu = factory(args.core, ROOT / config["ROM"],
                   ROOT / config["BUILD_DIR"] / "pokestadium-rl.map", directory,
                   options={"mupen64plus-pak1": "memory", "mupen64plus-EnableExpansionPak": "True"},
-                  timeout=180, prepare_save=prepare_save, frame_lease=lambda n: reserve_frames(
+                  timeout=180, prepare_save=prepare_save, progress=progress,
+                  frame_lease=lambda n: reserve_frames(
                       stream_in, stream_out, name, n))
     require(getattr(emu, "_sc_budget_bound", False) and emu.frame == 1,
             "Frontend construction must lease initial boot frame")
@@ -508,7 +627,7 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
         calibration_path = args.out / "win" / "calibration.json"
         calibration = {} if name == "win" else json.loads(calibration_path.read_text())
         scenario = Scenario(emu, abi, manifest, directory, name, calibration)
-        scenario.wait(lambda: emu.read_u32("gCurrentGameState") == 2, "title")
+        scenario.boot_to_title()
         require(emu.read_u32("osMemSize") == 0x800000, "Core is not using 8 MiB")
         if name == "win":
             scenario.calibration = calibrate(emu)
