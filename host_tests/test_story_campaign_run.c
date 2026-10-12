@@ -266,9 +266,11 @@ static void close_pending(void) {
     assert(battles == 1 && gScCampaignRun.stage == SC_RUN_REOPEN);
 }
 static void refused_loader(void) {
+    unsigned i;
     ready(); loader_refuse = 1; state();
     assert(loader_binds == 1 && !battles && gScCampaignRun.stage == SC_RUN_FAILED);
     assert(!mapped && !shell_live);
+    for (i = 0; i < SC_MA_SLOTS; ++i) assert(!arena.blocks[i].live);
     state(); assert(loader_binds == 1);
 }
 static void pinned_loader(void) {

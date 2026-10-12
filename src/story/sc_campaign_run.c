@@ -343,7 +343,7 @@ static int acquire_battle_loader(ScMaArena *arena) {
 
 static int release_battle_loader(ScMaArena *arena) {
     if (!arena || !battle_loader_live || sc_batl_loader_live()) return 0;
-    if (!sc_ma_end(arena, &battle_loader_lease) ||
+    if ((battle_loader_lease.ticket && !sc_ma_end(arena, &battle_loader_lease)) ||
         !sc_ma_release(arena, battle_loader_handle)) return 0;
     battle_loader = 0;
     battle_loader_live = 0;
@@ -394,6 +394,11 @@ void sc_campaign_state_launch(void) {
     arena = sc_service_native_arena();
     if (!arena || !acquire_battle_loader(arena) ||
         !sc_batl_loader_bind(battle_loader, SC_NATIVE_BATL_LOADER_BYTES)) {
+        if (battle_loader_live && !sc_batl_loader_live() &&
+            !release_battle_loader(arena)) {
+            sequential_fail(SC_UNAVAILABLE, "story campaign: unbound BATL rollback refused");
+            return;
+        }
         sequential_fail(SC_UNAVAILABLE, "story campaign: battle BATL storage refused");
         return;
     }
