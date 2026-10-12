@@ -290,6 +290,30 @@ void func_80019514(unk_func_80019600* arg0) {
     arg0->size = temp_s3->listHeadL + 1;
 }
 
+#ifdef ROGUELIKE
+/* Job the loader thread is executing; a parser refusal completes it with size 0 so the waiter
+ * reaches func_80019B48 and stops visibly instead of waiting on a stopped loader. */
+static unk_func_80019600* sRlLoaderJob;
+extern OSThread* __osRunningThread;
+
+void rl_loader_refuse_notify(void) {
+    unk_func_80019600* job = sRlLoaderJob;
+
+    if (job == NULL || __osRunningThread != &D_800ABE10.unk_000) {
+        return;
+    }
+    sRlLoaderJob = NULL;
+    rl_geo_image_set(NULL);
+    if (job->unk_00 == 1) {
+        job->unk_08 = NULL;
+    }
+    job->size = 0;
+    if (job->queue != NULL) {
+        osSendMesg(job->queue, job, OS_MESG_NOBLOCK);
+    }
+}
+#endif
+
 void func_80019600(UNUSED void* arg0) {
     unk_func_80019600* sp34;
 
@@ -297,6 +321,9 @@ void func_80019600(UNUSED void* arg0) {
 
     while (true) {
         osRecvMesg(&D_800ABE10.unk_9D0, &sp34, 1);
+#ifdef ROGUELIKE
+        sRlLoaderJob = sp34;
+#endif
 
         switch (sp34->unk_00) {
             case 1:
@@ -307,6 +334,9 @@ void func_80019600(UNUSED void* arg0) {
                 func_80019514(sp34);
                 break;
         }
+#ifdef ROGUELIKE
+        sRlLoaderJob = NULL;
+#endif
 
         if (sp34->queue != NULL) {
             osSendMesg(sp34->queue, sp34, 1);
@@ -390,6 +420,10 @@ s32 func_800198E4(unk_D_86002F58_004_000_010* arg0, u16 arg1, arg1_func_80010CA8
             sp18->unk_18 = arg2;
 
             if ((arg0->unk_24 != NULL) && (arg0->unk_24->unk_00 == arg1) && (arg0->unk_2C.raw == sp18->unk_18.raw)) {
+#ifdef STORY_SERVICE_CANDIDATE
+                /* explicit live-cache token; the loader thread never writes +0C of a model job */
+                sp18->unk_0C = (s32)arg0->unk_24;
+#endif
                 osSendMesg(sp18->unk_04, sp18, 1);
             } else {
                 osSendMesg(&D_800ABE10.unk_9D0, sp18, 1);
@@ -431,6 +465,11 @@ s32 func_80019A7C(unk_D_86002F58_004_000_010* arg0, s32 arg1, s32 arg2) {
             temp_v0->unk_0C = arg1;
             temp_v0->unk_10 = arg0->unk_18;
             temp_v0->unk_14 = 0x18000;
+#ifdef STORY_SERVICE_CANDIDATE
+            if (!sc_batl_fx_send(arg0)) {
+                sc_batl_job_fatal(SC_BATL_FX_SEND);
+            }
+#endif
 
             osSendMesg(&D_800ABE10.unk_9D0, temp_v0, 1);
 
@@ -444,6 +483,23 @@ s32 func_80019A7C(unk_D_86002F58_004_000_010* arg0, s32 arg1, s32 arg2) {
 
 s32 func_80019B48(unk_D_86002F58_004_000_010* arg0, sp18_func_800198E4* arg1) {
     s32 sp1C = 0;
+
+#ifdef ROGUELIKE
+    if (arg1->unk_14 == 0) {
+#ifdef STORY_SERVICE_CANDIDATE
+        sc_batl_job_fatal(SC_BATL_JOB_REFUSED);
+#endif
+        osSyncPrintf("loader job %d refused\n", arg1->unk_00);
+        for (;;) {
+            osStopThread(NULL);
+        }
+    }
+#endif
+#ifdef STORY_SERVICE_CANDIDATE
+    if (!sc_batl_job_admit(arg0, arg1)) {
+        sc_batl_job_fatal(SC_BATL_JOB_UNPUBLISHED);
+    }
+#endif
 
     switch (arg1->unk_00) {
         case 1:

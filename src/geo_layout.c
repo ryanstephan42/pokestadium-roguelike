@@ -508,8 +508,13 @@ static u32 sRlGeoImageHi;
 extern OSThread* __osRunningThread;
 static OSThread* sRlGeoImageThread;
 
+void rl_loader_refuse_notify(void);
+
+/* Stops the parsing thread. On the battle loader thread the current job is first completed with a
+ * refusal marker (func_80019600), so its waiter stops visibly rather than waiting forever. */
 static void rl_geo_refuse(const char* what) {
     osSyncPrintf("Unsupported geo layout %s\n", what);
+    rl_loader_refuse_notify();
     osStopThread(NULL);
 }
 
