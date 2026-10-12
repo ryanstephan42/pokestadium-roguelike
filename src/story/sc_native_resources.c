@@ -7,10 +7,12 @@
 #include "src/memory.h"
 #include "src/stage_loader.h"
 #include "src/dma.h"
+#include <PR/os_internal_reg.h>
 
 extern u8 pokemon_icons_ROM_START[], pokemon_icons_ROM_END[];
 extern u8 textdata_ROM_END[];
 extern OSMesgQueue D_800A62C0;
+extern volatile u32 sc_crash_active;
 
 /* Restore records hold caller slot pointers, which may lie in the mapped
    story image; it must stay mapped while any record is outstanding. */
@@ -83,6 +85,19 @@ static void restore_upper_slots(ScUpperRestore *restore) {
     *restore->slots.species_slot = restore->slots.species;
 }
 
+static int release_upper(ScUpperRestore *restore, int tasks_retired) {
+    u32 interrupts;
+    int released = 0;
+    if (!tasks_retired) return 0;
+    interrupts = __osDisableInt();
+    if (!sc_crash_active) {
+        restore_upper_slots(restore);
+        released = sc_resource_arena_close(&restore->storage, tasks_retired);
+    }
+    __osRestoreInt(interrupts);
+    return released;
+}
+
 static void restore_upper(MainPoolBlock *block, u32 arg) {
     ScUpperRestore *restore = (ScUpperRestore *)block;
     (void)arg;
@@ -92,10 +107,14 @@ static void restore_upper(MainPoolBlock *block, u32 arg) {
         HAL_Printf(8, 8, "Story UI: resource scope popped before retirement");
         return;
     }
-    restore_upper_slots(restore);
-    if (restore->storage.active && !sc_resource_arena_close(&restore->storage, 1)) {
-        HAL_Printf(8, 8, "Story UI: upper resource rollback failed");
-        return;
+    if (restore->storage.active) {
+        if (!release_upper(restore, 1)) {
+            if (upper == restore) upper = NULL;
+            HAL_Printf(8, 8, "Story UI: upper resource rollback failed");
+            return;
+        }
+    } else if (!restore->acquired) {
+        restore_upper_slots(restore);
     }
     if (upper == restore) upper = NULL;
     if (outstanding) --outstanding;
@@ -103,8 +122,7 @@ static void restore_upper(MainPoolBlock *block, u32 arg) {
 
 int sc_native_resources_retire(int tasks_retired) {
     if (!upper || !upper->storage.active || !tasks_retired) return 0;
-    restore_upper_slots(upper);
-    return sc_resource_arena_close(&upper->storage, tasks_retired);
+    return release_upper(upper, tasks_retired);
 }
 
 static BinArchive *upper_table(ScResourceArena *storage, u8 *start, u8 *end,

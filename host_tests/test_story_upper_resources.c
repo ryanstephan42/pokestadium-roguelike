@@ -18,7 +18,20 @@ static unsigned allocations, reads, logs;
 static int fail_record;
 static int fail_dma;
 static unsigned receives;
+static unsigned disabled, restored;
+static int interrupt_crash;
+volatile u32 sc_crash_active;
 OSMesgQueue D_800A62C0;
+u32 __osDisableInt(void) {
+    assert(disabled == restored);
+    ++disabled;
+    if (interrupt_crash) sc_crash_active = 1;
+    return 0x1234;
+}
+void __osRestoreInt(u32 previous) {
+    assert(previous == 0x1234 && disabled == restored + 1);
+    ++restored;
+}
 
 void *main_pool_alloc_with_func(u32 bytes, s32 side, s32 arg, AllocateFunc function) {
     assert(!side && !arg && !record);
@@ -147,6 +160,17 @@ int main(void) {
     assert(!sc_native_resources_retire(0));
     assert(!sc_ma_shutdown(&arena));
     assert(!sc_ma_module(&arena, (ScMaHandle){0, arena.blocks[0].generation}, &unused));
+    {
+        BinArchive *held_icons = icons;
+        unk_D_800AC870 *held_font = D_800AC870;
+        u32 held_ticket = arena.blocks[0].ticket;
+        interrupt_crash = 1;
+        assert(!sc_native_resources_retire(1));
+        assert(sc_crash_active && icons == held_icons && D_800AC870 == held_font);
+        assert(arena.blocks[0].live && arena.blocks[0].ticket == held_ticket);
+        assert(sc_native_resources_outstanding() == 1 && disabled == restored);
+        interrupt_crash = 0; sc_crash_active = 0;
+    }
     assert(sc_native_resources_retire(1));
     assert(D_800AC870 == &borrowed && icons == (BinArchive *)1);
     assert(moves == (char **)2 && species == (char **)3);

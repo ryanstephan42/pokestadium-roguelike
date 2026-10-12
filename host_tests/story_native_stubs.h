@@ -6,6 +6,7 @@
 #define _6BC0_H_
 #define _1CF30_H_
 #define _3FB0_H_
+#define _OS_INTERNAL_REG_H_
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
@@ -49,6 +50,8 @@ extern unk_D_800AC870 *D_800AC870;
 extern u8 fonts_ROM_START[], fonts_ROM_END[], textdata_ROM_START[];
 extern u8 textdata_ROM_END[];
 int osRecvMesg(OSMesgQueue *, OSMesg *, int);
+u32 __osDisableInt(void);
+void __osRestoreInt(u32);
 void func_80003890(u8 *, u8 *);
 #define ASSET_LOAD2(asset, mode, side) func_800044F4(asset##_ROM_START, asset##_ROM_END, mode, side)
 BinArchive *func_800044F4(u8 *, u8 *, s32, s32);

@@ -18,7 +18,7 @@ sources=(
     src/roguelike/rl_ui_model.c src/roguelike/rl_pak.c "$output/sc_data.c"
 )
 flags=(-DSTORY_NATIVE_UI -DSTORY_NATIVE_PROBE -DSTORY_SERVICE_CANDIDATE -DROGUELIKE -std=gnu89 -Wall -Wextra -Werror
-       -Wno-endif-labels -I. -iquote include -I"$arena_dir" -I"$arena_dir/../.."
+       -Wno-endif-labels -I. -iquote include -I"$arena_dir" -I"$arena_dir/../.." -Ilib/ultralib/include
        -include host_tests/story_native_operation_stubs.h -Wl,--wrap=sc_native_resources_retire)
 # Untouched native formatting uses 32-bit pointer arithmetic and decomp artifacts.
 text_flags=(-Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-int-conversion

@@ -13,7 +13,7 @@ sources=(host_tests/test_story_upper_resources.c src/story/sc_native_resources.c
     src/story/sc_native_font.c src/story/sc_native_icons.c src/story/sc_resource_arena.c
     "$arena_dir/sc_module_arena.c")
 flags=(-m32 -DSTORY_NATIVE_UI -std=gnu89 -Wall -Wextra -Werror
-    -Wno-int-conversion -Wno-endif-labels -I. -iquote include -I"$arena_dir"
+    -Wno-int-conversion -Wno-endif-labels -I. -iquote include -I"$arena_dir" -Ilib/ultralib/include
     -include host_tests/story_upper_resource_stubs.h)
 "${CC:-gcc}" "${flags[@]}" -O2 "${sources[@]}" -o "$output/test"
 "$output/test"

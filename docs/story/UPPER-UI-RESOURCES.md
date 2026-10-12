@@ -49,7 +49,12 @@ PERS-SZP decompressor provides decompressed-cache writeback.
 The slab remains live across route, BATL, learning, reward and terminal screens.
 Release requires the existing UI transaction/exit checks and `tasks_retired`.
 Prior font/resource pointers are restored **before** the DATA lease ends and
-the arena block is released. The lower scope then pops.
+the arena block is released. That sequence disables interrupts and rechecks
+the resident crash-takeover flag before modifying any pointers or lease state;
+a takeover after earlier display-retirement validation refuses release.
+Interrupt state is restored on success and refusal. This exclusion is not a
+GPU/VI fence: the caller still owes the existing `tasks_retired` proof.
+The lower scope then pops.
 
 Failed acquisition rolls back unpublished resources through the lower restore
 callback. A forced scope pop after successful acquisition but before retirement

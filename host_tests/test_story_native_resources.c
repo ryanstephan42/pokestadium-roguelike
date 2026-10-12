@@ -40,6 +40,9 @@ static char **moves, **species;
 unk_D_800AC870 *D_800AC870;
 u8 fonts_ROM_START[1], fonts_ROM_END[1], textdata_ROM_START[1], textdata_ROM_END[1];
 OSMesgQueue D_800A62C0;
+volatile u32 sc_crash_active;
+u32 __osDisableInt(void) { return 0; }
+void __osRestoreInt(u32 previous) { assert(!previous); }
 u8 pokemon_icons_ROM_START[1], pokemon_icons_ROM_END[1];
 OSMesgQueue gSIEventMesgQueue;
 u8 __osPfsInodeCacheBank;

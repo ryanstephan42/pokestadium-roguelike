@@ -5,6 +5,7 @@
 #define _1CF30_H_
 #define _MEMORY_H_
 #define _STAGE_LOADER_H_
+#define _OS_INTERNAL_REG_H_
 #include <stddef.h>
 #include <string.h>
 typedef unsigned char u8;
@@ -47,6 +48,8 @@ void main_pool_set_func(void *, s32, AllocateFunc);
 BinArchive *func_800044F4(u8 *, u8 *, s32, s32);
 void *func_8000484C(BinArchive *, s32);
 int osRecvMesg(OSMesgQueue *, OSMesg *, int);
+u32 __osDisableInt(void);
+void __osRestoreInt(u32);
 void func_80003890(u8 *, u8 *);
 void func_8001E7C0(s32, s32);
 void func_8001E7D4(s32, s32);
