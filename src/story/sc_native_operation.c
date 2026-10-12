@@ -15,6 +15,14 @@ static void clear(ScNativeCampaignEvent *event) {
     for (i = 0; i < sizeof(*event); ++i) bytes[i] = 0;
 }
 
+static int clean(const ScNativeCampaignEvent *event) {
+    const unsigned char *bytes = (const unsigned char *)event;
+    unsigned i;
+    for (i = 0; i < sizeof(*event); ++i)
+        if (bytes[i]) return 0;
+    return 1;
+}
+
 static int refusal(int status, const char *message) {
     HAL_Printf(8, 8, "%s", message);
     return status;
@@ -115,7 +123,9 @@ int sc_native_operation_observe(ScNativeOperation *operation,
         return fail(operation, "Story operation: native observation rejected");
     if (next.phase != SC_BATTLE && next.phase != SC_LEARNING)
         return fail(operation, "Story operation: unsupported observed phase");
-    event = backing->event;
+    if (!clean(backing->event))
+        return fail(operation, "Story operation: event output written while idle");
+    event = &operation->pending;
     clear(event);
     for (i = 0; i < 6; ++i) event->party[i] = party[i];
     event->operation_id = operation->operation;
@@ -131,7 +141,6 @@ int sc_native_operation_observe(ScNativeOperation *operation,
         operation->held_serial = event->generation;
         operation->phase = SC_NATIVE_OPERATION_HELD;
     }
-    operation->pending = *event;
     operation->queued = 1;
     return SC_OK;
 }
@@ -143,14 +152,23 @@ int sc_native_operation_poll(ScNativeOperation *operation,
     if (status != SC_OK) return status;
     if (!event || event != backing->event)
         return refusal(SC_INVALID, "Story operation: event destination changed");
-    if (!operation->queued) {
+    /* The shared event is output only: clean between deliveries. The queued
+       identity is owner-retained; any foreign or replayed write is refused. */
+    if (!clean(event)) {
         clear(event);
-        return SC_PENDING;
+        return fail(operation, "Story operation: event output written outside delivery");
     }
-    if (!equal(event, &operation->pending, sizeof(*event))) {
-        clear(event);
-        return fail(operation, "Story operation: queued event changed");
-    }
+    if (!operation->queued) return SC_PENDING;
+    if (operation->phase == SC_NATIVE_OPERATION_IDLE ||
+        operation->pending.operation_id != operation->operation ||
+        operation->pending.generation != operation->serial ||
+        (operation->pending.kind != SC_NATIVE_EVENT_OBSERVE &&
+         operation->pending.kind != SC_NATIVE_EVENT_LEARNING) ||
+        ((operation->pending.kind == SC_NATIVE_EVENT_LEARNING) !=
+         (operation->phase == SC_NATIVE_OPERATION_HELD &&
+          operation->held_serial == operation->serial)))
+        return fail(operation, "Story operation: retained queued identity changed");
+    *event = operation->pending;
     operation->queued = 0;
     return SC_OK;
 }

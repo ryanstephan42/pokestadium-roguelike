@@ -190,6 +190,17 @@ establish the learning hold before delivery or presentation. Serial exhaustion,
 altered queued events, invalid progression, and altered settlements retain an
 explicit failed transaction. Pending observations cannot be overwritten.
 
+The shared `backing->event` is an output-only buffer that is all zero between
+deliveries. The owner keeps the queued event identity only in its retained
+`pending` copy and leaves the shared buffer clean when queuing. Poll refuses and
+fail-stops if any output byte is non-zero on entry: a foreign, injected or
+replayed write is erased and never delivered. It also refuses if the retained
+identity no longer matches the current operation, serial, kind or held serial.
+Only then does it write the retained event once. `sc_native_loop` no longer
+pre-clears `kind`; it consumes the delivered event and zeroes the whole buffer
+after every poll (delivered, NONE, PENDING or refused), so no event survives
+into the next poll.
+
 Resume requires exact operation/held serial and the admitted loop's completed
 presentation marker. It replays each pending member's actual accept/reject and
 selected move-slot transition, then compares the complete settled state; it
@@ -201,6 +212,18 @@ The focused runner `bash host_tests/run_story_native_operation.sh OUT` checks
 actual producer/pure UI and combat code with injected lifetime validation.
 It flips every accepted request byte at all four callback boundaries and checks
 refusal without modifying stored progression, queued events or held settlements.
+It also writes every event byte into the clean output at running, held and
+delivered (replay) points, and alters the retained identity, all of which must
+be refused. `bash host_tests/run_story_native_resources.sh` drives the actual
+`ScNativeLoop` into this kernel through the owner callbacks:
+- queued OBSERVE and held LEARNING are delivered once;
+- the learn screen is presented and the move choice settled;
+- resume runs through the owner;
+- the buffer is zero after each step;
+- each of the event bytes injected before delivery is refused;
+- a replayed delivered event is refused.
+
+DRAINED has no owner producer yet, so it is not tested through the loop.
 Its lifetime view is explicitly not a target ABI fixture; actual IDO compilation
 uses the production lifetime header. This unit does not launch native combat,
 publish DRAINED, or authorize release. Actual callback/dispatcher wiring,

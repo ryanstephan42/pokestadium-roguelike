@@ -6,6 +6,7 @@
 #include "../src/story/sc_native_resources.h"
 #include "../src/story/sc_native_icons.h"
 #include "../src/story/sc_native_loop.h"
+#include "../src/story/sc_native_operation.h" /* lifetime view injected by prelude */
 #include "../src/controller.h"
 
 int sc_pak_probe_load(unsigned, const ScCatalog *, ScSnapshot *);
@@ -597,16 +598,17 @@ static void presentation_loop(void) {
     puts("Presentation loop: actual native adapter/input, callback refusal, explicit exit and fence; HOST only; OK");
 }
 
+static ScNativeLoop *choose_loop = &loop;
 static int loop_choose(unsigned id) {
     unsigned i;
     for (i = 0; i < (unsigned)ui.list.count; i++) if (ui.ids[i] == id) break;
     assert(i < (unsigned)ui.list.count);
     while (ui.list.cursor != (int)i) {
         controller.buttonPressed = ui.list.cursor < (int)i ? RL_UI_DOWN : RL_UI_UP;
-        assert(sc_native_loop_step(&loop) == SC_OK);
+        assert(sc_native_loop_step(choose_loop) == SC_OK);
     }
     controller.buttonPressed = RL_UI_A;
-    return sc_native_loop_step(&loop);
+    return sc_native_loop_step(choose_loop);
 }
 
 static void loop_battle(void) {
@@ -677,6 +679,121 @@ static void loop_battle(void) {
     puts("Owner-bound loop: post-Pak submit retry, held event presentation, learning/resume serial, drained finish; fixtures; OK");
 }
 
+/* Actual ScNativeLoop driving the actual owner operation kernel. The lifetime
+   validator is the fixture lease check; no native battle launch or drain. */
+static ScNativeLifetime life;
+static ScNativeCampaignStorage life_storage;
+static ScNativeOperation life_operation;
+int sc_native_lifetime_validate(void *p, const ScNativeCampaignBacking *b) {
+    assert(p == &life);
+    if (b != &life.loop.backing) return SC_INVALID;
+    return validate_backing(NULL, b);
+}
+static int op_submit(void *p, const ScNativeCampaignBacking *b, const ScUiBattleRequest *r) {
+    assert(p == &life); submissions++;
+    return sc_native_operation_submit(&life_operation, b, r);
+}
+static int op_poll(void *p, const ScNativeCampaignBacking *b, ScNativeCampaignEvent *e) {
+    assert(p == &life); return sc_native_operation_poll(&life_operation, b, e);
+}
+static int op_resume(void *p, const ScNativeCampaignBacking *b, RlU32 id, RlU32 serial,
+                     const ScState *state, const ScCombat *combat) {
+    assert(p == &life); resumes++;
+    return sc_native_operation_resume(&life_operation, b, id, serial, state, combat);
+}
+static int op_validate(void *p, const ScNativeCampaignBacking *b) {
+    assert(p == &life); return validate_backing(NULL, b);
+}
+static void op_snapshots(ScBattleSnapshot party[6]) {
+    unsigned i, j;
+    memset(party, 0, 6 * sizeof(*party));
+    for (i = 0; i < ui.state.party_count; i++) {
+        party[i].hp = ui.state.party[i].cur_hp;
+        party[i].status = ui.state.party[i].status;
+        for (j = 0; j < 4; j++) party[i].pp[j] = ui.state.party[i].pp[j];
+    }
+}
+static int op_clean(void) {
+    unsigned j;
+    for (j = 0; j < sizeof(loop_event); j++) if (((unsigned char *)&loop_event)[j]) return 0;
+    return 1;
+}
+static void operation_loop(void) {
+    ScNativeCampaignOwner calls;
+    ScNativeCampaignEvent replay;
+    ScBattleSnapshot party[6];
+    ScTemplate starter;
+    unsigned i, region = 0, encounter, before;
+    fixture(); memset(&life, 0, sizeof(life)); memset(&display, 0, sizeof(display));
+    memset(&life_storage, 0, sizeof(life_storage)); memset(&life_operation, 0, sizeof(life_operation));
+    life.live = life.memory.live = 1; life.memory.storage = &life_storage;
+    calls.context = &life; calls.submit = op_submit; calls.poll = op_poll; calls.resume = op_resume;
+    calls.acquire = acquire_backing; calls.validate = op_validate; calls.release = release_backing;
+    calls.retire_display = retire_display;
+    choose_loop = &life.loop;
+    assert(sc_native_loop_open(&life.loop, &display, &calls) == SC_OK);
+    assert(sc_native_operation_bind(&life_operation, &life) == SC_OK);
+    assert(loop_choose(1) == SC_OK && loop_choose(3) == SC_OK &&
+           loop_choose(5) == SC_OK && loop_choose(1) == SC_OK);
+    memset(&starter, 0, sizeof(starter)); starter.species = 1; starter.level = 6;
+    assert(sc_make_mon(&sc_catalog, &starter, 0x8889, &ui.state.party[0]) == SC_OK);
+    ui.state.party[0].exp = sc_xp(7, ui.state.party[0].growth) - 1;
+    for (i = 0; i < (unsigned)ui.list.count; i++)
+        if (!strcmp(ui.labels[i], "OaksLab")) region = ui.ids[i];
+    for (encounter = 0; encounter < sc_catalog.count; encounter++)
+        if (!strcmp(sc_catalog.encounters[encounter].id, "OaksLab/rival-lab")) break;
+    assert(loop_choose(region) == SC_OK && loop_choose(encounter) == SC_OK);
+    before = submissions;
+    assert(loop_choose(1) == SC_OK && driver.launched && submissions == before + 1);
+    assert(life_operation.phase == SC_NATIVE_OPERATION_RUNNING && op_clean());
+    controller.buttonPressed = 0; before = frames;
+    assert(sc_native_loop_step(&life.loop) == SC_PENDING && frames == before && op_clean());
+    /* queued OBSERVE: delivered once through the loop, consumed, buffer zeroed */
+    op_snapshots(party);
+    assert(sc_native_operation_observe(&life_operation, &life.loop.backing, party, 0, 0, 1) == SC_OK);
+    assert(op_clean() && life_operation.queued);
+    /* every queued output byte injected before delivery is refused through
+       the actual loop; a fresh kernel is rebound for each byte */
+    for (i = 0; i < sizeof(loop_event); i++) {
+        ScState held = ui.state;
+        ((unsigned char *)&loop_event)[i] = 0xa5;
+        assert(sc_native_loop_step(&life.loop) == SC_INVALID && op_clean());
+        assert(life_operation.phase == SC_NATIVE_OPERATION_FAILED && life.memory.failed);
+        assert(!life.loop.event_serial && !memcmp(&held, &ui.state, sizeof(held)));
+        memset(&life_operation, 0, sizeof(life_operation)); life.memory.failed = 0;
+        assert(sc_native_operation_bind(&life_operation, &life) == SC_OK);
+        assert(sc_native_operation_submit(&life_operation, &life.loop.backing, &request) == SC_OK);
+        assert(sc_native_operation_observe(&life_operation, &life.loop.backing, party, 0, 0, 1) == SC_OK);
+    }
+    replay = life_operation.pending;
+    assert(replay.kind == SC_NATIVE_EVENT_OBSERVE && replay.generation == 1);
+    assert(sc_native_loop_step(&life.loop) == SC_PENDING && !life_operation.queued);
+    assert(life.loop.event_serial == 1 && op_clean() && ui.state.phase == SC_BATTLE);
+    assert(!memcmp(&ui.state, &life_storage.settled, sizeof(ui.state)));
+    assert(sc_native_loop_step(&life.loop) == SC_PENDING && life.loop.event_serial == 1);
+    /* queued LEARNING: held KO delivered, presented, settled and resumed */
+    op_snapshots(party);
+    assert(sc_native_operation_observe(&life_operation, &life.loop.backing, party, 0, 0, 0) == SC_OK);
+    assert(life_operation.pending.kind == SC_NATIVE_EVENT_LEARNING && op_clean());
+    controller.buttonPressed = RL_UI_A; before = frames;
+    assert(sc_native_loop_step(&life.loop) == SC_OK && ui.screen == SC_UI_LEARN);
+    assert(life.loop.held_operation == request.operation_id && life.loop.held_generation == 2);
+    assert(life.loop.held_presented && op_clean() && frames == before + 1);
+    assert(loop_choose(0) == SC_OK && ui.screen == SC_UI_CONFIRM);
+    before = resumes;
+    assert(loop_choose(1) == SC_OK && resumes == before + 1 && !life.loop.held_operation);
+    assert(life_operation.phase == SC_NATIVE_OPERATION_RUNNING && !life_operation.queued);
+    assert(!memcmp(&ui.state, &life_storage.settled, sizeof(ui.state)) && op_clean());
+    /* replay of a delivered event written into the clean output is refused */
+    controller.buttonPressed = 0;
+    loop_event = replay;
+    assert(sc_native_loop_step(&life.loop) == SC_INVALID && op_clean());
+    assert(life_operation.phase == SC_NATIVE_OPERATION_FAILED && life.memory.failed);
+    assert(life.loop.event_serial == 2);
+    choose_loop = &loop;
+    puts("Owner loop: actual ScNativeLoop -> sc_native_operation queued OBSERVE/LEARNING delivery, held resume, clean output, all-byte queued injection and replay refusal; DRAINED owner terminal pending; HOST only; OK");
+}
+
 int main(void) {
     ScUiDriverCalls calls;
     backend();
@@ -738,6 +855,7 @@ int main(void) {
     child_learning();
     presentation_loop();
     loop_battle();
+    operation_loop();
     puts("Story native resource adapter: real backend with synthetic OS/Pak/font outcomes; OK");
     return 0;
 }

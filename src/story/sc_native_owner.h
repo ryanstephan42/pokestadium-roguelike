@@ -80,8 +80,11 @@ typedef struct ScNativeCampaignBacking {
    acquire publishes a complete usable tuple only on SC_OK; otherwise clears it.
    submit copies values only on SC_OK; PENDING/refusal owns NO request/work.
    Activation, exit and release happen outside the Pak input session.
-   poll requires event == backing->event. SC_OK delivers each event once, in
-   strictly increasing serial order; NONE/PENDING/refusal zero the full payload.
+   poll requires event == backing->event. The event is an output-only buffer
+   that is all zero between deliveries: the owner retains the queued identity
+   privately and refuses any non-zero byte found on entry. The loop consumes
+   and zeroes it after every poll. SC_OK delivers each event once, in strictly
+   increasing serial order; NONE/PENDING/refusal leave the full payload zero.
    LEARNING contains a held KO observation, already paused before presentation.
    After observe it must actually require learning; resume is allowed only after
    presentation/settlement to SC_BATTLE with no learn_mask. Resume validates the

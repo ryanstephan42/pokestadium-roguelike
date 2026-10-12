@@ -77,18 +77,32 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
     return status;
 }
 
+static int consume_event(ScNativeLoop *loop, ScNativeCampaignEvent *event);
+
+/* The shared event is a clean output buffer: the owner retains the queued
+   identity and writes it only during poll; the loop consumes and clears it
+   after every poll so no delivered event can be replayed. */
 static int poll_event(ScNativeLoop *loop) {
     ScNativeCampaignBacking *b = &loop->backing;
     ScNativeCampaignEvent *event = b->event;
+    unsigned char *bytes;
+    unsigned i;
     int status;
     if (loop->drained_operation) return finish_drained(loop);
     if (loop->held_operation || loop->queued) return SC_OK;
     if (b->driver->launched && loop->event_operation == b->driver->operation_id &&
         loop->event_serial == ~(RlU32)0)
         return fail(loop, SC_UNAVAILABLE, "Story loop: event serial exhausted; lease retained");
-    event->kind = SC_NATIVE_EVENT_NONE;
     status = loop->owner.poll(loop->owner.context, b, event);
-    if (status != SC_OK) return status;
+    if (status == SC_OK) status = consume_event(loop, event);
+    bytes = (unsigned char *)event;
+    for (i = 0; i < sizeof(*event); ++i) bytes[i] = 0;
+    return status;
+}
+
+static int consume_event(ScNativeLoop *loop, ScNativeCampaignEvent *event) {
+    ScNativeCampaignBacking *b = &loop->backing;
+    int status;
     if (event->kind == SC_NATIVE_EVENT_NONE) return SC_OK;
     if (event->kind > SC_NATIVE_EVENT_FAILED)
         return fail(loop, SC_INVALID, "Story loop: unsupported owner event");
