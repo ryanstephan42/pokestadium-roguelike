@@ -7,6 +7,7 @@ const unsigned char *sc_story_battle_mapping(void);
 #include "src/memmap.h"
 #include "src/19840.h"
 #include <stdlib.h>
+#include <setjmp.h>
 
 OSPiHandle __CartRomHandle;
 u32 osMemSize = 0x800000;
@@ -14,6 +15,7 @@ int gScProbeActive = 1;
 RlU8 gScProbeSixMapping[6] = {0,1,2,3,4,5};
 const RlU8 *sc_story_battle_mapping(void) { return gScProbeSixMapping; }
 static f32 *fixture_clock;
+static jmp_buf stopped_service;
 #define D_84390120 (*fixture_clock)
 static s32 D_84390138, D_8439013C;
 static unsigned callback_count, move_callbacks, freed_jobs, fault, cache_count;
@@ -29,7 +31,11 @@ int sc_host_unmap_backing(void *, unsigned);
 
 const f32 *sc_batl_clock_source(void) { return fixture_clock; }
 void osSyncPrintf(const char *format, ...) { (void)format; }
-void osStopThread(OSThread *thread) { (void)thread; assert(0); }
+void osStopThread(OSThread *thread) {
+    (void)thread;
+    assert(fault == 8 || fault == 9);
+    longjmp(stopped_service, 1);
+}
 void Util_Free(void *p) { assert(p); ++freed_jobs; }
 #include "worker-consumer.inc"
 
@@ -148,6 +154,47 @@ int main(int argc, char **argv) {
     previous_owner = service.owner;
     previous_request = service.loader.request;
     previous_lease = service.lease;
+    for (owner = 0; owner < 2; ++owner) for (path = 0; path < 7; ++path) {
+        reset_fixture();
+        for (i = 1; i < 6; ++i) groups[owner].unk_01C[i].unk_02 = 0;
+        for (i = 0; i < 2; ++i)
+            sides[i].unk_654.unk_38.unk_5A = sides[i].unk_654.unk_38.unk_1F[0];
+        if (path == 0) sides[owner].unk_654.unk_38.unk_4C = 1;
+        else if (path == 1) sides[owner].unk_654.unk_38.unk_4C = 0x20;
+        else if (path == 2) sides[1 - owner].unk_654.unk_38.unk_4C = 0x20;
+        else sides[owner].unk_654.unk_38.unk_15 = path == 6 ? 0x20 : 1 << (path - 3);
+        *fixture_clock = 1.0f;
+        if (fault != 9)
+            func_8430DF60(0, 0, 0, 0, &sides[1 - owner]);
+        if (fault == 8) D_843C60BC++;
+        *fixture_clock = 30.0f;
+        if (fault == 8 || fault == 9) {
+            if (!setjmp(stopped_service)) {
+                func_8430DBA0(&sides[owner], &sides[1 - owner]);
+                assert(0);
+            }
+            assert(service.failed && gScServiceLifecycle.failed);
+            goto retained;
+        }
+        assert(service.pending == 1);
+        func_8430DBA0(&sides[owner], &sides[1 - owner]);
+        assert(!service.pending && D_8439013C == 2 &&
+               sides[owner].unk_654.unk_2A == 1 &&
+               sides[owner].unk_654.unk_10 ==
+                   (sides[1 - owner].unk_654.unk_10 == 3 ? 3 : 1));
+        *fixture_clock = 90.0f;
+        func_8430DBA0(&sides[owner], &sides[1 - owner]);
+        assert(!service.pending && D_8439013C == 2 &&
+               sides[owner].unk_654.unk_10 == 3 &&
+               sides[owner].unk_654.unk_0C == sides[owner].unk_654.unk_14);
+    }
+    if (fault == 10) {
+        assert(sc_service_stop_poll() == 1 && sc_batl_scope_close());
+        assert(!service.failed && !service.pending && !service.permit.ticket);
+        assert(sc_ma_shutdown(arena));
+        Memmap_ClearFragmentMemmap(0x33);
+        goto finished;
+    }
     for (owner = 0; owner < 2; ++owner) {
         reset_fixture();
         *fixture_clock = 1.0f;

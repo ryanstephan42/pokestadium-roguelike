@@ -30,8 +30,8 @@ is permitted on reload. Loss/terminal reload uses the same exact persistence
 model inside its own reservation.
 
 All interaction after setup is ordinary calibrated button input. Preserve
-the 8 MiB story layout, private saves, frozen c399, normal 4 MiB path, user
-saves and closed playtest. No global frontend/core settings changes.
+the 8 MiB story layout, private saves, frozen c399, normal 4 MiB path and user
+saves. No global frontend/core settings changes.
 
 Reports must distinguish PASS, FAIL and UNTESTED, retain bounded incremental
 boundary/witness/video evidence and artifact hashes, and include the candidate
@@ -49,3 +49,12 @@ python3 -m tools.rltest.run_story_sequential ... --only-scenario transform
 Each command requires its newly sealed candidate, binding, package, core pin,
 fresh output directory and explicit exclusive-reservation argument. This
 document describes the standing grant; it is not itself an execution grant.
+
+The subsequent user request opens a separate, isolated story playtest and
+replaces the automated loss scenario with the user's own play. The coordinator
+approved restoring unchanged native forced/status behavior only after verified
+staged-choice rollback; missing or failed rollback remains fail-stop. Perform
+one further bounded Transform verification before the package handoff. The
+package uses its own RetroArch configuration, Controller Pak/save and state
+directories, not global settings or existing user saves. Full `rl-gate.sh` is
+explicitly deferred for this handoff and remains required before merging PR18.

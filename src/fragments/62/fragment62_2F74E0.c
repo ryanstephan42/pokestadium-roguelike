@@ -526,10 +526,15 @@ void func_8430DBA0(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     unk_D_84390010_654* sp1C = &arg0->unk_654;
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
     if (SC_STORY_BATTLE) {
-        if (sc_service_pending())
+        if (D_8439013C != 2) {
+            sc_service_require(D_8439013C == 1 && sc_service_pending());
             sc_service_require(sc_service_reject(arg0,
                 D_84390138 >= 4 ? SC_AI_DE20 : SC_AI_DCD4));
-        sc_service_require(0);
+            /* Forced frames repeat until the native frame-zero cycle reset. */
+            D_8439013C = 2;
+        } else {
+            sc_service_require(!sc_service_pending());
+        }
     }
 #endif
 #ifdef STORY_AI_PROTOTYPE

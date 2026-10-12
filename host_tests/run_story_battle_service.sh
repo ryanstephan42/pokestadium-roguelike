@@ -24,7 +24,7 @@ end = source.index("\ns32 func_80019C08(", start)
 (out / "worker-consumer.inc").write_text(source[start:end])
 source = Path("src/fragments/62/fragment62_2F74E0.c").read_text()
 pieces = []
-for name in ("func_8430D8C4", "func_8430D9EC", "func_8430DCD4",
+for name in ("func_8430D8C4", "func_8430D9EC", "func_8430DBA0", "func_8430DCD4",
              "func_8430DE20", "func_8430DF60", "func_8430EB1C"):
     marker = next(marker for marker in ("s32 ", "void ") if marker + name + "(" in source)
     start = source.index(marker + name + "(")
@@ -45,6 +45,10 @@ flags=(-std=gnu89 -m32 -fwrapv -funsigned-char -fno-builtin
     -Ilib/ultralib/include -Ilib/ultralib/include/PR -Ilib/ultralib/include/ido
     -include "$selector/host-stats-views.h"
     -include "$selector/host-native-views.h")
+faults=(0 1 2 3 4 5 6 7 8 9 10)
+if [[ "${SC_SERVICE_FORCED_ONLY:-0}" == 1 ]]; then
+    faults=(10 8 9)
+fi
 for engine in host san; do
     extra=()
     if [[ "$engine" == san ]]; then
@@ -57,11 +61,11 @@ for engine in host san; do
     gcc "${flags[@]}" "${extra[@]}" host_tests/test_story_battle_service.c \
         "$selector/owned-closure.c" src/story/sc_ai_bank.c \
         src/story/sc_ai_select.c src/story/sc_ai_decision.c src/story/sc_ai_overlay.c \
-        src/story/sc_module_arena.c src/story/sc_batl_scope.c src/memmap.c \
+        src/story/sc_module_arena.c src/story/sc_batl_scope.c src/story/sc_batl_jobs.c src/memmap.c \
         host_tests/story_private_rom_native.c "$out/story_real_ai_image-$engine.o" \
         "$out/story_private_rom_loader-$engine.o" "$out/story_module_host_io-$engine.o" \
         -Wl,--gc-sections -lm -o "$out/service-$engine" > "$out/$engine-build.log" 2>&1
-    for fault in 0 1 2 3 4 5 6 7; do
+    for fault in "${faults[@]}"; do
         UBSAN_OPTIONS=halt_on_error=1 ASAN_OPTIONS=detect_leaks=1 \
             "$out/service-$engine" "$image" "$fault" \
             | tee "$out/service-$engine-$fault.log"

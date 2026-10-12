@@ -572,3 +572,25 @@ exact ELF symbol size and compiled size constant. It atomically records the
 witness and immediately reports a nonzero failed flag rather than spending
 the rest of a reservation on a stopped game thread. This read-only failure
 diagnostic does not relax runtime guards or mark Transform/restoration PASS.
+
+The coordinator subsequently approved the native forced/status correction as
+a bug fix, with game rules unchanged. The DBA0 story hook now verifies the
+first staged rejection, marks the existing per-cycle preparation marker as
+rolled back, and permits repeated native forced frames only with no pending
+transaction. The existing frame-zero reset starts a new cycle; missing first
+rollback or tampered state still fail-stops. Native DBA0 code is unchanged.
+Joined source HOST/sanitizer tests cover both owners, Bide/charge/binding flags,
+sleep/freeze status masks, repeated frames and missing/tampered rollback.
+
+The hook audit found no other unconditional post-reject failure on an expected
+forced path. Recharge, forced finish and actor flags 4D60/4C12 bypass selection
+and use native DB58/F080. Bide, charge/bind, sleep/freeze and related blocked
+selection routes converge on DBA0. Confusion/paralysis retain the ordinary
+native turn resolver. Switch and faint replacement use DE20/D9EC identity-bound
+acceptance. The reject-and-fail in `sc_service_native_accept` is different:
+acceptance already failed, so uncertain application must still fail-stop.
+These are source/HOST observations, not native proof of every named move.
+
+The user's own isolated playtest replaces further automated loss attempts.
+The coordinator explicitly deferred the full integration gate until pre-merge;
+this handoff must not claim overall campaign/gate acceptance.
