@@ -4851,7 +4851,7 @@ void func_8432C86C(void) {
 
 #ifdef STORY_NATIVE_PROBE
     animation = func_80019EA0(0);
-    if (gScProbeActive && animation == NULL) {
+    if (SC_STORY_BATTLE && animation == NULL) {
         osSyncPrintf("story probe: required animation archive entry 0 unavailable\n");
         gScProbe.stage = 13;
         return;

@@ -456,7 +456,7 @@ s32 func_8430D9EC(unk_D_84390010* arg0, unk_D_84390010* arg1) {
         if (D_84390120 == 20.0f) {
             func_8432B4B0();
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-            if (gScProbeActive) {
+            if (SC_STORY_BATTLE) {
                 D_84390138 = sc_service_native_prepare(arg0, SC_AI_D9EC);
                 sc_service_native_accept(arg0, SC_AI_D9EC_STORE);
                 return 1;
@@ -478,7 +478,7 @@ s32 func_8430D9EC(unk_D_84390010* arg0, unk_D_84390010* arg1) {
 
     if (sp1C->unk_2D == 0x10) {
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-        if (gScProbeActive && sp1C->unk_10 == 3) return 1;
+        if (SC_STORY_BATTLE && sp1C->unk_10 == 3) return 1;
 #endif
         sp1C->unk_04 = 2;
         sp1C->unk_10 = 2;
@@ -488,7 +488,7 @@ s32 func_8430D9EC(unk_D_84390010* arg0, unk_D_84390010* arg1) {
         if (D_84390120 == 20.0f) {
             func_8432B4B0();
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-            if (gScProbeActive) {
+            if (SC_STORY_BATTLE) {
                 D_84390138 = sc_service_native_prepare(arg0, SC_AI_D9EC);
                 sc_service_native_accept(arg0, SC_AI_D9EC_STORE);
                 return 1;
@@ -525,7 +525,7 @@ void func_8430DBA0(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     unk_D_84390010_654* sp20 = &arg1->unk_654;
     unk_D_84390010_654* sp1C = &arg0->unk_654;
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-    if (gScProbeActive) {
+    if (SC_STORY_BATTLE) {
         if (sc_service_pending())
             sc_service_require(sc_service_reject(arg0,
                 D_84390138 >= 4 ? SC_AI_DE20 : SC_AI_DCD4));
@@ -582,7 +582,7 @@ void func_8430DCD4(unk_D_84390010* arg0, unk_D_84390010* arg1) {
         if (D_84390138 < 4) {
             func_8432B4B0();
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-            if (gScProbeActive) {
+            if (SC_STORY_BATTLE) {
                 sc_service_native_accept(arg0, SC_AI_DCD4);
                 return;
             }
@@ -623,7 +623,7 @@ s32 func_8430DE20(unk_D_84390010* arg0, unk_D_84390010* arg1) {
         if (D_84390138 >= 4) {
             func_8432B4B0();
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-            if (gScProbeActive) {
+            if (SC_STORY_BATTLE) {
                 sc_service_native_accept(arg0, SC_AI_DE20);
                 return 1;
             }
@@ -646,7 +646,7 @@ void func_8430DF60(UNUSED unk_D_800FCB18* arg0, UNUSED unk_D_800FCB18* arg1, UNU
                    UNUSED unk_D_84390010_654* arg3, UNUSED unk_D_84390010* arg4) {
     if ((D_84390120 == 1.0f) && (D_8439013C == 0)) {
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-        if (gScProbeActive) {
+        if (SC_STORY_BATTLE) {
             sc_service_require(arg4 == D_84390010[0] || arg4 == D_84390010[1]);
             D_84390138 = sc_service_native_prepare(
                 D_84390010[arg4 == D_84390010[0]], SC_AI_DF60);
@@ -945,7 +945,7 @@ void func_8430EB1C(unk_D_84390010* arg0) {
         }
     } else {
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-        if (gScProbeActive) {
+        if (gScProbeActive || (SC_STORY_BATTLE && (arg0->unk_724->unk_000 & 2))) {
             sc_service_require(sc_service_struggle(arg0));
         } else
 #endif

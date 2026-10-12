@@ -8,7 +8,7 @@
 #include "rl_native_relics.h"
 #ifdef STORY_NATIVE_PROBE
 #include "src/story/sc_native_probe.h"
-extern int gScProbeActive;
+#include "src/story/sc_campaign_battle.h"
 #ifdef STORY_SIX_PROBE
 extern int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count);
 extern int sc_runtime_probe_terminal(const unk_D_800AE540_0004 *,
@@ -125,7 +125,7 @@ static void rl_to_native(const RlMon* mon, unk_func_80026268_arg0* native, int u
     }
     func_800228B0(native);
 #ifdef STORY_NATIVE_PROBE
-    if (gScProbeActive && sc_native_record(mon, native) != SC_OK) {
+    if (SC_STORY_BATTLE && sc_native_record(mon, native) != SC_OK) {
         osSyncPrintf("story probe: canonical native record rejected\n");
         return -1;
     }
@@ -305,6 +305,13 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
 #ifdef STORY_SIX_PROBE
     if (gScProbeActive && sc_runtime_probe_mapping(result->player_index, player->unk_002) != SC_OK) {
         osSyncPrintf("story six probe: invalid launcher party mapping\n");
+        return -1;
+    }
+#endif
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (gScCampaignBattle &&
+        sc_campaign_battle_mapping(result->player_index, player->unk_002) != 0) {
+        osSyncPrintf("story campaign: invalid launcher party mapping\n");
         return -1;
     }
 #endif

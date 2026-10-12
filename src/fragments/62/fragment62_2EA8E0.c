@@ -352,6 +352,9 @@ s32 func_84300E88(s32 arg0) {
     func_80032570();
 #ifdef STORY_NATIVE_PROBE
     story_gate = sc_runtime_probe_gate(D_84390010[0], D_84390010[1], &sp1C);
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (!story_gate) story_gate = sc_campaign_battle_gate(D_84390010[0], D_84390010[1], &sp1C);
+#endif
     if (story_gate == 1) goto story_render;
     if (story_gate == 2) goto story_after_logic;
     if (gScProbeActive) gScProbe.presentation_steps++;
@@ -364,6 +367,10 @@ s32 func_84300E88(s32 arg0) {
     sp1C = func_8432AEE4(2, &D_8438E440);
 #ifdef STORY_NATIVE_PROBE
     sp1C = sc_runtime_probe_after(D_84390010[0], D_84390010[1], sp1C);
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    sp1C = sc_campaign_battle_after(D_84390010[0], D_84390010[1], sp1C);
+    if (sc_campaign_battle_paused()) goto story_render;
+#endif
     if (sc_runtime_probe_paused()) goto story_render;
 story_after_logic:
 #endif
@@ -631,7 +638,7 @@ void func_84301430(unk_func_80007444* arg0) {
         gScProbe.stage = 13;
         return;
     }
-    if (gScProbeActive) {
+    if (SC_STORY_BATTLE) {
         story_rom_size = stadium_models_ROM_END - stadium_models_ROM_START;
         if (sp32 < 0 || sp32 >= story_archive->num_files) {
             osSyncPrintf("story probe: invalid stadium model index\n");
@@ -706,7 +713,7 @@ void func_84301430(unk_func_80007444* arg0) {
     func_8432AEE4(0, &D_8438E440);
     func_8432D0D8(0, &D_8438E440);
 #ifdef STORY_NATIVE_PROBE
-    if (gScProbeActive && gScProbe.stage == 13) return;
+    if (SC_STORY_BATTLE && gScProbe.stage == 13) return;
 #endif
 
     sp44 = func_80002D10(main_pool_get_available(), 0);
@@ -783,19 +790,19 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     if (gScProbeActive) sc_ai_battle_load();
 #endif
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-    if (gScProbeActive) sc_batl_scope_require(sc_batl_scope_open());
+    if (SC_STORY_BATTLE) sc_batl_scope_require(sc_batl_scope_open());
 #endif
     func_80007678(sp24);
     func_800077B4(1);
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-    if (gScProbeActive) {
+    if (SC_STORY_BATTLE) {
         sc_service_require(sc_service_bootstrap());
         sc_service_wait(0);
     }
 #endif
     func_800078D4(func_843010EC, 0x20, 0x10);
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
-    if (gScProbeActive) {
+    if (SC_STORY_BATTLE) {
         sc_service_wait(1);
         sc_batl_scope_require(sc_batl_scope_close());
     }

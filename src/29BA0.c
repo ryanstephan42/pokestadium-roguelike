@@ -1,6 +1,9 @@
 #include "29BA0.h"
 #ifdef ROGUELIKE
 #include "src/roguelike/rl_battle.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_campaign_battle.h"
+#endif
 #endif
 #include "include/functions.h"
 #include "src/20330.h"
@@ -1433,6 +1436,11 @@ void Game_Thread(UNUSED LEODiskID* arg) {
             case STATE_ROGUELIKE_BATTLE_TEST:
                 rl_main_state_battle_test();
                 break;
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+            case STATE_STORY_CAMPAIGN:
+                sc_campaign_state();
+                break;
+#endif
 #endif
             // same as state 1: N64 Logo + Intro.
             default:

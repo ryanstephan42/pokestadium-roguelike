@@ -3,6 +3,9 @@
 #include "src/controller.h"
 #include "src/29BA0.h"
 #include "rl_save_probe.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_campaign_battle.h"
+#endif
 
 extern u8 fragmentRL_TEXT_START[];
 extern u8 fragmentRL_ROM_START[];
@@ -164,5 +167,10 @@ s32 rl_main_menu_hook(s32 state) {
         gRlMain.returnState = STATE_MENU_SELECT;
         return STATE_ROGUELIKE;
     }
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    /* Hold R (without L) to enter the story campaign; candidate build only. */
+    return sc_campaign_menu_hook(state);
+#else
     return state;
+#endif
 }
