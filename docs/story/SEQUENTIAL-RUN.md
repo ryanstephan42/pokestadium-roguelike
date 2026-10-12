@@ -339,3 +339,17 @@ and absent Expansion Pak as explanations for that run, not story boot faults.
 Read-only diagnostics now retain mapped overlay bases/sizes, saved Game-thread
 PC/cause/SP/RA and at most 16 stack words, plus pool/failure records. Missing
 diagnostic symbols are reported individually; no native memory is changed.
+
+The next diagnosis caught a stopped Game thread in fragment2 relocation:
+`NON_MATCHING=1` shortened its image by 32 bytes but retained the original
+header/table offsets. Story-service builds now retain matching original
+overlay bodies, as normal roguelike already does, except regenerated31/62.
+Fragment57's story menu witness requires its own regenerated header/table.
+The top-level story command remains nonmatching for resident/new story code.
+These target-specific build rules do not affect vanilla or normal roguelike.
+The extra menu relocation table crosses the fixed GB-Tower ROM frontier.
+Story-only linking also defers the adjacent symbol-loaded `_6EB340`/
+`_6EC4D0` data pair to the existing ROM tail. Their original ordering and
+adjacency are preserved because fragment28's matching assembly uses the
+second segment's start as the first segment's end. RAM reservations and
+fixed GB-Tower/model ROM offsets do not change.

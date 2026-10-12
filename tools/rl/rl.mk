@@ -18,6 +18,13 @@ RL_RELOCS0_O    := $(RL_DIR)/fragmentRL_relocs_pass1.o
 RL_ELF_PASS1    := $(RL_DIR)/pass1.elf
 # fragment31 holds ROGUELIKE-guarded edits (shadow/CI/callback fixes) that move its functions.
 RL_REGEN_FRAGMENTS ?= 62 31
+ifeq ($(STORY_SERVICE_CANDIDATE),1)
+# Keep original overlay bodies matching; their extracted headers/tables are fixed.
+SC_MATCHING_OVERLAYS := $(filter-out $(BUILD_DIR)/src/fragments/31/% $(BUILD_DIR)/src/fragments/62/%,$(filter $(BUILD_DIR)/src/fragments/%,$(O_FILES)))
+$(SC_MATCHING_OVERLAYS): BUILD_DEFINES := $(filter-out -DNON_MATCHING -DAVOID_UB,$(BUILD_DEFINES))
+# The campaign menu witness changes fragment57 even with matching native bodies.
+RL_REGEN_FRAGMENTS += 57
+endif
 RL_NATIVE_HEADERS := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_header.o)
 RL_NATIVE_RELOCS := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_relocs.o)
 RL_NATIVE_RELOCS0 := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_relocs_pass1.o)
