@@ -1,3 +1,4 @@
+const unsigned char *sc_story_battle_mapping(void);
 #define main selector_fixture_main
 #include "test_story_ai_selector.c"
 #undef main
@@ -11,6 +12,7 @@ OSPiHandle __CartRomHandle;
 u32 osMemSize = 0x800000;
 int gScProbeActive = 1;
 RlU8 gScProbeSixMapping[6] = {0,1,2,3,4,5};
+const RlU8 *sc_story_battle_mapping(void) { return gScProbeSixMapping; }
 static f32 *fixture_clock;
 #define D_84390120 (*fixture_clock)
 static s32 D_84390138, D_8439013C;
