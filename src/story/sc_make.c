@@ -1,27 +1,6 @@
 /* PURE. Team materialization runs only while the cold catalog is owned. */
 #include "sc_core.h"
 
-void sc_compact_moves(RlMon *mon) {
-    unsigned i, slot = 0;
-    for (i = 0; i < 4; i++) {
-        if (!mon->moves[i]) continue;
-        mon->moves[slot] = mon->moves[i];
-        mon->pp[slot] = mon->pp[i];
-        mon->max_pp[slot++] = mon->max_pp[i];
-    }
-    for (; slot < 4; slot++)
-        mon->moves[slot] = mon->pp[slot] = mon->max_pp[slot] = 0;
-}
-
-int sc_moves_packed(const RlMon *mon) {
-    unsigned i, empty = 0;
-    for (i = 0; i < 4; i++) {
-        if (!mon->moves[i]) empty = 1;
-        else if (empty) return 0;
-    }
-    return 1;
-}
-
 int sc_make_mon(const ScCatalog *catalog, const ScTemplate *input,
                  RlU16 random_dvs, RlMon *output) {
     const ScSpecies *species;

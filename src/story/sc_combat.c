@@ -235,6 +235,27 @@ int sc_ko_ledger_apply_next(ScKoLedger *ledger, ScState *state,
         SC_PENDING : SC_OK;
 }
 
+void sc_compact_moves(RlMon *mon) {
+    unsigned i, slot = 0;
+    for (i = 0; i < 4; i++) {
+        if (!mon->moves[i]) continue;
+        mon->moves[slot] = mon->moves[i];
+        mon->pp[slot] = mon->pp[i];
+        mon->max_pp[slot++] = mon->max_pp[i];
+    }
+    for (; slot < 4; slot++)
+        mon->moves[slot] = mon->pp[slot] = mon->max_pp[slot] = 0;
+}
+
+int sc_moves_packed(const RlMon *mon) {
+    unsigned i, empty = 0;
+    for (i = 0; i < 4; i++) {
+        if (!mon->moves[i]) empty = 1;
+        else if (empty) return 0;
+    }
+    return 1;
+}
+
 int sc_learn_pp(ScState *state, const RlU8 pp[166], unsigned party_slot,
                 unsigned move_slot, int accept) {
     unsigned move, i;
