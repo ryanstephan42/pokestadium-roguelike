@@ -50,11 +50,39 @@ int sc_job_fx_complete(unsigned int size, unsigned int buffer, unsigned int expe
         }
     }
     for (i = 0; i < n; i++) {
-        if (!sc_job_in(buffer, SC_JOB_FX_BYTES, results[i], 8)) {
+        if (!sc_job_fx_list_ok(buffer, results[i])) {
             return 0;
         }
     }
     return results[n] == 0;
+}
+
+/* Mirrors the 8432C830 walk: every 8-byte record it reads (tag s8 +0, slot s16 +2, payload +4)
+ * lies in the buffer, every published slot indexes D_843920C0[256], and the walk terminates. */
+int sc_job_fx_list_ok(unsigned int buffer, unsigned int list) {
+    unsigned int at = list;
+    short id;
+
+    for (;;) {
+        if (!sc_job_in(buffer, SC_JOB_FX_BYTES, at, 8)) {
+            return 0;
+        }
+        id = *(const short*)(at + 2);
+        if (id == 0) {
+            /* C830 re-reads this record forever unless its tag ends the list */
+            return *(const signed char*)at == 0;
+        }
+        if (id < 0 || id >= SC_FX_SLOTS) {
+            return 0;
+        }
+        at += 8;
+        if (!sc_job_in(buffer, SC_JOB_FX_BYTES, at, 8)) {
+            return 0;
+        }
+        if (*(const signed char*)at == 0) {
+            return 1;
+        }
+    }
 }
 
 void sc_fx_reset(ScFxTable* t) {

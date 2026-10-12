@@ -315,6 +315,7 @@ static int model_done(unk_D_86002F58_004_000_010 *worker, sp18_func_800198E4 *jo
     for (i = 0; i < n; ++i) {
         const u8 *root = (const u8 *)roots[i];
         if (!sc_job_in(v.buffer, SC_JOB_MODEL_BYTES, (u32)root, SC_JOB_ROOT_NODE_BYTES) ||
+            (root[0] == 0xE && !sc_job_in(v.buffer, SC_JOB_MODEL_BYTES, (u32)root, SC_JOB_ROOT_BYTES)) ||
             !sc_job_model_root_ok(v.buffer, (u32)root, root[0],
                                   root[0] == 0xE ? *(const u32 *)(root + 0x28) : 0, entry)) return 0;
     }

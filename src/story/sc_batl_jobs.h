@@ -40,6 +40,8 @@ int sc_job_model_root_ok(unsigned int buffer, unsigned int root, unsigned int ty
  * worker's own effect buffer, followed by the NULL terminator. */
 int sc_job_fx_complete(unsigned int size, unsigned int buffer, unsigned int expected, const short* requests,
                        const unsigned int* results);
+/* one result list as 8432C830 walks it; reads only bytes already proven inside the buffer */
+int sc_job_fx_list_ok(unsigned int buffer, unsigned int list);
 
 /* Effect-record slot provenance. Base records come from the battle's entry-0 load; request
  * records live in one worker's effect buffer and go stale when that worker sends a new request. */
