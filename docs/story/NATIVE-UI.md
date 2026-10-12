@@ -151,7 +151,7 @@ again before scope retirement. Ordinary stage/workspace/framebuffer functions,
 signatures and default code paths remain unchanged.
 
 IDO layout facts: loop 128 bytes, display 136 bytes, event 80 bytes. Own frames
-are loop open/step/close 72/64/32 bytes, private poll 64, private finish 32;
+are loop open/step/close 80/64/32 bytes, private poll 64, private finish 32;
 display acquire/begin/end/release 56/32/32/32; checked workspace acquisition 40.
 These exclude callees, owner callbacks, interrupt/OS/task stacks and full peak.
 Display requests two 65,536-byte workspaces, a 76-byte restoration record,
