@@ -18,6 +18,7 @@
 #define SC_RUNTIME_PROBE_H
 #define SC_BATTLE_SERVICE_H
 #define SC_NATIVE_PROBE_H
+#define _1CF30_H_
 
 typedef struct unk_func_80026268_arg0 {
     struct { u8 unk_00; } unk_00;
@@ -54,6 +55,13 @@ extern Controller *gPlayer1Controller;
 enum { STATE_TITLE_SCREEN = 0x02, STATE_MENU_SELECT = 0x04, STATE_STORY_CAMPAIGN = 0x32 };
 extern s32 gCurrentGameState;
 u32 osGetCount(void);
+extern u32 osMemSize;
+/* fragment57/resident text printer (src/1CF30.h) */
+void func_8001F3F4(void);
+void func_8001EBE0(s32 font, s32 arg1);
+void func_8001F324(s32 r, s32 g, s32 b, s32 a);
+void func_8001F1E8(s32 x, s32 y, const char *fmt, ...);
+void func_8001F444(void);
 void osSyncPrintf(const char *, ...);
 
 int sc_native_mapping(const ScState *state, unsigned count, const RlU8 indices[6],

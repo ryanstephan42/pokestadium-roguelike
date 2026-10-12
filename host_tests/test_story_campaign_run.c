@@ -27,6 +27,17 @@ static Controller pad;
 Controller *gPlayer1Controller = &pad;
 s32 gCurrentGameState;
 u32 osGetCount(void) { return 77; }
+u32 osMemSize = 0x800000;
+static char hint[64];
+static int print_open;
+void func_8001F3F4(void) { assert(!print_open); print_open = 1; }
+void func_8001EBE0(s32 font, s32 arg1) { assert(print_open && font == 0x10 && !arg1); }
+void func_8001F324(s32 r, s32 g, s32 b, s32 a) { assert(print_open && r && g && b && a == 0xFF); }
+void func_8001F1E8(s32 x, s32 y, const char *fmt, ...) {
+    assert(print_open && x == 0x50 && y == 0x13A && strlen(fmt) < sizeof(hint));
+    strcpy(hint, fmt);
+}
+void func_8001F444(void) { assert(print_open); print_open = 0; }
 static unsigned prints;
 void osSyncPrintf(const char *format, ...) { (void)format; ++prints; }
 static ScMaArena *arena_ptr = &arena;
@@ -226,21 +237,59 @@ static void start(void) {
 }
 static void state(void) { *trace = 0; sc_campaign_state(); }
 
+/* Visible fragment57 entry: R request rides the vanilla B exit (state 2). */
+static int menu_select_r(void) {
+    /* fragment57 R branch: accepted -> index 7 (title exit); refused -> stay */
+    return sc_campaign_menu_request() ? STATE_TITLE_SCREEN : -1;
+}
+
 static void menu_hook(void) {
     start();
-    pad.buttonDown = R_TRIG;
-    assert(sc_campaign_menu_hook(5) == STATE_STORY_CAMPAIGN);
-    assert(sc_campaign_menu_hook(STATE_MENU_SELECT) == STATE_MENU_SELECT);
+    osMemSize = 0x800000;
+    sc_campaign_menu_hint();
+    assert(!strcmp(hint, "R: STORY CAMPAIGN") && !print_open);
+    /* no request: every vanilla/RL result passes through unchanged */
     assert(sc_campaign_menu_hook(STATE_TITLE_SCREEN) == STATE_TITLE_SCREEN);
-    assert(sc_campaign_menu_hook(0) == 0);
-    pad.buttonDown = R_TRIG | L_TRIG;
+    assert(sc_campaign_menu_hook(5) == 5 && sc_campaign_menu_hook(0) == 0);
+    pad.buttonDown = R_TRIG;   /* holding R no longer binds anything */
     assert(sc_campaign_menu_hook(5) == 5);
     pad.buttonDown = 0;
-    assert(sc_campaign_menu_hook(5) == 5);
-    /* not offered while a lifetime is live */
-    pad.buttonDown = R_TRIG;
+    /* visible R: accepted, consumed once */
+    assert(sc_campaign_menu_hook(menu_select_r()) == STATE_STORY_CAMPAIGN);
+    assert(sc_campaign_menu_hook(STATE_TITLE_SCREEN) == STATE_TITLE_SCREEN);
+    /* a request is consumed even if fragment57 returned another state */
+    assert(sc_campaign_menu_request());
+    assert(sc_campaign_menu_hook(5) == 5 && sc_campaign_menu_hook(STATE_TITLE_SCREEN) == 2);
+    /* cancel: the story UI exits, closes and returns to Menu Select; re-enter */
+    gCurrentGameState = sc_campaign_menu_hook(menu_select_r());
+    assert(gCurrentGameState == STATE_STORY_CAMPAIGN);
     state();
-    assert(gScCampaignRun.stage == SC_RUN_ACTIVE && sc_campaign_menu_hook(5) == 5);
+    assert(gScCampaignRun.stage == SC_RUN_ACTIVE && loads == 1);
+    /* not offered while a lifetime is live */
+    assert(menu_select_r() == -1 && sc_campaign_menu_hook(STATE_TITLE_SCREEN) == 2);
+    want_exit = 1;
+    state();
+    assert(ctl()->lifetime.loop.exited && gScCampaignRun.stage == SC_RUN_CLOSING);
+    state();
+    assert(gCurrentGameState == STATE_MENU_SELECT && gScCampaignRun.stage == SC_RUN_ENTRY);
+    assert(!mapped && sc_campaign_phase() == SC_CAMPAIGN_IDLE && !sc_persist_holds_fragment());
+    want_exit = 0; opid = 0; ctl()->lifetime.loop.exited = 0;
+    gCurrentGameState = sc_campaign_menu_hook(menu_select_r());
+    assert(gCurrentGameState == STATE_STORY_CAMPAIGN);
+    state();
+    assert(gScCampaignRun.stage == SC_RUN_ACTIVE && loads == 2);
+}
+
+static void menu_no_pak(void) {
+    start();
+    osMemSize = 0x400000;
+    sc_campaign_menu_hint();
+    assert(!strcmp(hint, "STORY CAMPAIGN NEEDS EXPANSION PAK") && !print_open);
+    /* refused before leaving Menu Select: no state, no load, no allocation */
+    assert(menu_select_r() == -1);
+    assert(sc_campaign_menu_hook(STATE_TITLE_SCREEN) == STATE_TITLE_SCREEN);
+    assert(loads == 0 && !mapped && sc_campaign_phase() == SC_CAMPAIGN_IDLE);
+    osMemSize = 0x800000;
 }
 
 static void refusal_4mib(void) {
@@ -447,7 +496,8 @@ int main(void) {
     run(refused_drain, "harness: refused drain");
     run(observe, "harness: observe");
     run(fail_stop_idle, "harness: fail-stop idle");
-    run(menu_hook, "menu hook: R (not L) at a non-title state, only while idle");
+    run(menu_hook, "visible menu entry: hint, R request, consume once, cancel/close, re-entry");
+    run(menu_no_pak, "4 MiB menu: visible refusal hint, R refused before any state change/load");
     run(refusal_4mib, "4 MiB: no arena refuses before any load and returns to Menu Select");
     run(canceled_admission, "canceled admission: refused acquire closes, returns, re-entry admits");
     run(failed_admission, "failed admission: load failure fail-stops and retains");

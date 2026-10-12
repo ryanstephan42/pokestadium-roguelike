@@ -12,6 +12,7 @@
 #include "src/roguelike/rl_battle.h"
 #include "src/controller.h"
 #include "src/29BA0.h"
+#include "src/1CF30.h"
 
 int gScCampaignBattle;
 ScCampaignRun gScCampaignRun;
@@ -268,11 +269,38 @@ void sc_campaign_state(void) {
     }
 }
 
+/* Visible Menu Select entry (docs/story/NATIVE-UI.md "Menu Select entry").
+   R on the top page requests the campaign only on an 8 MiB console; the
+   request rides fragment57's vanilla B exit and is consumed here. */
+static int menu_request;
+
+static int menu_available(void) {
+    return osMemSize == 0x800000 && gScCampaignRun.stage == SC_RUN_ENTRY &&
+           sc_campaign_phase() == SC_CAMPAIGN_IDLE;
+}
+
+int sc_campaign_menu_request(void) {
+    menu_request = menu_available();
+    return menu_request;
+}
+
+void sc_campaign_menu_hint(void) {
+    func_8001F3F4();
+    func_8001EBE0(0x10, 0);
+    if (osMemSize == 0x800000) {
+        func_8001F324(0xFF, 0xF0, 0x64, 0xFF);
+        func_8001F1E8(0x50, 0x13A, "R: STORY CAMPAIGN");
+    } else {
+        func_8001F324(0xC8, 0xC8, 0xC8, 0xFF);
+        func_8001F1E8(0x50, 0x13A, "STORY CAMPAIGN NEEDS EXPANSION PAK");
+    }
+    func_8001F444();
+}
+
 int sc_campaign_menu_hook(int state) {
-    if (state > 0 && state != STATE_TITLE_SCREEN && state != STATE_MENU_SELECT &&
-        BTN_IS_DOWN(gPlayer1Controller, R_TRIG) && !BTN_IS_DOWN(gPlayer1Controller, L_TRIG) &&
-        gScCampaignRun.stage == SC_RUN_ENTRY && sc_campaign_phase() == SC_CAMPAIGN_IDLE)
-        return STATE_STORY_CAMPAIGN;
+    int requested = menu_request;
+    menu_request = 0;
+    if (requested && state == STATE_TITLE_SCREEN && menu_available()) return STATE_STORY_CAMPAIGN;
     return state;
 }
 #endif

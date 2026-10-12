@@ -1,4 +1,7 @@
 #include "fragment57.h"
+#ifdef ROGUELIKE
+#include "src/story/sc_campaign_battle.h"
+#endif
 #include "src/12D80.h"
 #include "src/1C720.h"
 #include "src/1CF30.h"
@@ -2226,6 +2229,11 @@ void func_82D05258(s32 arg0, s32 arg1) {
                 func_8001F1E8(0x50, 0x15E, func_8002D7C0(NULL, 0, D_82D0AB9C, 0x46));
             }
             func_8001F444();
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+            if (D_82D06FA0 <= 4) {
+                sc_campaign_menu_hint();
+            }
+#endif
         }
     }
 }
@@ -2555,6 +2563,15 @@ s32 func_82D063E4(void) {
         func_80048B90(2);
         var_a3 = -1;
         D_800AE540.unk_11F2 ^= 1;
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    } else if (BTN_IS_PRESSED(gPlayer1Controller, R_TRIG) && (D_82D06FA0 <= 4)) {
+        if (sc_campaign_menu_request()) {
+            var_a3 = 7;
+        } else {
+            func_80048B90(8);
+            var_a3 = -1;
+        }
+#endif
     }
 
     if ((sp24 != -1) && (sp22 != sp24)) {

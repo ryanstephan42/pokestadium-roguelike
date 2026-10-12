@@ -606,7 +606,8 @@ an empty working directory and changed/duplicate import-policy refusal.
 Historical/default and isolated-corrected paths keep their frozen historical
 ELF/import checks. Generated image/header/manifests stay in ignored evidence
 directories; regenerate and relink to a header fixed point after layout changes.
-The launch-wiring candidate reached the fixed point at v32 == v33.
+The launch-wiring candidate reached the fixed point at v32 == v33; the visible
+Menu Select entry candidate at v35 == v36.
 
 ## Retained crash-screen reference
 
@@ -863,8 +864,7 @@ These are individual function frames, not full call-chain or interrupt peaks.
 ## Menu → campaign battle launch wiring (source/HOST/IDO only)
 
 `STATE_STORY_CAMPAIGN` (0x32, `include/variables.h`) is entered from Menu
-Select only through `sc_campaign_menu_hook` (R, not L, at a non-title state,
-while the runner is idle). It exists only in `STORY_SERVICE_CANDIDATE` +
+Select only through the visible entry below. It exists only in `STORY_SERVICE_CANDIDATE` +
 `STORY_NATIVE_UI` builds; ordinary RL entry/exit and the vanilla build are
 unchanged (`make` OK, `make rl` OK). The resident runner
 `src/story/sc_campaign_run.c` drives the installed/pinned path —
@@ -893,14 +893,51 @@ publish-live, the loop/lifetime/operation/terminal stubs of
 `test_story_campaign.c`, and a scripted launch-hook binding. It is not a
 native execution or an installed-hook trace.
 
+### Menu Select entry (visible)
+
+Menu Select (fragment 57) is a fixed 8-row 3D scene (`D_82D06FA0` 0..7, rows
+backed by `menu_select_ui` models), so a ninth row would need new models/art.
+The entry is instead a visible shortcut on the top page (rows 0..4), drawn by
+`sc_campaign_menu_hint` with fragment 57's own text printer inside its frame,
+just above the description box (x 0x50, y 0x13A):
+
+- 8 MiB: `R: STORY CAMPAIGN`. R calls `sc_campaign_menu_request`; when the
+  runner is idle it records a one-shot request and returns index 7, i.e. the
+  vanilla B exit animation/fade (no new transition). `rl_main_menu_hook`
+  consumes the request: only `STATE_TITLE_SCREEN` with a pending request and
+  an idle runner becomes `STATE_STORY_CAMPAIGN`; every other result passes
+  through and the request is cleared either way.
+- 4 MiB: `STORY CAMPAIGN NEEDS EXPANSION PAK`. R plays the existing
+  unavailable-row sound (`func_80048B90(8)`) and stays on Menu Select; no
+  state change, load or allocation. The runner's own 8 MiB arena refusal is
+  kept as a second guard.
+- Cancel: the story UI's top-level exit closes the lifetime and returns to
+  Menu Select; R re-enters with a fresh lifetime.
+- The former hidden "hold R while confirming" binding is removed. Ordinary RL
+  (hold L while confirming) and all vanilla Menu Select inputs are unchanged;
+  R had no vanilla binding on this screen. Code is guarded by
+  `SC_CAMPAIGN_BATTLE_WIRED` (candidate + native UI only).
+
+The connected test covers the hint text, request/consume-once, R-hold no-op,
+refusal while a lifetime is live, cancel → close → Menu Select → re-entry, and
+the 4 MiB visible refusal before any load. The on-screen hint position and
+legibility over the 3D panels are unverified natively.
+
 ROM capacity: the RL linker asserts `__romPos <= 0x7C0000`. At `dd0d715` the
 margin was 160 B and launch wiring overflowed it. Candidate builds only
 (`tools/rl/gen_rl_ld.py`) move `snap_mode_ui` (0x1B00) and `copyright`
-(0x940) to the ROM tail (0x02086040–0x02088480); margin is now 4448 B. These
-assets are not exercised by any native run yet.
+(0x940) to the ROM tail (0x02086040–0x02088480); margin is 4048 B with the visible menu entry. Bytes
+are identical to vanilla; both stay 16-aligned (`ALIGN(__romPos,16)` +
+SUBALIGN(16)); the objects carry no relocations, and only their
+`_ROM_START`/`_ROM_END` symbols are referenced (fragments 15/42/44/45/46/75;
+`copyright` by 75 only). They load through `ASSET_LOAD` → `func_80004258` →
+`func_80003DC4` → `func_80003B30` (the same DMA primitive that loads fragments
+above 32 MiB). Fragment 75 runs on every boot before the title, so any
+candidate native boot exercises the relocated `copyright` load; no native run
+of this layout has happened yet.
 
 RAM: resident main grew; `gPool` moved 0x8012b370 (UI ledger 133c36b) →
-0x8012c730, i.e. −5056 B from the ledger's 395728 B lower headroom (≤390672 B
+0x8012c730 (launch wiring) → 0x8012c860 (menu entry), i.e. −5360 B from the ledger's 395728 B lower headroom (≤390368 B
 before BATL headers/scopes, loader staging, models, archives, caller menu
 baseline). SC payload +64 B (cold image 221072); fragment 62 +320 B (transient).
 Runner IDO frames (TU-local): state 40 → launch 40 → `rl_start_battle`;
@@ -910,5 +947,8 @@ and stack remain unproven.
 
 Open questions: AI service for arbitrary trainers; nested story display inside
 BATL during holds; Menu Select → story display transition; persistent display
-failure busy-loop; tick-invalid fail-stop hangs intentionally; R at Menu
-Select may conflict with existing bindings; shared arena ownership.
+failure busy-loop; tick-invalid fail-stop hangs intentionally; shared arena
+ownership. Decided: uniform Stadium AI level 0x20 for every trainer (no
+invented class table), exhaustive canonical-party HOST admission sweep, and
+per-KO learning kept; if whole-stack evidence shows the nested gate depth is
+unsafe, move the held presentation to the BATL top-level frame loop.

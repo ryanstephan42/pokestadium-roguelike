@@ -23,6 +23,9 @@ int sc_campaign_battle_paused(void);
 /* Game_Thread handler for STATE_STORY_CAMPAIGN and the Menu Select hook. */
 void sc_campaign_state(void);
 int sc_campaign_menu_hook(int state);
+/* Fragment57 top-page story entry: R request (1 = accepted) and hint text. */
+int sc_campaign_menu_request(void);
+void sc_campaign_menu_hint(void);
 
 /* Resident run diagnostics (never authority). */
 typedef struct ScCampaignRun {

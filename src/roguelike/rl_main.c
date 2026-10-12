@@ -168,7 +168,7 @@ s32 rl_main_menu_hook(s32 state) {
         return STATE_ROGUELIKE;
     }
 #ifdef SC_CAMPAIGN_BATTLE_WIRED
-    /* Hold R (without L) to enter the story campaign; candidate build only. */
+    /* Consumes the visible fragment57 R request; candidate build only. */
     return sc_campaign_menu_hook(state);
 #else
     return state;
