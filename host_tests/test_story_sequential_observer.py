@@ -11,6 +11,7 @@ class SequentialObserverTests(unittest.TestCase):
     def setUp(self):
         self.party = [dict(species=4, level=12, exp=1108, growth=3,
                            stat_exp=[0] * 5, moves=[10, 45, 0, 52], max_pp=[35, 40, 0, 25],
+                           pp=[35, 40, 0, 25],
                            base_stats=[39, 52, 43, 65, 50], current_stats=[30, 19, 17, 20, 17],
                            max_hp=30, hp=30, fainted=0, status=0, dvs=0x4528)]
         self.enemy = [dict(level=12, yield_=86, base=[40, 80, 100, 20, 30]),
@@ -140,6 +141,38 @@ class SequentialObserverTests(unittest.TestCase):
             row = capture(Emu(), abi, lambda raw: dict(species=raw[0]))
             self.assertFalse(row["result_consumed"])
             self.assertNotIn("carry", row)
+
+    def test_living_carry_preserves_damage_and_pp_through_level_gain(self):
+        observer = self.observer()
+        row = self.completed(observer)
+        carry = copy.deepcopy(self.party[0])
+        carry.update(hp=8, pp=[34, 40, 0, 23])
+        observer.carry = {0: carry}
+        row.update(stage=ACTIVE, party=observer.expected(2),
+                   ui=dict(ledger=dict(bound=0)))
+        observer.accept(row)
+        self.assertEqual(row["party"][0]["hp"],
+                         8 + row["party"][0]["max_hp"] - self.party[0]["max_hp"])
+        self.assertEqual(row["party"][0]["pp"], carry["pp"])
+        for key in ("hp", "pp", "current_stats", "max_hp"):
+            wrong = copy.deepcopy(row)
+            if isinstance(wrong["party"][0][key], list):
+                wrong["party"][0][key][0] += 1
+            else:
+                wrong["party"][0][key] += 1
+            with self.assertRaisesRegex(HarnessError, "carry mismatch"):
+                observer.accept(wrong)
+
+    def test_result_carry_cannot_change_original_progression(self):
+        for key in ("level", "exp", "moves", "stat_exp"):
+            observer = self.observer()
+            row = self.completed(observer)
+            if isinstance(row["carry"][0][1][key], list):
+                row["carry"][0][1][key][0] += 1
+            else:
+                row["carry"][0][1][key] += 1
+            with self.assertRaisesRegex(HarnessError, "mapping refused"):
+                observer.accept(row)
 
     def test_rejects_coherent_retarget_and_changed_party(self):
         for key in ("operation", "encounter", "variant", "party_count", "enemy_count"):

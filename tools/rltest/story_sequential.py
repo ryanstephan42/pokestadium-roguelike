@@ -11,7 +11,7 @@ import struct
 import time
 
 from tools.rltest.frontend import HarnessError
-from tools.rltest.story_six_natural import xp
+from tools.rltest.story_six_natural import xp, stats
 
 ENTRY, ACTIVE, CLOSING, READY, BATTLE, REOPEN, FAILED = range(7)
 PROGRESSION = ("species", "level", "exp", "stat_exp", "moves", "max_pp",
@@ -171,6 +171,9 @@ class SequentialLedger:
 
     def expected(self, count):
         expected = copy.deepcopy(self.before)
+        for slot, carry in self.carry.items():
+            for key in ("hp", "fainted", "status", "pp"):
+                expected[slot][key] = copy.deepcopy(carry[key])
         for event in self.events[:count]:
             foe = self.enemy[event["enemy"]]
             n = event["participants"].bit_count()
@@ -180,11 +183,19 @@ class SequentialLedger:
             for slot, mon in enumerate(expected):
                 if not event["recipients"] & (1 << slot):
                     continue
+                old_level = mon["level"]
+                missing = mon["max_hp"] - mon["hp"]
                 mon["exp"] = min(xp(100, mon["growth"]), mon["exp"] + award)
                 while mon["level"] < 100 and xp(mon["level"] + 1, mon["growth"]) <= mon["exp"]:
                     mon["level"] += 1
                 mon["stat_exp"] = [min(65535, value + foe["base"][i] // n)
                                    for i, value in enumerate(mon["stat_exp"])]
+                if mon["level"] != old_level:
+                    alive = mon["hp"] != 0
+                    mon["current_stats"] = stats(mon)
+                    mon["max_hp"] = mon["current_stats"][0]
+                    mon["hp"] = max(0, mon["max_hp"] - missing) if alive else 0
+                    mon["fainted"] = int(mon["hp"] == 0)
         return expected
 
     def accept(self, row):
@@ -224,7 +235,7 @@ class SequentialLedger:
             captured = {}
             for slot, mon in row["carry"]:
                 require(slot < len(self.before) and slot not in captured
-                        and mon["species"] == self.before[slot]["species"],
+                        and all(mon[key] == self.before[slot][key] for key in PROGRESSION),
                         "Sequential result carry mapping refused")
                 captured[slot] = mon
             require(not self.carry or self.carry == captured, "Sequential carry result changed")
@@ -245,17 +256,20 @@ class SequentialLedger:
                         {k: replay[k] for k in self.binding} == self.binding,
                         "Sequential replay changed captured identity/events")
             expected = self.expected(count)
-            require(len(row["party"]) == len(expected) and
-                    all(a["exp"] == b["exp"] and a["stat_exp"] == b["stat_exp"]
-                        and a["level"] == b["level"] and a["growth"] == b["growth"]
-                        for a, b in zip(row["party"], expected)),
-                    "Sequential KO-time XP/stat experience mismatch")
-            self.applied = count
+            require(len(row["party"]) == len(expected), "Sequential replay party count changed")
             for slot, carry in self.carry.items():
                 mon = row["party"][slot]
                 require(mon["status"] == carry["status"] and
                         (carry["hp"] != 0 or (mon["hp"] == 0 and mon["fainted"] == 1)),
                         "Sequential replay revived or cleared carry status")
+            require(len(row["party"]) == len(expected) and
+                    all(a["exp"] == b["exp"] and a["stat_exp"] == b["stat_exp"]
+                        and a["level"] == b["level"] and a["growth"] == b["growth"]
+                        and all(a[key] == b[key] for key in
+                                ("hp", "fainted", "status", "pp", "current_stats", "max_hp"))
+                        for a, b in zip(row["party"], expected)),
+                    "Sequential KO-time XP/stat experience or native carry mismatch")
+            self.applied = count
 
 
 def input_digest(plan):

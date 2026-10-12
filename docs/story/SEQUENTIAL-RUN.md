@@ -118,6 +118,10 @@ work/tasks/queue completions, VI on the resident fallback, crash framebuffer
 outside retired UI spans, freed UI storage/display scope and an unmapped story
 image. Missing/stale proof aborts. These are observed retained scheduler facts,
 not a proof of every allocator epoch, overall heap fit or GPU correctness.
+The replay observer compares actual returned HP, status and PP against every
+postbattle party slot, allowing only the canonical max-HP increase on level-up
+while preserving damage and fainting. Original progression fields in native
+carry must remain unchanged; declining learning/evolution leaves moves intact.
 The actual result remains in resident value storage after the shell consumes
 it. If the short REOPEN stage falls between frontend frames, capture may read
 that retained result in ACTIVE only when request operation equals the actual
