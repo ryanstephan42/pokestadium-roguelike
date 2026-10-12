@@ -8,6 +8,7 @@
    rl_text are resident and keep their names. Other builds are unchanged. */
 #if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_UI)
 #define rl_ui_init sc_rl_ui_init
+#define rl_ui_story_init sc_rl_ui_story_init
 #define rl_ui_story_icon_cached sc_rl_ui_story_icon_cached
 #define rl_ui_story_icon_prefetch sc_rl_ui_story_icon_prefetch
 #define rl_ui_move_name sc_rl_ui_move_name
