@@ -94,6 +94,9 @@ fragment31 is included because its `/asm/` thunk table jumps into C functions th
 every vanilla raw `j` thunk: local targets must equal the moved function's new address, `0x843`
 imports must stay original (repaired once at load by `rl_relocate_archive_imports`), foreign
 targets must be unmoved, and the loader table must cover all ELF relocations plus raw thunks.
+`make rl` then runs `tools/rl/check_installed_thunks.py` on the ROM itself: the fragment31 header
+(relocOffset/sizeInRom/sizeInRam) must match the map, and every raw thunk, after the exact
+`rl_relocate_archive_imports` rule, must hit the linked address of its vanilla function.
 
 The generated header preserves the jump/nop/`FRAGMENT` format, but resolves the entry function
 through its vanilla map symbol: a literal jump would become stale if code before the entry grows.

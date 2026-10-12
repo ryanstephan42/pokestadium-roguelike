@@ -517,6 +517,7 @@ rlrom: $(ROM)
 	@$(PRINT) "$(GREEN)Roguelike ROM: $(BLUE)$(ROM)$(NO_COL)\n"
 	$(V)$(PYTHON) tools/rl/pad_rom.py $(ROM)
 	$(V)$(PYTHON) tools/rl/n64crc.py $(ROM) --check
+	$(V)$(if $(filter 31,$(RL_REGEN_FRAGMENTS)),$(PYTHON) tools/rl/check_installed_thunks.py $(ROM) $(ELF) $(MAP) $(BASEROM) $(VANILLA_MAP),true)
 else
 rlrom:
 	$(error rlrom must be built through `make rl`)
