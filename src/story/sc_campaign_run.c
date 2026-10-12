@@ -362,13 +362,17 @@ static void sequential_fail(int status, const char *message) {
    before the standard battle runs. Only the BATL DATA span is reacquired for
    the battle; the framebuffers, UI slab and shell image are not retained. */
 void sc_campaign_state_launch(void) {
-    const ScCampaignControl *c = sc_campaign_control();
-    const ScNativeCampaignBacking *b = lease();
+    /* Single Game_Thread launcher scratch; battle callbacks never reenter it. */
+    static const ScCampaignControl *c;
+    static const ScNativeCampaignBacking *b;
     static const RlBattleRules rules = {3, 0, 0x20, 0, 0, 0, 1, 0, 0};
-    ScCampaignControl *mutable = (ScCampaignControl *)c;
-    const ScUiBattleRequest *request;
-    ScMaArena *arena;
-    int status;
+    static ScCampaignControl *mutable;
+    static const ScUiBattleRequest *request;
+    static ScMaArena *arena;
+    static int status;
+    c = sc_campaign_control();
+    b = lease();
+    mutable = (ScCampaignControl *)c;
     if (gScCampaignRun.stage == SC_RUN_ACTIVE && sc_campaign_active() &&
         launchable(c, b)) {
         mutable->sequential_request = *b->request;
