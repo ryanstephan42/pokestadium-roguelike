@@ -14,8 +14,23 @@
 const ScCatalog sc_catalog;
 ScNativeLaunchHook *gScNativeLaunchHook;
 
+#ifndef SC_CAMPAIGN_RUN_TEST
+int sc_ui_resume_postbattle(ScUi *ui, const ScUiBattleRequest *request,
+                            const ScState *state, const RlLaunchResult *result,
+                            const ScKoLedger *ledger, unsigned outcome) {
+    (void)ui; (void)request; (void)state; (void)result; (void)ledger; (void)outcome;
+    assert(!"installer-only fixture must not receive a sequential battle result");
+    return SC_INVALID;
+}
+#endif
+
+#ifdef SC_CAMPAIGN_RUN_TEST
+#define BACKING 0x80000U
+static union { unsigned char bytes[BACKING]; double align; } store __attribute__((aligned(64)));
+#else
 #define BACKING 0x4000U
 static union { unsigned char bytes[BACKING]; double align; } store;
+#endif
 static ScMaArena arena;
 static int mapped, quiescent = 1, load_ok = 1;
 static unsigned loads, unmaps;
@@ -60,6 +75,8 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
     int status;
     note("open");
     assert(display == &sc_campaign_control()->lifetime.display);
+    loop->prepared = loop->exited = loop->queued = 0;
+    loop->held_operation = loop->held_generation = loop->drained_operation = 0;
     loop->owner = *owner; loop->display = display;
     if (open_status != SC_OK) return open_status;
     status = owner->acquire(owner->context, &loop->backing);
@@ -82,12 +99,16 @@ int sc_native_loop_close(ScNativeLoop *loop) {
 }
 
 /* ---- lifetime ---- */
+static void (*on_lifetime_acquire)(void), (*on_lifetime_release)(void);
 int sc_native_lifetime_acquire(ScNativeLifetime *l, ScMaArena *a, const ScCatalog *c,
                                RlU32 seed, ScNativeCampaignBacking *b) {
     note("acquire");
     assert(l == &sc_campaign_control()->lifetime && a == &arena && c == &sc_catalog);
     assert(seed == 77 && b == &l->loop.backing);
-    if (acquire_status == SC_OK) l->live = 1;
+    if (acquire_status == SC_OK) {
+        l->live = 1;
+        if (on_lifetime_acquire) on_lifetime_acquire();
+    }
     return acquire_status;
 }
 int sc_native_lifetime_validate(void *p, const ScNativeCampaignBacking *b) {
@@ -103,7 +124,10 @@ int sc_native_lifetime_release(void *p, const ScNativeCampaignBacking *b) {
     assert(l == &sc_campaign_control()->lifetime);
     /* the image is still mapped and the LIFETIME pin still held */
     assert(mapped && sc_persist_state()->pins[SC_PERSIST_PIN_LIFETIME] == 1);
-    if (release_status == SC_OK) l->live = 0;
+    if (release_status == SC_OK) {
+        if (on_lifetime_release) on_lifetime_release();
+        l->live = 0;
+    }
     return release_status;
 }
 

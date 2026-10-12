@@ -14,6 +14,7 @@
 #include "src/controller.h"
 #include "src/29BA0.h"
 #include "src/1CF30.h"
+#include <stdint.h>
 
 int gScCampaignBattle;
 ScCampaignRun gScCampaignRun;
@@ -319,7 +320,7 @@ static int acquire_battle_loader(ScMaArena *arena) {
     RlU32 address, aligned, offset;
     unsigned char *mapped;
     if (!arena || battle_loader_live ||
-        !sc_ma_alloc(arena, SC_NATIVE_BATL_LOADER_BYTES + 63U, &battle_loader_handle))
+        !sc_ma_alloc(arena, SC_NATIVE_BATL_LOADER_BYTES + 64U, &battle_loader_handle))
         return 0;
     battle_loader_lease.ticket = 0;
     if (!sc_ma_data(arena, battle_loader_handle, &battle_loader_lease)) {

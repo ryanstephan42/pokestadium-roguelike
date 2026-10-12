@@ -8,7 +8,10 @@ out="${1:?fresh output directory}"
 test ! -e "$out"
 mkdir -p "$out"
 sources=(host_tests/test_story_campaign_run.c src/story/sc_campaign_run.c src/story/sc_campaign.c
-    src/story/sc_native_campaign.c src/story/sc_persist.c src/story/sc_module_arena.c)
+    src/story/sc_native_campaign.c src/story/sc_persist.c src/story/sc_module_arena.c
+    src/story/sc_combat.c src/story/sc_progression.c src/story/sc_core.c
+    src/story/sc_make.c src/story/sc_graph.c src/story/sc_bridge.c
+    src/story/sc_storage.c src/story/sc_save.c src/story/sc_crc.c)
 flags=(-DSTORY_NATIVE_UI -DSTORY_NATIVE_PROBE -DSTORY_SERVICE_CANDIDATE -DROGUELIKE
     -std=gnu89
     -Wall -Wextra -Werror -Wno-endif-labels -I. -iquote include -iquote src

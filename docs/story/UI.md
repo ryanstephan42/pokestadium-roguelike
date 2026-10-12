@@ -86,6 +86,8 @@ python3 tools/story_data.py --fetch --moon-stones --out build/story/moon-data.js
 make -C host_tests story-ui-test
 make -C host_tests story-stone-test
 make -C host_tests story-core-test
+bash host_tests/run_story_campaign_run.sh build/story/campaign-run-review
+bash host_tests/run_story_campaign.sh build/story/campaign-installer-review
 make -j2
 make rl -j2
 make -C host_tests test
@@ -99,6 +101,15 @@ are **not native battle execution proof**. These commands provide partial
 source/host/build coverage only. `scripts/rl-gate.sh` is unchanged and must print
 `GATE PASSED` before full integration acceptance; its emulator executions were
 not authorized for this source-only assignment.
+
+The connected campaign runner target uses actual installer, persistent loader,
+arena and KO capture code. Recorded loop/lifetime, display, launcher and result
+UI seams check shell release/unmap before a separate aligned BATL lease, ordered
+non-mutating KO capture, lease release before reopen, operation continuity and
+failure/pending-retirement paths. The arena allocation includes 64 bytes of
+alignment padding so its size remains a multiple of 16. This is HOST sequencing
+coverage, not proof of native DP/task fences, physical heap fit or save-device
+behavior. Both scripts require fresh output directories.
 
 ## Finite Moon Stone unit
 

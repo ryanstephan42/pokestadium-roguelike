@@ -8,6 +8,7 @@
    are exercised by the IDO compile of sc_campaign_run.c and by the
    native-probe/six-runtime runners. */
 #include "story_campaign_stubs.h"
+#include <stdint.h>
 #include "src/roguelike/rl_types.h"
 #include "src/story/sc_bridge.h"
 #include "src/story/sc_module_arena.h"
@@ -39,13 +40,6 @@ typedef struct RlBattleSide {
 #define rl_battle_status(mon) ((mon)->unk_15)
 #define rl_battle_party_hp(mon) ((mon)->unk_02)
 #define rl_battle_party_status(mon) ((mon)->unk_05)
-
-typedef struct RlBattleRules {
-    unsigned char stadium, gym, ai_level, player_count, player_cpu, show_intro, use_state, pad;
-    RlU32 relics;
-} RlBattleRules;
-int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int enemy_n,
-                    const RlBattleRules *rules, int return_state, int unused);
 
 typedef struct Controller { u16 buttonDown, buttonPressed; } Controller;
 extern Controller *gPlayer1Controller;
