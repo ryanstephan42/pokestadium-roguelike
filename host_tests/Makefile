@@ -58,6 +58,16 @@ story-core-test:
 		../build/story/sc_data.c -o ../build/story/test_story_core_san
 	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_core_san
 
+.PHONY: story-scratch-test
+story-scratch-test:
+	cd .. && python3 tools/story_data.py
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DSC_SCRATCH_TEST -I.. test_story_scratch.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_scratch
+	../build/story/test_story_scratch
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -DSC_SCRATCH_TEST -I.. test_story_scratch.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_scratch_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_scratch_san
+
 .PHONY: story-ui-test
 story-ui-test:
 	cd .. && python3 tools/story_data.py

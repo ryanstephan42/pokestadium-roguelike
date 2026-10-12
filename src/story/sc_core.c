@@ -122,10 +122,27 @@ int sc_catalog_valid(const ScCatalog *catalog) {
     return sc_graph_valid(catalog);
 }
 
+/* Private scratch keeps the Game_Thread stack bounded; nested use is refused. */
+static ScState new_next;
+static int new_busy;
+
+static int new_body(ScState *state, const ScCatalog *catalog, const ScOptions *options,
+                    RlU32 seed);
+
 int sc_new(ScState *state, const ScCatalog *catalog, const ScOptions *options,
            RlU32 seed) {
+    int status;
+    if (new_busy) return SC_INVALID;
+    new_busy = 1;
+    status = new_body(state, catalog, options, seed);
+    new_busy = 0;
+    return status;
+}
+
+static int new_body(ScState *state, const ScCatalog *catalog, const ScOptions *options,
+                    RlU32 seed) {
     static const RlU8 starters[3] = {1, 4, 7};
-    ScState next;
+    ScState *next = &new_next;
     ScTemplate mon;
     unsigned char *bytes;
     unsigned i, species, choices, selected;
@@ -134,26 +151,26 @@ int sc_new(ScState *state, const ScCatalog *catalog, const ScOptions *options,
         (options->starter && options->starter != 1 && options->starter != 4 && options->starter != 7) ||
         !sc_catalog_valid(catalog)) return SC_INVALID;
     if (!catalog->graph_reviewed) return SC_UNREVIEWED;
-    bytes = (unsigned char *)&next;
-    for (i = 0; i < sizeof(next); i++) bytes[i] = 0;
+    bytes = (unsigned char *)next;
+    for (i = 0; i < sizeof(*next); i++) bytes[i] = 0;
     bytes = (unsigned char *)&mon;
     for (i = 0; i < sizeof(mon); i++) bytes[i] = 0;
-    next.options = *options;
-    next.seed = seed;
-    next.rng = seed ? seed : 0x73633031U;
-    next.encounter = SC_NO_ENCOUNTER;
-    next.offered_slot = RL_NO_SLOT;
-    next.fossil_choice = RL_NO_SLOT;
+    next->options = *options;
+    next->seed = seed;
+    next->rng = seed ? seed : 0x73633031U;
+    next->encounter = SC_NO_ENCOUNTER;
+    next->offered_slot = RL_NO_SLOT;
+    next->fossil_choice = RL_NO_SLOT;
     species = options->starter;
     if (!species && options->starter_pool == SC_STARTER_TRIO)
-        species = starters[sc_random_bounded(&next.rng, 3)];
+        species = starters[sc_random_bounded(&next->rng, 3)];
     else if (!species && options->starter_pool == SC_ALL_SPECIES)
-        species = 1 + sc_random_bounded(&next.rng, 151);
+        species = 1 + sc_random_bounded(&next->rng, 151);
     else if (!species) {
         choices = 0;
         for (i = 1; i <= 151; i++) if (unevolved(catalog, i)) choices++;
         if (!choices) return SC_INVALID;
-        selected = sc_random_bounded(&next.rng, choices);
+        selected = sc_random_bounded(&next->rng, choices);
         for (i = 1; i <= 151; i++) {
             if (unevolved(catalog, i)) {
                 if (!selected) { species = i; break; }
@@ -162,17 +179,17 @@ int sc_new(ScState *state, const ScCatalog *catalog, const ScOptions *options,
         }
     }
     if (options->starter || options->starter_pool == SC_STARTER_TRIO) {
-        if (species == 1) next.rival_branch = 2; /* Charmander branch. */
-        else if (species == 4) next.rival_branch = 0; /* Squirtle branch. */
-        else next.rival_branch = 1; /* Bulbasaur branch. */
-    } else next.rival_branch = (RlU8)sc_random_bounded(&next.rng, 3);
+        if (species == 1) next->rival_branch = 2; /* Charmander branch. */
+        else if (species == 4) next->rival_branch = 0; /* Squirtle branch. */
+        else next->rival_branch = 1; /* Bulbasaur branch. */
+    } else next->rival_branch = (RlU8)sc_random_bounded(&next->rng, 3);
     mon.species = (RlU8)species;
     mon.level = 5;
-    if (sc_make_mon(catalog, &mon, (RlU16)sc_random(&next.rng), &next.party[0]) != SC_OK)
+    if (sc_make_mon(catalog, &mon, (RlU16)sc_random(&next->rng), &next->party[0]) != SC_OK)
         return SC_INVALID;
-    next.party_count = 1;
-    next.phase = SC_ROUTE;
-    *state = next;
+    next->party_count = 1;
+    next->phase = SC_ROUTE;
+    *state = *next;
     return SC_OK;
 }
 
@@ -511,3 +528,8 @@ int sc_evolve_owned(ScState *state, const ScCatalog *catalog, unsigned slot,
     *state = next;
     return status;
 }
+
+#ifdef SC_SCRATCH_TEST
+void sc_scratch_test_hold_new(int held) { new_busy = held; }
+int sc_scratch_test_busy_new(void) { return new_busy; }
+#endif

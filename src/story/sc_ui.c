@@ -382,10 +382,14 @@ int sc_ui_unsupported(ScUi *ui) {
     return SC_UI_STAY;
 }
 
-int sc_ui_input(ScUi *ui, unsigned pressed) {
+/* Private scratch keeps the Game_Thread stack bounded; nested use is refused. */
+static ScSnapshot input_loaded;
+static int input_busy;
+
+static int input_body(ScUi *ui, unsigned pressed) {
     int choice, status, cursor;
     unsigned id;
-    ScSnapshot loaded;
+    ScSnapshot *loaded = &input_loaded;
     if (!ui || !ui->catalog || !ui->catalog->graph || !ui->list.title) return SC_UI_STAY;
     if (ui->screen == SC_UI_CREATE && (pressed & (RL_UI_LEFT | RL_UI_RIGHT)) &&
         ui->list.cursor == 4) {
@@ -417,19 +421,19 @@ int sc_ui_input(ScUi *ui, unsigned pressed) {
         case SC_UI_MENU:
             if (id == 2) return SC_UI_EXIT;
             if (id == 1) { show(ui, SC_UI_CREATE); break; }
-            status = sc_storage_load(ui->device, ui->catalog, &loaded);
+            status = sc_storage_load(ui->device, ui->catalog, loaded);
             ui->storage_status = status;
             ui->message = sc_ui_save_text(status);
             if (status != SC_SAVE_OK && status != SC_SAVE_RECOVERED) break;
-            ui->state = loaded.state;
+            ui->state = loaded->state;
             ui->request_ready = 0;
-            if (loaded.interrupted) ui->state.phase = SC_LOST;
-            ui->options = loaded.state.options;
+            if (loaded->interrupted) ui->state.phase = SC_LOST;
+            ui->options = loaded->state.options;
             ui->active = 1;
             sync(ui);
-            if (loaded.wire_version == 1)
+            if (loaded->wire_version == 1)
                 ui->message = "Legacy save loaded; next save upgrades format. Stone pickups remain unclaimed.";
-            if (loaded.interrupted) ui->message = "Interrupted battle checkpoint: campaign ended";
+            if (loaded->interrupted) ui->message = "Interrupted battle checkpoint: campaign ended";
             break;
         case SC_UI_CREATE:
             cursor = ui->list.cursor;
@@ -522,6 +526,16 @@ int sc_ui_input(ScUi *ui, unsigned pressed) {
     return SC_UI_STAY;
 }
 
+int sc_ui_input(ScUi *ui, unsigned pressed) {
+    int result;
+    if (!ui) return SC_UI_STAY;
+    if (input_busy) return report(ui, SC_INVALID);
+    input_busy = 1;
+    result = input_body(ui, pressed);
+    input_busy = 0;
+    return result;
+}
+
 int sc_ui_battle_request(const ScUi *ui, ScUiBattleRequest *request) {
     unsigned i, count;
     unsigned char *bytes;
@@ -570,3 +584,8 @@ int sc_ui_finish(ScUi *ui, RlU32 operation_id, unsigned outcome) {
     save_pending(ui);
     return ui->pending_save ? SC_PENDING : SC_OK;
 }
+
+#ifdef SC_SCRATCH_TEST
+void sc_scratch_test_hold_input(int held) { input_busy = held; }
+int sc_scratch_test_busy_input(void) { return input_busy; }
+#endif

@@ -94,9 +94,13 @@ static int empty_mon(const RlMon *mon) {
     return 1;
 }
 
-int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
+/* Private scratch keeps the Game_Thread stack bounded; nested use is refused. */
+static ScState valid_expected;
+static int valid_busy;
+
+static int state_valid_body(const ScState *state, const ScCatalog *catalog) {
     unsigned i, j, valid_clause;
-    ScState expected;
+    ScState *expected = &valid_expected;
     if (!state || !sc_catalog_valid(catalog) || !catalog->graph || !catalog->graph_reviewed ||
         !state->rng || state->milestones || state->options.version > 1 ||
         state->options.difficulty > SC_BRUTAL || state->options.starter_pool > SC_ALL_SPECIES ||
@@ -111,8 +115,8 @@ int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
         (state->fossil_choice != RL_NO_SLOT && state->fossil_choice > 1)) return 0;
     if (done(state, catalog->graph->fossil_action) != (state->fossil_choice < 2)) return 0;
     if (!sc_stone_inventory_valid(state, catalog)) return 0;
-    if (sc_new(&expected, catalog, &state->options, state->seed) != SC_OK ||
-        expected.rival_branch != state->rival_branch ||
+    if (sc_new(expected, catalog, &state->options, state->seed) != SC_OK ||
+        expected->rival_branch != state->rival_branch ||
         (state->phase == SC_FINISHED && !done(state, catalog->graph->champion))) return 0;
     for (i = 0; i < state->party_count; i++)
         if (!mon_valid(&state->party[i], catalog)) return 0;
@@ -159,11 +163,20 @@ int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
             if (!valid_clause) return 0;
         }
     }
-    expected = *state;
-    for (i = 0; i < SC_BITS; i++) expected.retired[i] = 0;
-    sc_graph_retire(&expected, catalog);
-    for (i = 0; i < SC_BITS; i++) if (expected.retired[i] != state->retired[i]) return 0;
+    *expected = *state;
+    for (i = 0; i < SC_BITS; i++) expected->retired[i] = 0;
+    sc_graph_retire(expected, catalog);
+    for (i = 0; i < SC_BITS; i++) if (expected->retired[i] != state->retired[i]) return 0;
     return 1;
+}
+
+int sc_state_valid(const ScState *state, const ScCatalog *catalog) {
+    int valid;
+    if (valid_busy) return 0;
+    valid_busy = 1;
+    valid = state_valid_body(state, catalog);
+    valid_busy = 0;
+    return valid;
 }
 
 int sc_save_encode(const ScSnapshot *snapshot, const ScCatalog *catalog,
@@ -190,9 +203,13 @@ int sc_save_encode(const ScSnapshot *snapshot, const ScCatalog *catalog,
     return SC_SAVE_OK;
 }
 
-int sc_save_decode(ScSnapshot *snapshot, const ScCatalog *catalog,
-                   RlU32 *generation, const RlU8 *data, unsigned size) {
-    ScSnapshot next;
+/* Private scratch keeps the Game_Thread stack bounded; nested use is refused. */
+static ScSnapshot decode_next;
+static int decode_busy;
+
+static int decode_body(ScSnapshot *snapshot, const ScCatalog *catalog,
+                       RlU32 *generation, const RlU8 *data, unsigned size) {
+    ScSnapshot *next = &decode_next;
     ScWire wire;
     RlU32 crc, serial;
     unsigned i, version;
@@ -208,30 +225,50 @@ int sc_save_decode(ScSnapshot *snapshot, const ScCatalog *catalog,
     crc = field(&wire, 0, 4);
     if (crc != sc_save_crc(data, size)) return SC_SAVE_BAD_CRC;
     serial = field(&wire, 0, 4);
-    next.interrupted = (RlU8)field(&wire, 0, 1);
-    if (next.interrupted > 1) return SC_SAVE_BAD_DATA;
+    next->interrupted = (RlU8)field(&wire, 0, 1);
+    if (next->interrupted > 1) return SC_SAVE_BAD_DATA;
     for (i = 17; i < 32; i++) if (data[i]) return SC_SAVE_BAD_DATA;
     identity = version == 1 && catalog->graph->legacy_review_identity ?
         catalog->graph->legacy_review_identity : catalog->graph->review_identity;
     for (i = 0; i < 64; i++)
         if (data[32 + i] != (RlU8)identity[i]) return SC_SAVE_BAD_VERSION;
-    for (i = 0; i < sizeof(next.state); i++) ((RlU8 *)&next.state)[i] = 0;
+    for (i = 0; i < sizeof(next->state); i++) ((RlU8 *)&next->state)[i] = 0;
     wire.pos = 96;
-    state_wire(&wire, &next.state);
+    state_wire(&wire, &next->state);
     if (wire.pos != SC_SAVE_INVENTORY_OFFSET) return SC_SAVE_BAD_DATA;
     if (version == SC_SAVE_VERSION) {
-        next.state.moon_stones = (RlU8)field(&wire, 0, 1);
-        next.state.moon_stones_spent = (RlU8)field(&wire, 0, 1);
+        next->state.moon_stones = (RlU8)field(&wire, 0, 1);
+        next->state.moon_stones_spent = (RlU8)field(&wire, 0, 1);
     } else {
         /* V1 never had pickup actions; do not manufacture or accept their history. */
         for (i = 0; i < catalog->graph->pickup_count; i++)
-            if (done(&next.state, catalog->graph->pickups[i].node)) return SC_SAVE_BAD_DATA;
+            if (done(&next->state, catalog->graph->pickups[i].node)) return SC_SAVE_BAD_DATA;
     }
     for (i = wire.pos; i < size; i++) if (data[i]) return SC_SAVE_BAD_DATA;
-    if (!sc_state_valid(&next.state, catalog) ||
-        (next.interrupted && next.state.phase != SC_ROUTE)) return SC_SAVE_BAD_DATA;
-    next.wire_version = (RlU8)version;
-    *snapshot = next;
+    if (!sc_state_valid(&next->state, catalog) ||
+        (next->interrupted && next->state.phase != SC_ROUTE)) return SC_SAVE_BAD_DATA;
+    next->wire_version = (RlU8)version;
+    *snapshot = *next;
     *generation = serial;
     return SC_SAVE_OK;
 }
+
+int sc_save_decode(ScSnapshot *snapshot, const ScCatalog *catalog,
+                   RlU32 *generation, const RlU8 *data, unsigned size) {
+    int status;
+    if (decode_busy) return SC_SAVE_INVALID;
+    decode_busy = 1;
+    status = decode_body(snapshot, catalog, generation, data, size);
+    decode_busy = 0;
+    return status;
+}
+
+#ifdef SC_SCRATCH_TEST
+void sc_scratch_test_hold_valid(int held) { valid_busy = held; }
+int sc_scratch_test_busy_valid(void) { return valid_busy; }
+#endif
+
+#ifdef SC_SCRATCH_TEST
+void sc_scratch_test_hold_decode(int held) { decode_busy = held; }
+int sc_scratch_test_busy_decode(void) { return decode_busy; }
+#endif
