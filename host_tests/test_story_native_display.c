@@ -291,6 +291,7 @@ int main(void) {
         fail_scope = n == 0;
         assert(sc_native_display_acquire(&display, spans) == SC_UNAVAILABLE);
         assert(!depth && !used && !sStoryWorkspace && !display.acquired);
+        assert(!display.scope && !display.screen && !sDisplay);
         assert(current_screen == &borrowed && D_80068BB0 == &image && D_800A7440.x1 == 7);
         assert(!memcmp(&D_800A7428, &workspace, sizeof(workspace)) && gDisplayListHead == borrowed_commands);
     }

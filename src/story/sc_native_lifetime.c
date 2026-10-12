@@ -156,13 +156,35 @@ static int retire_backing(void *context, const ScNativeRetirement *retirement) {
     return status;
 }
 
+/* A display acquisition refusal unwinds before any framebuffer descriptor is
+   published, so a lifetime whose display was never acquired has no scanout,
+   RDP or crash-screen consumer of its DATA framebuffers. */
+static int unpublished(void *context, const ScNativeCampaignBacking *backing) {
+    ScNativeLifetime *owner = context;
+    if (!binding_matches(owner, backing)) return SC_INVALID;
+    if (sc_crash_active) return SC_UNAVAILABLE;
+    return !owner->loop.display_used && !owner->loop.display_acquired &&
+        !owner->display.acquired && !owner->display.scope && !owner->display.screen &&
+        !owner->retirement.acquired && !owner->retirement.token.control ? SC_OK : SC_INVALID;
+}
+
 int sc_native_lifetime_release(void *context, const ScNativeCampaignBacking *backing) {
     ScNativeLifetime *owner = context;
+    u32 interrupts;
     int status = sc_native_lifetime_validate(owner, backing);
     if (status != SC_OK) return status;
     if (owner->loop.display_acquired || owner->loop.resources_acquired ||
-        owner->loop.pak_bound || !owner->retirement.acquired)
+        owner->loop.pak_bound)
         return SC_PENDING;
+    if (!owner->retirement.acquired) {
+        if (owner->loop.display_used || owner->display.acquired) return SC_PENDING;
+        interrupts = __osDisableInt();
+        status = sc_crash_active ? SC_UNAVAILABLE :
+            sc_native_memory_release(&owner->memory, backing, unpublished, owner);
+        __osRestoreInt(interrupts);
+        if (status == SC_OK) owner->live = 0;
+        return status;
+    }
     status = sc_native_retirement_finalize(&owner->retirement, retire_backing);
     if (status == SC_OK) owner->live = 0;
     return status;

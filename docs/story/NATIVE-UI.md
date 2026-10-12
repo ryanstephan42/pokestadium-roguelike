@@ -414,7 +414,16 @@ non-NULL only during an installer entry.
 * `sc_campaign_open(arena, seed)`: `sc_persist_acquire` → `LIFETIME` pin → OPEN
   entry (`sc_native_loop_open` on the lifetime's loop/display with the adapter
   vtable, then `sc_native_operation_bind`). A refused open unpublishes and enters
-  `CLOSING`. A refused or failed acquire leaves 4 MiB/ordinary RL unchanged; it
+  `CLOSING`. If the lifetime admitted its DATA lease but
+  `sc_native_display_acquire` refused, no framebuffer descriptor was ever
+  published (the display unwinds its scope before writing images) and there is
+  no retirement token. `sc_native_lifetime_release` then frees the
+  never-presented backing directly under an interrupt fence through
+  `sc_native_memory_release`. Its check requires a matching binding, no crash,
+  sticky `loop.display_used == 0`, no acquired display, scope or screen, and no
+  retirement token. Any lifetime that ever acquired a display still requires
+  the normal presented-frame DP retirement (PENDING until then). A crash
+  returns UNAVAILABLE and the installer fail-stops with everything retained. A refused or failed acquire leaves 4 MiB/ordinary RL unchanged; it
   retains everything if persist failed.
 * OPEN `acquire` uses the image-local `sc_catalog`. `validate`, `retire_display`
   and `release` are the lifetime callbacks; `poll` and `resume` are the operation
@@ -458,11 +467,38 @@ scenarios:
 * refused-drain retention.
 
 It runs normal, strict ASan/UBSan and IDO compile/disassembly of `sc_campaign`,
-`sc_native_campaign`, `sc_persist` and `sc_cold`. Not yet wired: the menu entry
+`sc_native_campaign`, `sc_persist` and `sc_cold`.
+
+`bash host_tests/run_story_campaign_lifetime.sh <out>` is the actual-loop
+refused-open regression. It links the actual installer, adapter and
+`sc_persist.c` with the actual loop, lifetime, memory, crash, arena, DP
+retirement and `sc_native_display_acquire` from the lifetime/retirement/display
+fixtures. Labelled HOST seams are the persist native backend, the OS/VI/pool
+fixtures, and Pak/UI/driver/operation/terminal entry points, which assert if
+reached. It covers:
+
+* a scope refusal and allocation refusals 1–4: open is refused, close reaches
+  `IDLE`, the lease is freed, `live = 0`, `LIFETIME` is unpinned and SC is
+  unmapped. Each case reopens;
+* `display_used` or `display.acquired` set: PENDING; a stray screen: INVALID;
+  crash: UNAVAILABLE. Nothing is freed in any of these cases;
+* a crash during close: `FAILED`, with mapping, pin and lease retained.
+
+Against the unfixed `133c36b` lifetime source, close fails at the first case.
+The runner also runs normal and ASan/UBSan, and does an IDO compile of
+`sc_native_lifetime`/`sc_native_loop`. Not yet wired: the menu entry
 and state-machine battle launch that call these. This is source/HOST/IDO only,
 with no native evidence.
 
-Fixed-point relink (authority/rights v23 = v24), ELF
+Refused-open correction relink (authority/rights v26 = v27), ELF
+`c4b4a77e80d8cab9cd95f867764482cd09e2b5600340af8c06968c89eb8b43ec`:
+
+* SC sections, RAM/ROM and all 2,549 relocation classes are unchanged (none
+  target another fragment).
+* Resident `.text` grows, so `heap_BSS_START` moves `0x8012b370 → 0x8012b4b0`
+  (−320 bytes of lower ceiling).
+
+Prior fixed-point relink (`133c36b`, v23 = v24), ELF
 `31ba1b68916e4878f051a72bd76b2dadf0cd56029db8f757cf8012c2d9e12fc8`:
 
 * `.fragmentSC 0x33fb0`: text end `0xef00`, data end `0x29460`, rodata end
@@ -500,7 +536,9 @@ Upper arena (`0x80400000`, capacity `0x3da7e0` = 4,040,672 bytes; 8 slots;
 That uses 3 of 8 slots. Each staging lease is taken on its owner's own
 allocation (AI ROM 63,616 ≤ `AI_RAM`; SC ROM ≤ its block).
 
-Lower pool (ceiling `0x80400000 − heap_BSS_START 0x8012b370` = 2,968,720; was `0x8012a950` before the resident installer):
+Lower pool (ceiling `0x80400000 − heap_BSS_START 0x8012b4b0` = 2,968,400. It was
+2,968,720 at `0x8012b370` in `133c36b`, and `0x8012a950` before the resident
+installer):
 
 | consumer | bytes |
 |---|---|
@@ -509,11 +547,32 @@ Lower pool (ceiling `0x80400000 − heap_BSS_START 0x8012b370` = 2,968,720; was 
 | BATL display lists `2 × 0x20000` + four 320×240×16 images | 876,544 |
 | SC image | 0 (now upper and persistent; `cold_invoke` refused while held) |
 | **listed total** | **1,823,056** |
-| upper bound left for everything unlisted | 1,145,664 |
+| upper bound left for everything unlisted | 1,145,344 |
 
-The listed values no longer refuse on a lower bound. Still unmeasured and
-excluded: pool headers/scopes for the BATL payloads, fonts, icons, text and
-archives acquired through `sc_native_resources`, models, other fragments,
+The UI resource ledger for `133c36b` is imported read-only at
+`build/story/ui-fit-ledger-133c36b/` (SHA256SUMS seal
+`5f39133303fe52ca44d6f1672b7c90dd31790f8dc67a03fe5eba00c00cd0bea8`; reproduce
+with `account.py`). Its findings:
+
+* The icon cache is cumulative for the parent scope's lifetime. It is not
+  bounded by the seven current slots.
+* Retained cold-font UI is R(k) = 198,736 + 3,216k, up to 684,352 at 151
+  species. That is retained through BATL, held learning, terminal and refused
+  close.
+* Prefetch peaks at 684,400 at the parent top only, not concurrent with BATL.
+* The borrowed-font delta is 7,776 plus missing-glyph charges plus 3,216k, plus
+  the caller font baseline.
+* After the listed total, the maximum UI, the 32-byte pool sentinels and the
+  mandatory 65,552-byte `gMainPool` charge, 395,408 bytes remain (395,728 at
+  `133c36b`). That is before BATL headers/scopes, loader staging, models,
+  archives and the caller menu baseline.
+* The UI stack chain is 1,184 bytes before `_Printf`, the UI loop, driver,
+  owner and interrupt frames.
+
+This is a bound, not fit approval.
+
+Still unmeasured and excluded: pool headers/scopes for the BATL payloads,
+the caller menu/font baseline, models, other fragments,
 loader staging inside the pool, and the whole callback/interrupt/task stack
 peak. Complete combined fit is therefore **unproven**; this ledger is
 source/link accounting only.

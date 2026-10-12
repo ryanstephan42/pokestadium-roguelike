@@ -12,6 +12,8 @@ typedef struct ScNativeLoop {
     unsigned drained_outcome;
     int acquired, prepared, exited, queued, held_presented, frame_status;
     int display_acquired, pak_bound, resources_acquired;
+    /* Sticky per lifetime: framebuffers were published to a display. */
+    int display_used;
 } ScNativeLoop;
 /* Zeroed external control/display backing. Owner acquires all large value
    backing; no snapshot/controller/request automatic allocations. */

@@ -46,7 +46,10 @@ static int no_work(void *context, const ScNativeCampaignBacking *backing,
                     const ScUiBattleRequest *request) {
     (void)context; (void)backing; (void)request; return SC_INVALID;
 }
-int main(void) {
+#ifndef SC_LIFETIME_FIXTURE_MAIN
+#define SC_LIFETIME_FIXTURE_MAIN main
+#endif
+int SC_LIFETIME_FIXTURE_MAIN(void) {
     static ScNativeLifetime owner;
     ScMaArena arena = {0};
     ScCatalog catalog;
