@@ -39,7 +39,7 @@ void Memmap_SetSegments(Gfx** gfxDl);
 void Memmap_RelocateFragment(u32 id, struct Fragment* fragment);
 void Memmap_SetFragmentMap(u32 id, uintptr_t vaddr, size_t size);
 uintptr_t Memmap_GetFragmentBaseVaddr(u32 id);
-#ifdef STORY_NATIVE_PROBE
+#if defined(STORY_NATIVE_PROBE) || defined(STORY_SERVICE_CANDIDATE)
 size_t Memmap_GetFragmentSize(u32 id);
 #endif
 uintptr_t Memmap_GetFragmentVaddr(void* addr);

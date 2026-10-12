@@ -1,4 +1,8 @@
 #include "fragment62.h"
+#ifdef STORY_SERVICE_CANDIDATE
+#include "src/story/sc_batl_scope.h"
+#include "src/story/sc_battle_service.h"
+#endif
 #ifdef ROGUELIKE
 #include "src/roguelike/rl_native_relics.h"
 #endif
@@ -24,6 +28,9 @@
 #include "src/geo_layout.h"
 #include "src/memmap.h"
 #include "src/memory.h"
+#ifdef STORY_AI_PROTOTYPE
+#include "src/story/sc_ai_runtime.h"
+#endif
 
 static unk_D_86002F34_00C D_8438E440;
 static unk_D_8690A610 D_8438E530;
@@ -454,6 +461,30 @@ s32 func_843010EC(s32 arg0) {
     return 0;
 }
 
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+static unsigned sc_service_wait_frames;
+static int sc_service_wait_stopping;
+
+static s32 sc_service_wait_frame(u8 arg0) {
+    int result;
+    (void)arg0;
+    func_80007304();
+    sc_service_wait_frames++;
+    sc_service_require(sc_service_wait_frames <= 300);
+    result = sc_service_wait_stopping ? sc_service_stop_poll() :
+        sc_service_poll(sc_service_wait_frames == 300);
+    sc_service_require(result >= 0);
+    return result == 1;
+}
+
+static void sc_service_wait(int stopping) {
+    sc_service_wait_frames = 0;
+    sc_service_wait_stopping = stopping;
+    /* Scheduler frame wait; no choice callback or worker producer. */
+    sc_service_require(func_80007820(300, sc_service_wait_frame) == 1);
+}
+#endif
+
 void func_8430123C(u8* arg0, s32 arg1) {
     s32 i;
     s32 j;
@@ -748,9 +779,27 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     }
     if (gScProbeActive) gScProbe.stage = 9;
 #endif
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_battle_load();
+#endif
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+    if (gScProbeActive) sc_batl_scope_require(sc_batl_scope_open());
+#endif
     func_80007678(sp24);
     func_800077B4(1);
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+    if (gScProbeActive) {
+        sc_service_require(sc_service_bootstrap());
+        sc_service_wait(0);
+    }
+#endif
     func_800078D4(func_843010EC, 0x20, 0x10);
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+    if (gScProbeActive) {
+        sc_service_wait(1);
+        sc_batl_scope_require(sc_batl_scope_close());
+    }
+#endif
 #ifdef ROGUELIKE
     {
         extern int gRlBattleActive;
@@ -771,7 +820,13 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     func_800076C0();
     func_80005EAC();
 
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_battle_unload();
+#endif
     main_pool_pop_state('BATL');
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_battle_popped();
+#endif
 
     return 0;
 }
