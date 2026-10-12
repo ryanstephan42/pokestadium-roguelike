@@ -9,7 +9,8 @@ section-qualified (`.fragmentSC` overlaps the AI section VMA). Supersedes nothin
 
 ## Budget
 
-Game_Thread stack `D_80080000[0x18E0]` = **6368** bytes (`src/main.c:16,41`). All campaign entry
+Game_Thread stack `D_80080000[0x18E0]` = **6368** bytes nominal (`src/main.c:16,41`);
+`osCreateThread` (linked 80059bd4) starts SP at top−16, so **6352** bytes are callable. All campaign entry
 points run on Game_Thread. Depths are per-thread single-chain upper bounds (frame = largest
 `addiu sp,sp,-N`; libultra exception context is saved in the OSThread, not on the stack —
 assumption). Alternate call paths are maxed, never summed.
@@ -69,8 +70,9 @@ Worst chain (all entries): … `sc_campaign_dispatch` 88 → `sc_native_loop_ste
 Concrete Game_Thread prefix above the battle hook (frames): Game_Thread 32 → func_80029BC0 80
 → func_80029008 32 → func_84301A2C 40 (fragment62 header `j`) → func_800078D4 88 →
 func_843010EC 32 → func_84300FBC 32 = **336**. func_843010EC is materialized only at 843020bc
-(other `addiu …,4552` hits pair with different `lui`). **336 + 6000 = 6336 of 6368: static
-margin 32 bytes.** Resident-close path: 32 + 5816 = 5848 (margin 520).
+(other `addiu …,4552` hits pair with different `lui`). **336 + 6000 = 6336 of 6352 callable
+(6368 nominal): static margin 16 bytes.** Resident-close path: 32 + 5816 = 5848 (margin 504).
+(Earlier text said 32/520 by comparing against nominal 6368; corrected.)
 
 ## Path dependence (not a feasibility proof)
 
@@ -83,8 +85,66 @@ inside a battle frame needs a state-machine invariant argument not attempted her
 
 ## Not claimed
 
-No overflow is demonstrated and none is excluded: the path-insensitive bound leaves 32 bytes,
+No overflow is demonstrated and none is excluded: the path-insensitive bound leaves 16 bytes,
 below any reasonable safety margin. Not covered: other fragment62/57 hook callers beyond the
 shown prefix as a maximum (the 336 prefix is a concrete chain, a lower bound on the worst
 prefix); interrupt/exception stack use; the geometry residuals (BD04 asset entry, `unk_10`
 callback recursion) which are on separate paths. No fit/native/gate claim.
+
+## Remedy: cold-SC private scratch (candidate N)
+
+Coordinator-approved narrow remedy. The five large ScState/ScSnapshot locals move to file-private
+static scratch in the cold SC objects (`.fragmentSC_bss`, zeroed on every fragment load by
+`Memmap_RelocateFragment`, src/memmap.c:122,171). Each public function becomes a small wrapper
+around a `static` body; the wrapper refuses fail-closed if its own busy flag is set, otherwise
+sets it, runs the body, and clears it on every return (the body has the only exits).
+
+| Function | Scratch | Busy refusal (existing contract) |
+|---|---|---|
+| sc_bridge_begin | `begin_next`, `begin_checkpoint` | `SC_INVALID` after arg checks, before `storage_status` |
+| sc_new | `new_next` | `SC_INVALID` |
+| sc_state_valid | `valid_expected` | 0 (invalid) |
+| sc_save_decode | `decode_next` | `SC_SAVE_INVALID`, output/generation untouched |
+| sc_ui_input | `input_loaded` | `report(ui, SC_INVALID)` (NULL ui → `SC_UI_STAY`) |
+
+Each buffer is owned by exactly one function and never passed to another guarded function, so
+no cross-function aliasing; a nested call of the same function is refused rather than
+overwriting a live snapshot. `host_tests/test_story_scratch.c` (normal + ASan/UBSan,
+`-DSC_SCRATCH_TEST` seams) covers held refusal for each guard with outputs unchanged, held
+`sc_new` failing `sc_state_valid` closed, release+retry after bad options/invalid state/bad
+CRC/wrong variant/write failure (`SC_PENDING` then OK), nested `sc_bridge_begin` from the device
+write callback and nested `sc_ui_input` from the device read callback, and idle flags after
+every operation.
+
+Candidate N = `.local/rltest/story-service-ui-native-scratch-v1/pokestadium-rl.elf`
+(sha256 `0b4eae423a9a94a26153e602ac6bc87631ed405aef87d7f0cbceae0aeaec142b`), authority/rights
+fixed point v40 == v41. Linked cost vs C: `.fragmentSC` 0x340f0→0x34330 (+576),
+`.fragmentSC_bss` 0x1fa0→0x2f00 (+3936, per object sc_core 0x290, sc_bridge 0x520, sc_save
+0x520, sc_ui 0x290 incl. alignment), relocs +480, cold RAM image 221328→225840 (+4512,
+`check_story_residency.py` OK); AI ROM start +1056. Resident `.text`/fragment code differs only
+in SC/AI ROM/size immediates; unchanged SC objects are identical modulo relocated fields
+(sc_cold_header size words). `resolve-SC-N.txt` = resolve-SC-C.txt remapped by object shift
+(no target lies in a changed object); 0 INDIRECT/UNRESOLVED/CROSS/MISSING over 587 functions.
+
+Frames (N): wrappers sc_bridge_begin 40, sc_state_valid 24, sc_new 24, sc_save_decode 32,
+sc_ui_input 24; bodies 32 / 736 / 80 / 72 / 24 (sc_state_valid body keeps other locals).
+
+| Entry | C | N |
+|---|---|---|
+| sc_cold_entry | 5632 | **2832** |
+| sc_campaign_state (resident close) | 5816 | 3016 |
+| sc_campaign_open / step / close / observe | 5768/5768/5776/5784 | 2968/2968/2976/2984 |
+| sc_campaign_battle_gate / after | 5960 | 3160 |
+| func_84300E88 (battle hook) | 6000 | **3200** |
+| display_begin / paused / menu_request / hook / hint | 1568/24/48/48/832 | unchanged |
+
+New worst chain moves to observe: `sc_native_loop_step` 64 → anon_8f90a580 32 → anon_8f90a698
+56 → `sc_ui_driver_observe` 40 → `sc_ui_observe` 56 → `sc_bridge_observe` 792 →
+`sc_observe_values` 744 → `sc_ko_values` 768 → `sc_add_xp_species` 48 → `sc_recalculate` 56.
+Remaining large frames not in the approved five: sc_bridge_observe 792, sc_evolve_owned 720,
+sc_bridge_commit 680.
+
+Static arithmetic: battle hook 336 + 3200 = 3536 of 6352 callable; resident close 32 + 3016 =
+3048. These are not margin claims: the 336 prefix is a concrete chain (lower bound on worst
+prefix), and interrupt/exception accounting is not qualified. Geometry BD04/`unk_10` residuals
+remain open. No fit/native/gate claim.
