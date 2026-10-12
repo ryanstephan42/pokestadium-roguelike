@@ -123,6 +123,9 @@ int sc_campaign_dispatch(unsigned command) {
         return SC_OK;
     case SC_CAMPAIGN_STEP:
         return sc_native_loop_step(loop);
+    case SC_CAMPAIGN_DETACH:
+        if (!loop->acquired || !c->installed || !c->sequential_active) return SC_INVALID;
+        return sc_ui_driver_detach_battle(loop->backing.driver);
     case SC_CAMPAIGN_CLOSE:
         return loop->acquired ? sc_native_loop_close(loop) : SC_OK;
     case SC_CAMPAIGN_OBSERVE:

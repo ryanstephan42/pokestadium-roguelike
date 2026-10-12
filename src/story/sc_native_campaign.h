@@ -8,7 +8,8 @@
    argument; cold_invoke always passes 0. */
 #define SC_CAMPAIGN_ENTRY 0x53435045
 enum ScCampaignCommand {
-    SC_CAMPAIGN_OPEN = 1, SC_CAMPAIGN_STEP, SC_CAMPAIGN_CLOSE, SC_CAMPAIGN_OBSERVE
+    SC_CAMPAIGN_OPEN = 1, SC_CAMPAIGN_STEP, SC_CAMPAIGN_CLOSE, SC_CAMPAIGN_OBSERVE,
+    SC_CAMPAIGN_DETACH
 };
 
 /* Resident control (never inside the mapped image or the DATA lease): loop,
@@ -50,6 +51,7 @@ enum {
    the caller then drives sc_campaign_close. */
 int sc_campaign_open(ScMaArena *arena, RlU32 seed);
 int sc_campaign_step(void);
+int sc_campaign_detach_battle(void);
 /* Stages one in-battle observation and submits it through the published
    entry; the next STEP consumes the resulting OBSERVE/LEARNING event. */
 int sc_campaign_observe(const ScBattleSnapshot party[6], unsigned active, unsigned enemy,

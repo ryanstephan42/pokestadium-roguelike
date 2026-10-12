@@ -83,6 +83,13 @@ int sc_campaign_step(void) {
     return status;
 }
 
+int sc_campaign_detach_battle(void) {
+    int status;
+    if (phase != SC_CAMPAIGN_ACTIVE || !control.sequential_active) return SC_INVALID;
+    if (!enter(SC_CAMPAIGN_DETACH, &status)) return fail(SC_INVALID);
+    return status;
+}
+
 int sc_campaign_observe(const ScBattleSnapshot party[6], unsigned active, unsigned enemy,
                         unsigned hp) {
     int status;

@@ -384,7 +384,7 @@ void sc_campaign_state_launch(void) {
         mutable->sequential_active = 1;
         mutable->sequential_result_ready = 0;
         gScCampaignRun.stage = SC_RUN_CLOSING;
-        if (sc_ui_driver_detach_battle(b->driver) != SC_OK)
+        if (sc_campaign_detach_battle() != SC_OK)
             sequential_fail(SC_INVALID, "story campaign: battle request detach refused");
         return;
     }
