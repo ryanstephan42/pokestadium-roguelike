@@ -57,13 +57,16 @@ Archive facts, checked over all entries:
   `j target; nop` thunks with retail R_MIPS_26 relocations. 0x28..0x160 are the
   callback thunks. 32 of them jump into **fragment62** (id 0x33) at retail
   offsets, e.g. 0x81000028 → `func_84343D24`; the rest stay inside fragment31.
-- **Open defect (pre-existing, RL/candidate builds only):** RL builds
-  regenerate fragment62 (`RL_REGEN_FRAGMENTS ?= 62`) and remap only its own
-  relocations. The fragment31 thunks are not remapped. In the candidate map
-  `func_84343D24` is at 0x84344894 (+0xB70), and 0x84343D24 is 4 bytes into
-  `func_843431B0`; plain `build_rl` is shifted by +0x160. All 32 cross-fragment
-  thunks are affected. This is a static finding with no native witness; it is
-  not caused by the loader shim and is reported for a decision.
+- RL builds regenerate fragment62, so those retail targets move. They are
+  repaired at load time, not at link time: `func_800043BC` (3FB0.c:531-539)
+  calls `rl_relocate_archive_imports(0, frag)` (src/roguelike/rl_native_imports.c)
+  before `Memmap_RelocateFragment`. It rewrites each fragment-0 R_MIPS_26 target
+  in 0x8430xxxx..0x843Fxxxx through the generated exact-function table
+  (`tools/rl/gen_archive_imports.py`, vanilla ELF `func_*` → linked symbol) and
+  halts the loader thread on any unmapped target. All 32 retail targets are in
+  the candidate table (2,055 rows), e.g. 0x81000028: `func_84343D24`
+  0x84343D24 → 0x84344894. See docs/roguelike/BUILD.md, "Original animation
+  archive imports". Static evidence only; no native witness.
 
 ### Graphics retirement of A and S
 
