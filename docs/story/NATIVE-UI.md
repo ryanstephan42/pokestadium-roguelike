@@ -252,9 +252,25 @@ keeps the authority armed; OK disarms it; any refusal or operation failure
 stops it without mutating the operation. The native witness
 (`sc_native_terminal_witness.c`) reads `gScServiceLifecycle`,
 `sc_batl_scope_map_change()` and `main_pool_get_pool()->mainState`; HOST
-injects the witness. Both modules are cold SC residents. The arm and drain
-call sites, the cold-map admission at those sites, and a campaign-active
-predicate are not wired yet.
+injects the witness. Both modules are cold SC residents.
+
+The resident call sites live in `rl_battle.c` (candidate builds only) through
+`gScNativeLaunchHook` (`sc_native_launch_hook.h`), which is NULL unless a story
+operation installed it. With no hook installed, vanilla and ordinary RL launches
+are unchanged; `make rl` does not link the hook. When a hook is installed:
+- `arm` runs before `gRlBattleActive`/`RLBT` push; non-OK, or an active probe,
+  refuses the launch before any push;
+- `abort` fail-stops the authority when fragment 62 initialization fails;
+- `drain` runs after the `RLBT` pop with the raw per-side flags.
+`sc_native_terminal_install/uninstall` bind one terminal/operation/backing to
+the hook. Install requires an empty slot and an idle authority. Uninstall
+requires that binding and refuses while armed. A binding is single-use: a
+stale hook, or arm/drain after drain/abort, fail-stops without mutating the
+operation. A PENDING drain records its raw flags in the binding for the owner's
+retry. The hook holds cold-code function pointers, so the installer must keep
+the SC mapping admitted until uninstall. That admission, the installer (the
+production owner submit), the campaign-active predicate and the dispatcher are
+not wired yet.
 
 Lifetime validation is injected in HOST, which is explicitly not a target ABI
 fixture; actual IDO compilation uses the production lifetime header. This unit

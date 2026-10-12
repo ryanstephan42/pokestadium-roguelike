@@ -692,6 +692,7 @@ static ScNativeTerminal life_terminal;
 static ScNativeTerminalWitness life_witness;
 static int life_pool;
 void sc_native_terminal_witness(ScNativeTerminalWitness *w) { *w = life_witness; }
+ScNativeLaunchHook *gScNativeLaunchHook;
 static void life_arm(void) {
     memset(&life_terminal, 0, sizeof(life_terminal));
     assert(sc_native_terminal_arm(&life_terminal, &life_operation) == SC_OK);

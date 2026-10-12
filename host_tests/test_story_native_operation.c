@@ -393,6 +393,84 @@ static void terminal(void) {
     (void)held;
 }
 
+ScNativeLaunchHook *gScNativeLaunchHook;
+
+/* Drives the binding exactly as the rl_battle.c call sites do: arm before the
+   RLBT push, drain after the pop with raw flags, abort on init failure. */
+static void launch_hook(void) {
+    ScNativeCampaignBacking *b = &lifetime.loop.backing;
+    ScNativeTerminal t;
+    ScNativeTerminalBinding bind, other;
+    ScNativeLaunchHook *h;
+    ScNativeOperation control;
+    memset(&native, 0, sizeof(native));
+    native.scope_idle = 1; native.pool_state = &pool_states[0];
+    initialize(); memset(&t, 0, sizeof(t)); memset(&bind, 0, sizeof(bind));
+    assert(!gScNativeLaunchHook);
+    assert(sc_native_terminal_install(&bind, &t, &operation, 0) == SC_INVALID && !gScNativeLaunchHook);
+    t.failed = 1;
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_INVALID && !gScNativeLaunchHook);
+    t.failed = 0;
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_OK);
+    h = gScNativeLaunchHook;
+    assert(h == &bind.hook && h->context == &bind && bind.status == SC_PENDING);
+    assert(sc_native_terminal_install(&other, &t, &operation, b) == SC_INVALID && gScNativeLaunchHook == h);
+    assert(sc_native_terminal_uninstall(&other) == SC_INVALID && gScNativeLaunchHook == h);
+    /* arm refuses without a running operation: launcher returns before push */
+    assert(h->arm(h->context) != SC_OK && t.failed);
+    assert(sc_native_terminal_uninstall(&bind) == SC_OK && !gScNativeLaunchHook);
+    /* normal LOSS: arm, one service cycle, drain from raw flags, uninstall */
+    memset(&t, 0, sizeof(t));
+    assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_OK);
+    h = gScNativeLaunchHook;
+    assert(h->arm(h->context) == SC_OK && t.armed && bind.status == SC_OK);
+    assert(sc_native_terminal_uninstall(&bind) == SC_INVALID && gScNativeLaunchHook == h);
+    service_cycle();
+    h->drain(h->context, 0, 3);
+    assert(bind.status == SC_OK && bind.drained && !bind.player_alive && bind.enemy_alive);
+    assert(operation.pending.kind == SC_NATIVE_EVENT_DRAINED && operation.pending.outcome == SC_LOSS);
+    /* a second drain/arm on the consumed binding is stale and cannot reproduce a result */
+    control = operation;
+    h->drain(h->context, 1, 0);
+    assert(bind.status == SC_INVALID && t.failed && !memcmp(&operation, &control, sizeof(control)));
+    assert(h->arm(h->context) == SC_INVALID);
+    assert(sc_native_terminal_uninstall(&bind) == SC_OK && !gScNativeLaunchHook);
+    assert(sc_native_operation_poll(&operation, b, b->event) == SC_OK && storage.event.outcome == SC_LOSS);
+    memset(b->event, 0, sizeof(*b->event));
+    /* a hook that is no longer installed is stale */
+    initialize(); memset(&t, 0, sizeof(t));
+    assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_OK);
+    h = gScNativeLaunchHook;
+    gScNativeLaunchHook = 0;
+    assert(h->arm(h->context) == SC_INVALID && t.failed && !t.armed);
+    gScNativeLaunchHook = h;
+    assert(sc_native_terminal_uninstall(&bind) == SC_OK);
+    /* initialization failure after arm fail-stops without a result */
+    memset(&t, 0, sizeof(t));
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_OK);
+    h = gScNativeLaunchHook;
+    assert(h->arm(h->context) == SC_OK);
+    control = operation;
+    h->abort(h->context);
+    assert(bind.status == SC_INVALID && t.failed && !t.armed && bind.drained);
+    assert(!memcmp(&operation, &control, sizeof(control)));
+    h->drain(h->context, 1, 0);
+    assert(!memcmp(&operation, &control, sizeof(control)));
+    assert(sc_native_terminal_uninstall(&bind) == SC_OK && !gScNativeLaunchHook);
+    /* drain refused by the witness leaves the operation untouched */
+    initialize(); memset(&t, 0, sizeof(t));
+    assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+    assert(sc_native_terminal_install(&bind, &t, &operation, b) == SC_OK);
+    h = gScNativeLaunchHook;
+    assert(h->arm(h->context) == SC_OK);
+    control = operation;
+    h->drain(h->context, 1, 0);
+    assert(bind.status == SC_INVALID && t.failed && !memcmp(&operation, &control, sizeof(control)));
+    assert(sc_native_terminal_uninstall(&bind) == SC_OK && !gScNativeLaunchHook);
+}
+
 int main(void) {
     ScNativeCampaignBacking *b = &lifetime.loop.backing;
     ScNativeCampaignStorage previous;
@@ -515,7 +593,8 @@ int main(void) {
     output_mutations();
     drain();
     terminal();
+    launch_hook();
     assert(notices);
-    puts("NATIVE OPERATION HOST PASSED: canonical copies; all-byte request mutation refusals at submit/observe/poll/resume, held-before-delivery, owner-retained queued identity with all-byte clean-output/replay/identity refusals, single DRAINED producer with WIN/sc_finish and settlement refusals, terminal authority with raw-flag outcome, per-field forged-retirement refusal and finish-once; lifetime validation and retirement witness injected, no native launch");
+    puts("NATIVE OPERATION HOST PASSED: canonical copies; all-byte request mutation refusals at submit/observe/poll/resume, held-before-delivery, owner-retained queued identity with all-byte clean-output/replay/identity refusals, single DRAINED producer with WIN/sc_finish and settlement refusals, terminal authority with raw-flag outcome, per-field forged-retirement refusal and finish-once, resident launch-hook binding; lifetime validation and retirement witness injected, no native launch");
     return 0;
 }

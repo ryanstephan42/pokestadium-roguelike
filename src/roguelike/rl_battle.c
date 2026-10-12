@@ -16,6 +16,11 @@ extern int sc_runtime_probe_terminal(const unk_D_800AE540_0004 *,
 #endif
 #endif
 
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+#include "src/story/sc_native_launch_hook.h"
+ScNativeLaunchHook *gScNativeLaunchHook;
+#endif
+
 RlLaunchResult gRlLastBattleResult;
 volatile unsigned int gRlBattleCount;
 int gRlBattleActive;
@@ -303,6 +308,18 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
         return -1;
     }
 #endif
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+    if (gScNativeLaunchHook != NULL &&
+#ifdef STORY_NATIVE_PROBE
+        (gScProbeActive || gScNativeLaunchHook->arm(gScNativeLaunchHook->context) != 0)
+#else
+        gScNativeLaunchHook->arm(gScNativeLaunchHook->context) != 0
+#endif
+        ) {
+        osSyncPrintf("story launch: terminal authority refused\n");
+        return -1;
+    }
+#endif
     gRlBattleActive = 1;
     rl_native_relics_reset(rules->relics);
     gRlBattleLaunchStage = 1;
@@ -320,6 +337,9 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
         main_pool_pop_state(0x524C4254);
         gRlBattleActive = 0;
         gCurrentGameState = return_state;
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+        if (gScNativeLaunchHook != NULL) gScNativeLaunchHook->abort(gScNativeLaunchHook->context);
+#endif
         osSyncPrintf("story probe: native battle initialization failed\n");
         return -1;
     }
@@ -346,6 +366,12 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     if (D_800AE540.unk_1194[0].unk_1C != D_800AE540.unk_1194[1].unk_1C) {
         result->outcome = D_800AE540.unk_1194[0].unk_1C ? RL_BATTLE_WIN : RL_BATTLE_LOSS;
     }
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+    if (gScNativeLaunchHook != NULL) {
+        gScNativeLaunchHook->drain(gScNativeLaunchHook->context, D_800AE540.unk_1194[0].unk_1C,
+                                   D_800AE540.unk_1194[1].unk_1C);
+    }
+#endif
     result->player_count = player->unk_002;
     result->enemy_count = opponent->unk_002;
     for (i = 0; i < player->unk_002; i++) {

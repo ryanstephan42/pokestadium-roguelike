@@ -2,6 +2,7 @@
 #define SC_NATIVE_TERMINAL_H
 #if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
 #include "sc_native_operation.h"
+#include "sc_native_launch_hook.h"
 
 /* Native retirement facts, read by sc_native_terminal_witness from the actual
    service lifecycle, BATL scope and main-pool state; never caller supplied. */
@@ -28,5 +29,23 @@ int sc_native_terminal_arm(ScNativeTerminal *, const ScNativeOperation *);
 int sc_native_terminal_drain(ScNativeTerminal *, ScNativeOperation *,
                              const ScNativeCampaignBacking *, unsigned player_alive,
                              unsigned enemy_alive);
+
+/* Binds one terminal authority to the resident launch hook. install requires an
+   empty hook slot and an idle authority; uninstall requires this binding to be
+   installed and not armed. status records the last arm/drain/abort result;
+   PENDING drains are retried by the owner with sc_native_terminal_drain using
+   the recorded raw flags. */
+typedef struct ScNativeTerminalBinding {
+    ScNativeLaunchHook hook;
+    ScNativeTerminal *terminal;
+    ScNativeOperation *operation;
+    const ScNativeCampaignBacking *backing;
+    unsigned player_alive, enemy_alive, drained;
+    int status;
+} ScNativeTerminalBinding;
+
+int sc_native_terminal_install(ScNativeTerminalBinding *, ScNativeTerminal *,
+                               ScNativeOperation *, const ScNativeCampaignBacking *);
+int sc_native_terminal_uninstall(ScNativeTerminalBinding *);
 #endif
 #endif
