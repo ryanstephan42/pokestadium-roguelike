@@ -1,5 +1,6 @@
 #include "story_native_stubs.h"
 #include "src/story/sc_native_owner.h"
+#include "src/story/sc_native_display.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -52,11 +53,24 @@ void func_800076C0(void) {
     closures++; tasks++;
     scheduler_submit(current_screen->unk_18[0]); current_screen = NULL;
 }
+static ScNativeDisplay *handoff;
+static Gfx *native_head;
+static char frame_log[64];
+static unsigned frame_log_used;
+static void frame_note(char c) { assert(frame_log_used + 1 < sizeof(frame_log)); frame_log[frame_log_used++] = c; }
+/* With a handoff fixture active, native submission is counted and its command
+   head reset; story display frames keep the actual workspace swap path. */
 s32 func_80007778(void) {
+    if (handoff && current_screen != handoff->screen) {
+        frame_note('N'); gDisplayListHead = native_head; return 0;
+    }
+    if (handoff) frame_note('S');
     tasks++; scheduler_submit(current_screen->unk_18[0]);
     func_80005EDC(); gDisplayListHead++; return 0;
 }
-void func_8000771C(void) { tasks = 0; }
+void func_8000771C(void) { if (handoff) frame_note('F'); tasks = 0; }
+void func_80006CB4(s32 n) { (void)n; current_screen->unk_11 = 1; }
+void func_800078D4ConsumeStory(void);
 s32 HAL_Printf(s16 x, s16 y, const char *fmt, ...) { (void)x; (void)y; (void)fmt; return 0; }
 MainPool *main_pool_get_pool(void) { return &pool; }
 u32 main_pool_push_state(u32 tag) {
@@ -105,6 +119,61 @@ void func_80005EDC(void) {
 #include "../build/story/native-display-review-v1/context-body.inc"
 #include "../build/story/native-display-review-v1/image-restore-body.inc"
 #include "../src/story/sc_native_display.c"
+#include "../build/story/native-display-review-v1/frame-handoff-body.inc"
+
+enum { FRAME_ORDINARY, FRAME_HELD, FRAME_REFUSED, FRAME_NESTED, FRAME_DIRTY };
+static const int *frame_modes;
+static unsigned frame_index, frame_return_at, inner_index;
+static void held_frame(void) {
+    assert(sc_native_display_begin(handoff) == SC_OK);
+    assert(sc_native_display_end(handoff) == SC_OK);
+}
+static s32 inner_callback(u8 state) {
+    (void)state; frame_note('c');
+    if (inner_index == 0) held_frame();
+    return inner_index++ == 0;
+}
+static s32 frame_callback(u8 state) {
+    int mode = frame_modes[frame_index];
+    (void)state; frame_note('C');
+    assert(sStoryFrame.armed && !sStoryFrame.consumed && sStoryFrame.head == gDisplayListHead);
+    if (mode == FRAME_HELD) held_frame();
+    if (mode == FRAME_REFUSED) assert(sc_native_display_end(handoff) == SC_UNAVAILABLE);
+    if (mode == FRAME_DIRTY) { gDisplayListHead++; held_frame(); }
+    if (mode == FRAME_NESTED) {
+        inner_index = 0;
+        assert(func_800078D4(inner_callback, 0x20, 0x10) == 1);
+        assert(sStoryFrame.armed && !sStoryFrame.consumed && sStoryFrame.head == native_head);
+    }
+    return frame_index++ == frame_return_at ? 3 : 0;
+}
+static void frame_run(const int *modes, unsigned return_at, const char *expected) {
+    frame_modes = modes; frame_index = 0; frame_return_at = return_at;
+    frame_log_used = 0; memset(frame_log, 0, sizeof(frame_log));
+    assert(func_800078D4(frame_callback, 0x20, 0x10) == 3);
+    assert(!strcmp(frame_log, expected));
+    assert(!sStoryFrame.armed && !sStoryFrame.consumed && !sStoryFrame.head);
+    assert(gDisplayListHead == native_head);
+}
+/* Actual extracted stage wrapper: held frames already submitted/fenced by the
+   checked display are not followed by a native submission; ordinary, refused,
+   dirty and nested frames keep it, and no marker crosses a callback. */
+static void frame_handoff(ScNativeDisplay *display, Gfx *head, unk_func_80007444 *screen) {
+    static const int sequence[] = { FRAME_HELD, FRAME_ORDINARY, FRAME_REFUSED, FRAME_NESTED,
+                                    FRAME_HELD, FRAME_DIRTY, FRAME_ORDINARY };
+    static const int ordinary[] = { FRAME_ORDINARY, FRAME_ORDINARY };
+    static const int held_last[] = { FRAME_ORDINARY, FRAME_HELD, FRAME_ORDINARY };
+    unk_func_80007444 saved = *screen;
+    handoff = display; native_head = head;
+    frame_run(sequence, 5, "CSFCNCNCcSFcNNCSFCSFNCN");
+    assert(sc_native_display_begin(display) == SC_OK && sc_native_display_end(display) == SC_OK);
+    assert(!sStoryFrame.armed && !sStoryFrame.consumed);
+    frame_run(ordinary, 0, "CNCN");
+    frame_run(held_last, 1, "CNCSFCN");
+    frame_run(ordinary, 0, "CNCN");
+    handoff = NULL; native_head = NULL;
+    *screen = saved;
+}
 
 typedef struct UnkArray4 {
     u8 unk_00, unk_01, unk_02, unk_03;
@@ -239,6 +308,9 @@ int main(void) {
     assert(sc_native_display_release(&display) == SC_UNAVAILABLE);
     assert(sc_native_display_end(&display) == SC_OK);
     assert(gDisplayListHead == borrowed_commands && D_80068BB0 == &image && D_800A7440.x1 == 7);
+    frame_handoff(&display, borrowed_commands, &borrowed);
+    assert(current_screen == &borrowed && gDisplayListHead == borrowed_commands);
+    assert(D_80068BB0 == &image && D_800A7440.x1 == 7);
     retained = sStoryWorkspace->owned_head;
     main_pool_push_state(0);
     before_allocations = allocations;
@@ -289,6 +361,6 @@ int main(void) {
         assert(sc_native_display_retire(&display, &owner, &backing) != SC_INVALID);
     assert(display.retired && closures == 1);
     assert(sc_native_display_release(&display) == SC_OK && !depth && !used);
-    puts("Checked display: owner spans, finite acquisition refusal, actual scheduler transition with simulated VI, pre-pop retain/retry/fallback; HOST only; OK");
+    puts("Checked display: owner spans, finite acquisition refusal, actual scheduler transition with simulated VI, pre-pop retain/retry/fallback; actual stage frame handoff held-once/ordinary/refused/dirty/nested/no-leak; HOST only; OK");
     return 0;
 }

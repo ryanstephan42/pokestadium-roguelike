@@ -53,6 +53,7 @@ unk_func_80007444* func_80007444(s8 arg0, s8 arg1, s8 arg2, s8 arg3, s8 arg4, s3
 unk_func_80007444* func_800075F8(void);
 #ifdef STORY_NATIVE_UI
 void func_800075F8SetStory(unk_func_80007444* context);
+void func_800078D4ConsumeStory(void);
 #endif
 s32 func_80007604(void);
 void func_80007614(unk_func_80007444* arg0);

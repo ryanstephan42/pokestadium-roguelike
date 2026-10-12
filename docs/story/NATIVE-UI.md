@@ -390,6 +390,38 @@ Successful close permits reuse of the same small loop/display control object.
 Open resets exit/queue/hold/event-serial bookkeeping for the new lease only
 after refusing an already acquired lifetime; pending retirement cannot rebind.
 
+### Stage frame handoff
+
+The checked display submits and fences its own frame. When that happens inside a
+`func_800078D4` stage callback, the wrapper's trailing `func_80007778` would
+submit a second, empty native frame. Under `STORY_NATIVE_UI` only, the resident
+wrapper therefore arms a one-callback marker. Before each callback it records
+`gDisplayListHead` and clears the marker. After a fully successful
+`sc_native_display_end` (submit, fence, context restore, workspace suspend and
+image restore), the display calls `func_800078D4ConsumeStory()`. The wrapper
+skips its outer submission only when the marker was set during this callback
+and the native command head is unchanged. It clears the marker immediately
+after every callback and restores the caller's marker state when it returns, so
+nested wrappers stay correct. A refused display end, a marker call outside an
+armed callback, or a callback that also emitted native commands keeps the
+ordinary outer submission. The marker never carries over to the next callback
+or frame. `func_80007820` is unchanged, and the vanilla build has no marker.
+Gameplay held frames must not emit native graphics before the story frame.
+
+`host_tests/run_story_native_display.sh` extracts the actual guarded block and
+the `func_800078D4` body. Under normal HOST and strict ASan/UBSan builds, it
+checks the following submission sequences:
+
+- a held frame produces exactly one story submit and fence, with no trailing
+  native submit;
+- ordinary frames keep their native submit;
+- a refused display end keeps the native submit;
+- a nested wrapper resolves the inner and outer callbacks independently;
+- a dirty command head keeps the native submit;
+- the frame after a held one does not inherit the marker;
+- a held last frame is resolved per callback;
+- a standalone display frame is never marked.
+
 ### Production retirement helper and scheduler exclusion
 
 `sc_native_retirement.[ch]` supplies the production, nonblocking retirement

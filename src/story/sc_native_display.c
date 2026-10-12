@@ -93,6 +93,7 @@ int sc_native_display_end(ScNativeDisplay *display) {
     func_8000648CRestoreStory(display->frame_image, &display->frame_rect);
     display->frame_image = NULL;
     display->frame = 0;
+    func_800078D4ConsumeStory();
     return SC_OK;
 }
 

@@ -535,17 +535,50 @@ s32 func_80007820(u32 arg0, s32 (*arg1)(u8)) {
     return var_s1;
 }
 
+#ifdef STORY_NATIVE_UI
+/* Story frame handoff: a checked story display frame submitted and fenced
+   inside this callback. Valid only for the current callback and only while
+   the native command head is unchanged. */
+static struct {
+    Gfx* head;
+    u8 armed, consumed;
+} sStoryFrame;
+
+void func_800078D4ConsumeStory(void) {
+    if (sStoryFrame.armed) {
+        sStoryFrame.consumed = 1;
+    }
+}
+#endif
+
 s32 func_800078D4(s32 (*arg0)(u8), s32 arg1, s32 arg2) {
     s32 temp_v0;
     s32 var_s0;
     s32 var_s2;
+#ifdef STORY_NATIVE_UI
+    Gfx* story_head;
+    u8 story_armed = sStoryFrame.armed;
+    u8 story_consumed = sStoryFrame.consumed;
+    u8 story_skip;
+
+    story_head = sStoryFrame.head;
+#endif
 
     var_s2 = 0;
     var_s0 = 1;
     func_80006C6C(arg1);
 
     while (var_s0 != 0) {
+#ifdef STORY_NATIVE_UI
+        sStoryFrame.head = gDisplayListHead;
+        sStoryFrame.armed = 1;
+        sStoryFrame.consumed = 0;
+#endif
         temp_v0 = arg0(D_800A7464->unk_11);
+#ifdef STORY_NATIVE_UI
+        story_skip = sStoryFrame.consumed && sStoryFrame.head == gDisplayListHead;
+        sStoryFrame.armed = sStoryFrame.consumed = 0;
+#endif
         if (var_s2 == 0) {
             if (temp_v0 != 0) {
                 var_s2 = temp_v0;
@@ -554,9 +587,17 @@ s32 func_800078D4(s32 (*arg0)(u8), s32 arg1, s32 arg2) {
         } else if (D_800A7464->unk_11 == 1) {
             var_s0 = 0;
         }
+#ifdef STORY_NATIVE_UI
+        if (!story_skip)
+#endif
         func_80007778();
     }
 
+#ifdef STORY_NATIVE_UI
+    sStoryFrame.head = story_head;
+    sStoryFrame.armed = story_armed;
+    sStoryFrame.consumed = story_consumed;
+#endif
     return var_s2;
 }
 
