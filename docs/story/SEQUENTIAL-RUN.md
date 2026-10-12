@@ -491,3 +491,39 @@ This is success-path evidence for that image, not proof of the later
 fail-stop correction. Run17 on the corrected image stopped at the observer's
 old ready-bit requirement during Pak I/O; it is FAIL, not a producer.
 Carry must use a new passing producer on the corrected image.
+
+Run18 (`4508ea8`, v44, byte-identical to the accepted `ed0eec0` image)
+passed win in 7,145 frames/180.901 seconds. Run19 passed fresh carry reload in
+636 frames/26.071 seconds. Producer, loaded and post-Continue container hashes
+all equal `442403848708ae14b445f7fe22fcc3ac55b0ed2eb07284bad5111d7c423a2ae3`;
+the actual carry-note hash is
+`47f771acef4e87452018876978f95d712d76185dea8bb4963e49a0982022adae`.
+Both reservations report exact reap and no orphans. The producer aggregate
+report SHA is `525faf52232ec7fcae7e5265affa64dd4e2409d384e771be0f6d29f6a39ce26a`;
+the carry aggregate report SHA is
+`efadeb469c23cf6d04c5c1483d945d37131e492385f72d0e5a78f9ee784bdc42`.
+
+Run20 exhausted the six-mon natural-loss reservation at 18,000 frames/
+446.098 seconds. Squirtle remained the first active mon at 3/33 HP after
+12 Tail Whips; the five bench mons were untouched. The viewed framebuffer
+shows a genuine Geodude attack, not a title/menu stall. A smaller legal loss
+fixture has been requested from the coordinator; it is not approved here.
+
+Run21 exhausted Transform at 18,000 frames/392.594 seconds, with exact reap/
+no orphans and no pool failure. Overall scenario is FAIL: neither postbattle
+restoration nor save was reached. Read-only final live records show Ditto
+species 132 with copied Geodude moves `[33,111,0,0]`; viewed video5/6 shows
+Geodude's model beneath Ditto's label facing Onix. This proves an actual
+Transform observation, not completion. The aggregate report
+`build/story/sequential-4508ea8-standing-run21-transform.report.json` has SHA
+`fb2fc6147aede4b6e3461cab2e196b6ee98f3c49079ced34d6245c0a05460b07`.
+Final controls remain in the unlocked move menu. A missed move-selection
+edge followed by an unbounded acknowledgement wait is the current hypothesis.
+
+Move/party acknowledgement now returns to the ordinary counted input policy
+after at most 60 neutral frames, just like action-menu readiness. Unacknowledged
+input is never recorded as accepted. The first matching live Transform witness
+is also retained in `transform-observed.json` before the next step, without
+overwriting it on later frames. Reports expose this as diagnostic evidence;
+it cannot turn a capped/incomplete scenario into PASS. HOST regressions cover
+missed/retried/delayed edges and retained evidence after a cap.

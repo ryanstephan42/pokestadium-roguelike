@@ -140,6 +140,67 @@ class BootThreadTests(unittest.TestCase):
         with self.assertRaisesRegex(HarnessError, "outside 8 MiB"):
             worker.native_observation(emu)
 
+    def test_missed_move_edge_returns_to_counted_policy_without_false_ack(self):
+        scenario = object.__new__(worker.Scenario)
+        frames, presses = [], []
+        scenario.emu = types.SimpleNamespace(step=frames.append)
+        scenario.abi = {"native_run_address": 0x80010000}
+        scenario.mapping = [0]
+        scenario.scenario = "transform"
+        scenario.acknowledgements = []
+        scenario.press = presses.append
+        menu = dict(mode=1, action=1, locked=False, hp=[33], active=0,
+                    moves=[33, 111, 0, 0], pp=[4, 0, 0, 0], disabled=-1)
+        with patch.object(worker, "read_menu", return_value=menu):
+            scenario.battle_action()
+            scenario.battle_action()
+        self.assertEqual(presses, ["C_UP", "C_UP"])
+        self.assertEqual(frames, [1] * 120)
+        self.assertEqual(scenario.acknowledgements, [])
+        self.assertIsNone(scenario.expected_native)
+        frames.clear()
+        def step(n):
+            frames.append(n)
+            scenario.native_ack = 18
+        scenario.emu.step = step
+        with patch.object(worker, "read_menu", return_value=menu):
+            scenario.battle_action()
+        self.assertEqual(frames, [1])
+        self.assertEqual(scenario.acknowledgements,
+                         [dict(frame=18, kind="move", slot=0, button="C_UP")])
+
+    def test_first_transform_witness_survives_cap_without_claiming_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            path = out / "transform"
+            path.mkdir()
+            scenario = object.__new__(worker.Scenario)
+            mons = [dict(species=132, moves=[33, 111, 0, 0]),
+                    dict(species=74, moves=[33, 111, 0, 0])]
+            scenario.emu = types.SimpleNamespace(
+                frame=1500, read_u32=lambda _: worker.STORY_STATE,
+                battle_mons=lambda: mons)
+            scenario.abi = {"native_lifecycle": {}}
+            scenario.directory, scenario.scenario = path, "transform"
+            scenario.ledger = scenario.last = scenario.retirement = None
+            scenario.transform = scenario.progress = scenario.expected_native = None
+            scenario.interrupted = b"already-captured"
+            scenario.transitions = []
+            row = dict(stage=worker.BATTLE, ledger={"count": 0}, ui=None,
+                       control_raw="")
+            with patch.object(worker, "capture", return_value=row), \
+                    patch.object(worker, "retirement_evidence", return_value={}):
+                scenario.observe()
+                scenario.emu.frame = 18000
+                scenario.observe()
+            self.assertEqual(json.loads((path / "transform-observed.json").read_text()),
+                             dict(frame=1500, player=mons[0], enemy=mons[1]))
+            worker.write_json(out / "transform.attempted.json", {})
+            report = collect(out, RunBudget(0, 180), 1, True)
+            self.assertEqual(report["scenarios"]["transform"]["status"], "fail")
+            self.assertEqual(report["scenarios"]["transform"]["transform_observed"]["frame"],
+                             1500)
+
     def test_saved_thread_register_offsets_and_bounded_stack(self):
         data = bytearray(0x130)
         data[0x10:0x12] = (8).to_bytes(2, "big")

@@ -563,9 +563,11 @@ class Scenario:
             (self.directory / "interrupted.note").write_bytes(self.interrupted)
         if row["stage"] == BATTLE and self.scenario == "transform":
             mons = self.emu.battle_mons()
-            if mons and mons[0]["moves"] != [144, 0, 0, 0] and (
+            if self.transform is None and mons and mons[0]["moves"] != [144, 0, 0, 0] and (
                     mons[0]["moves"] == mons[1]["moves"]):
                 self.transform = dict(frame=self.emu.frame, player=mons[0], enemy=mons[1])
+                atomic_bytes(self.directory / "transform-observed.json",
+                             (json.dumps(self.transform, sort_keys=True) + "\n").encode())
         if row["stage"] == BATTLE and self.expected_native:
             menu = read_menu(self.emu, self.abi["native_run_address"])
             kind, slot = self.expected_native
@@ -719,9 +721,13 @@ class Scenario:
         self.expected_native = (kind, slot)
         self.native_ack = None
         self.press(button)
-        self.wait(lambda: self.native_ack is not None, f"native {kind} acknowledged")
-        self.acknowledgements.append(dict(frame=self.native_ack, kind=kind, slot=slot,
-                                         button=button))
+        for _ in range(60):
+            if self.native_ack is not None:
+                break
+            self.emu.step(1)
+        if self.native_ack is not None:
+            self.acknowledgements.append(dict(frame=self.native_ack, kind=kind, slot=slot,
+                                             button=button))
         self.expected_native = None
 
     def finish_battle(self):

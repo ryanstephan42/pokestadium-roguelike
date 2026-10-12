@@ -31,9 +31,13 @@ def collect(directory, budget, elapsed, reaped):
                 row["local_frames"] = latest["completed_frames"]
                 row["frame_completion_uncertain"] = True
                 row["last_verified_boundary"] = latest["boundary"]
-        if name == "transform" and row["status"] == "pass" and not row.get("transform"):
-            row["status"] = "untested"
-            row["last_verified_boundary"] = "no actual Transform observation"
+        if name == "transform":
+            observation = directory / name / "transform-observed.json"
+            if observation.is_file():
+                row["transform_observed"] = json.loads(observation.read_text())
+            if row["status"] == "pass" and not row.get("transform"):
+                row["status"] = "untested"
+                row["last_verified_boundary"] = "no actual Transform observation"
         if name == "loss-terminal-reload" and row["status"] == "awaiting-terminal-reload":
             cold = path.parent / "terminal-reload" / "report.json"
             terminal = json.loads(cold.read_text()) if cold.is_file() else dict(status="untested")
