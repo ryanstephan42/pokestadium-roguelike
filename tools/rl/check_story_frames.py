@@ -7,7 +7,9 @@ out-of-line, symbol-less helper before func_80029008. The helper must return bef
 battle starts, so its frame is not under the battle. sc_campaign_state must stay unreferenced
 because calling it would re-nest the poll beneath the launch frame. The ordinary roguelike pending-battle
 runner (static rl_main_run_pending_battle) must stay an out-of-line helper of rl_main_state_roguelike with a
-capped frame, since it sits beneath the battle. This is a regression gate for the
+capped frame, since it sits beneath the battle. Unrecognized prologues, unmodeled control flow in
+the frameless helpers, and any J/branch/data-word/lui-pair binding of the composer fail closed.
+tools/rl/test_check_story_frames.py holds negative fixtures for these rules. This is a regression gate for the
 measured frames, not a stack proof.
 """
 
@@ -66,25 +68,80 @@ def word(data, sections, address):
 
 
 def frame(data, sections, address):
+    """Frame size from the first addiu sp,sp,-N; 0 only for a jr ra leaf. Fails closed otherwise."""
     for i in range(16):
         insn = word(data, sections, address + 4 * i)
         if insn >> 16 == 0x27BD:  # addiu sp, sp, imm
             imm = insn & 0xFFFF
-            return 0x10000 - imm if imm & 0x8000 else 0
-        if insn == 0x03E00008:  # jr ra: leaf without a frame
-            return 0
-    return 0
+            if not imm & 0x8000:
+                raise ValueError(f"{address:08x}: first sp adjustment is not an allocation")
+            return 0x10000 - imm
+        if control(insn):
+            if insn == 0x03E00008:  # jr ra: leaf without a frame
+                return 0
+            raise ValueError(f"{address:08x}: control transfer before a recognized prologue")
+    raise ValueError(f"{address:08x}: no recognized prologue in 16 instructions")
 
 
-def leaf(data, sections, address):
-    """True if the code from address to its first jr ra makes no calls and allocates no frame."""
-    for i in range(64):
-        insn = word(data, sections, address + 4 * i)
-        if insn >> 26 == 3 or insn & 0xFC00003F == 9 or insn >> 16 == 0x27BD:
-            return False
-        if insn == 0x03E00008:
-            return True
-    return False
+def control(insn):
+    """True for any jump, branch, call, trap/syscall or exception return."""
+    op = insn >> 26
+    if op in (1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23):  # REGIMM, J, JAL, B*, B*L
+        return True
+    if op == 0 and insn & 0x3F in (8, 9, 12, 13) or op == 0 and 0x30 <= insn & 0x3F <= 0x36:
+        return True  # JR, JALR, SYSCALL, BREAK, traps
+    if op in (16, 17, 18) and (insn >> 21) & 0x1F == 8:  # BCzF/BCzT
+        return True
+    return insn == 0x42000018  # ERET
+
+
+def writes_sp(insn):
+    op, rt, rd = insn >> 26, (insn >> 16) & 0x1F, (insn >> 11) & 0x1F
+    if op == 0:
+        return rd == 29
+    return op in (8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 55) and rt == 29
+
+
+def cond_target(insn, pc):
+    """Target of a non-linking conditional branch at pc, else None."""
+    op = insn >> 26
+    if op in (4, 5, 6, 7, 20, 21, 22, 23) or op == 1 and (insn >> 16) & 0x1F in (0, 1, 2, 3):
+        off = insn & 0xFFFF
+        return pc + 4 + ((off - 0x10000 if off & 0x8000 else off) << 2)
+    return None
+
+
+def leaf(data, sections, address, limit=64):
+    """Bounded CFG walk with delay slots: True only if every path from address reaches jr ra using
+    forward non-linking conditional branches within limit instructions, and no instruction or delay slot
+    transfers control otherwise or writes sp. Anything unmodeled fails closed."""
+    end = address + 4 * limit
+    todo, seen = [address], set()
+    while todo:
+        pc = todo.pop()
+        while True:
+            if pc in seen:
+                break
+            seen.add(pc)
+            if not address <= pc < end:
+                return False
+            insn = word(data, sections, pc)
+            if writes_sp(insn):
+                return False
+            if not control(insn):
+                pc += 4
+                continue
+            slot = word(data, sections, pc + 4)
+            if control(slot) or writes_sp(slot):
+                return False
+            if insn == 0x03E00008:
+                break
+            target = cond_target(insn, pc)
+            if target is None or target <= pc:
+                return False
+            todo.append(target)
+            pc += 8
+    return True
 
 
 def body(data, sections, start):
@@ -102,6 +159,37 @@ def jals(data, sections, start, size):
         if insn >> 26 == 3:
             out.append((pc, ((pc + 4) & 0xF0000000) | ((insn & 0x03FFFFFF) << 2)))
     return out
+
+
+def composer_refs(data, sections, code, target):
+    """Every code/data form that could bind target: J/JAL, REGIMM/branch-and-link targets, an aligned
+    data word equal to it, or a lui hi followed within 8 insns by addiu/ori lo."""
+    hi, lo = ((target + 0x8000) >> 16) & 0xFFFF, target & 0xFFFF
+    refs = []
+    for s in sections:
+        if s[1] != 1 or not s[3] or not s[5]:
+            continue
+        words = [struct.unpack_from(">I", data, s[4] + o)[0] for o in range(0, s[5] - 3, 4)]
+        for k, insn in enumerate(words):
+            pc = s[3] + 4 * k
+            if insn == target:
+                refs.append(f"word@{pc:08x}")
+            if s not in code:
+                continue
+            op = insn >> 26
+            if op in (2, 3) and ((pc + 4) & 0xF0000000) | ((insn & 0x03FFFFFF) << 2) == target:
+                refs.append(f"j@{pc:08x}")
+            if op in (1, 4, 5, 6, 7, 20, 21, 22, 23):
+                off = insn & 0xFFFF
+                if pc + 4 + ((off - 0x10000 if off & 0x8000 else off) << 2) == target:
+                    refs.append(f"branch@{pc:08x}")
+            if insn >> 21 == 0x1E0 and insn & 0xFFFF == hi:  # lui
+                reg = (insn >> 16) & 0x1F
+                for nxt in words[k + 1:k + 9]:
+                    if nxt >> 26 in (9, 13) and (nxt >> 21) & 0x1F == reg and nxt & 0xFFFF == lo:
+                        refs.append(f"lui@{pc:08x}")
+                        break
+    return refs
 
 
 def check(path):
@@ -151,12 +239,10 @@ def check(path):
 
     composer = funcs["sc_campaign_state"][0] if "sc_campaign_state" in funcs else None
     if composer is not None:
-        for s in code:
-            for off in range(0, s[5] - 3, 4):
-                insn = struct.unpack_from(">I", data, s[4] + off)[0]
-                pc = s[3] + off
-                if insn >> 26 == 3 and ((pc + 4) & 0xF0000000) | ((insn & 0x03FFFFFF) << 2) == composer:
-                    raise ValueError(f"sc_campaign_state called at {pc:08x}; it must stay unreferenced")
+        refs = composer_refs(data, sections, code, composer)
+        if refs:
+            raise ValueError("sc_campaign_state referenced at " + ",".join(refs) + "; it must stay unreferenced")
+        report.append("composer-refs=0")
     return report
 
 
