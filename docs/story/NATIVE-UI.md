@@ -104,7 +104,13 @@ Host compilation of the unchanged text-formatting body suppresses its existing
 checked acquisition/getter and other adapter TUs retain `-Werror`. Text-format
 rendering is not exercised by those native-resource fixtures.
 
-## Combined lower-pool admission blocker
+## Combined lower-pool admission blocker (historical, superseded)
+
+> **Superseded.** This section records the retained *lower-pixel* predecessor
+> design. The integrated successor (`4129ac6`, carrying `3ecf9fd`/`0956e2a`)
+> moved both 614,400-byte pixel spans into the upper arena, and the persistent
+> loader below moves the SC image out of the lower pool. The 271,360-byte figure
+> is not a current deficit; see "Simultaneous fit ledger" for current values.
 
 The pre-successor Moon/UI link after the identity-storage correction has
 `heap_BSS_START = 0x80127450`. Even allowing the entire lower 4 MiB up to
@@ -294,13 +300,17 @@ Transitive closure: the object's only undefined symbols are resident
 (`func_8001C6AC/EBE0/ECB4/F324/F3F4/F444/F504/F5B0`, `func_8002D7C0`,
 `func_80048B90`, `D_8006F518/F630`, `D_800AC870`, `gDisplayListHead`,
 `HAL_Printf`, and `rl_text`, `rl_text_demo_items`, `rl_ui_hp_width`,
-`rl_ui_list_init/step/valid` at `0x8007…`/`0x8009…`) or SC-owned
-(`sc_native_icon_cached/prefetch`, `sc_native_resources_acquire`). The copy's
+`rl_ui_list_init/step/valid` at `0x8007…`/`0x8009…`). `sc_native_icon_cached`,
+`sc_native_icon_prefetch` and `sc_native_resources_acquire` are also
+**resident** `.text` (`0x80079090`/`0x800790c0`/`0x8007bbbc` in the `222f963`
+link), not SC-owned; `sc_native_resources.c` is not in `SC_COLD_NAMES`. The copy's
 mutable data is its own 128-byte `.bss` (icon archive and name-table pointers,
 demo list state) inside the SC image. The archive and tables that it points to
 remain owned by the caller's pool scope through `sc_native_resources_acquire`.
-That scope's `restore_resources` record is SC code that writes SC `.bss`, so a
-persistent mapping may be released only after every such scope has popped.
+That scope's `restore_resources` callback is resident code, but its restore
+record stores caller slot pointers into SC `.bss`, so a persistent mapping may
+be released only after every such scope has popped (enforced below through
+`sc_native_resources_outstanding()`).
 
 Fresh fixed-point relink (authority/rights v17 = v18), ELF
 `1494ff9db42b406b31fc78ca79fe6c0b28bb3f04de2ebad4e6c93abd963f559c`:
@@ -320,6 +330,112 @@ R26/HI16/LO16 target resident KSEG0, and 3 `R_MIPS_32` are the absolute header
 symbols. **No target is in any other fragment.** The persistent loader, the
 `cold_invoke` exclusion, hook publication after admission, and the simultaneous
 fit ledger are still to be wired.
+
+## Persistent SC mapping (campaign lifetime)
+
+Candidate native-UI builds add a resident persistent loader
+(`src/story/sc_persist.c` logic, `sc_persist_native.c` backend; neither is in
+`SC_COLD_NAMES`). It maps fragment `0xe9` once for the campaign in the existing
+Expansion Pak arena with the existing primitives: `sc_ma_alloc` of
+`ALIGN32(max(sizeInRom, sizeInRam))`, a staging lease, RW DMA/relocation via
+`Memmap_RelocateFragment(0xe9)`, then `sc_ma_seal` into text `R|X`, data `RW`,
+rodata `R` and bss/tail `RW` spans (no `W+X`). The linker now aligns SC (and AI)
+text ends to 32 and the SC `.data` end to 16 so the existing seal rules hold.
+Resident code may not import SC link addresses
+(`tools/rl/check_story_residency.py`), so the layout comes from absolute
+`fragmentSC_HDR_TEXT_SIZE/DATA_END/RODATA_END` offsets. The loader
+authenticates the DMA'd header (`FRAGMENT`, header size, reloc offset,
+ROM/RAM sizes, reloc count) and the resulting map base/size, zeros the
+reloc-table tail beyond `sizeInRam`, and invalidates the I-cache before
+publishing. Any failure after loading starts retains the block (`sc_ma_fail`,
+phase `FAILED`). No new allocator or reservation is introduced.
+
+Admission and exclusion:
+
+* `acquire` refuses unless the 0xe9 memmap slot is empty and no `cold_invoke` is
+  in flight. While the mapping is held, `cold_invoke` refuses
+  (`sc_persist_holds_fragment()`), so a cold load can never replace or repatch
+  the live image.
+* Terminal hook install requires `sc_persist_code()` for `hook_arm`,
+  `hook_drain` and `hook_abort` (each must lie in the published text span)
+  and takes a `HOOK` pin; uninstall unpins (an unpin refusal fail-stops).
+  Hooks are therefore published only after successful relocation/rights
+  admission.
+* Pins (`HOOK`, `SERVICE`, `LIFETIME`, `RETIREMENT`) can only be taken while
+  `PUBLISHED` and dropped while `PUBLISHED`/`DRAINING`. `sc_persist_call` runs an
+  entry with a depth count, so a re-entrant unpublish cannot release.
+
+Enforced teardown order (`unpublish` → drain → `release`):
+
+1. `sc_persist_unpublish` moves to `DRAINING`: no new pins, `code`/`owns` refuse,
+   so no new hook or callback can be admitted.
+2. Owners finish worker/service/UI graphics retirement and pop every pool scope
+   while SC is still mapped, then drop their pins. The `RETIREMENT` pin is held
+   until the DP retirement token's final release, so post-free token retries never
+   call into unloaded SC.
+3. `sc_persist_release` returns `0` (pending, nothing changed) unless depth and all
+   pins are zero, the native predicate is quiescent (launch hook unset, no
+   `gRlBattleActive`, service lifecycle neither active nor pending, no cold load, and
+   `sc_native_resources_outstanding() == 0`), and no main-pool callback `func`/`arg`
+   in either pool list lies inside the image or the `0x8f900000–0x90000000` link
+   window (checked under the pool queue lock). Only then does it unmap, end and
+   release the block.
+4. A latched crash (`sc_crash_active`), unmap failure or arena failure moves to
+   `FAILED`, which retains both the mapping and the backing; `release` then
+   returns `-1` forever.
+
+`bash host_tests/run_story_persist.sh <out>` covers five forked retention
+scenarios (load failure, crash latch, unmap failure, explicit failure,
+exhausted arena), refusals, span rights, code/owns bounds, every pending-release
+edge (pins, depth, quiescence, outstanding resources, pool func/arg in image and
+in the link window), release, post-release refusals and generation-2 reacquire.
+It runs normal, strict ASan/UBSan and IDO compile/disassembly. The backend's
+pool walk, DMA, relocation and cache operations are HOST stubs; this is not
+native evidence. Nothing calls `sc_persist_acquire` yet: the installer,
+dispatcher and campaign predicate are still to be wired.
+
+Fixed-point relink (authority/rights v20 = v21), ELF
+`5948ded98fc1310e993070ffeeaf26c9a560faa95d5ad28c391d75d303e1777f`:
+`.fragmentSC 0x33a70` (text end `0xe9c0`, data end `0x28f20`, rodata end
+`0x33a70`), `.fragmentSC_bss 0x1fa0`, relocs `0x2720`; RAM 219,664, ROM
+221,584 (+176/+208 versus `222f963`, from alignment padding). All 2,505
+`.rel.fragmentSC` entries were audited: 610/893/391/393 R26/R32/HI16/LO16 target SC,
+139/38/38 R26/HI16/LO16 target resident KSEG0, and 3 are absolute header symbols.
+**No target is in any other fragment.** AI is unchanged at 75,616.
+
+### Simultaneous fit ledger (source/link values, not native peak)
+
+Upper arena (`0x80400000`, capacity `0x3da7e0` = 4,040,672 bytes; 8 slots;
+32-byte placement):
+
+| consumer | lifetime | bytes |
+|---|---|---|
+| persistent SC block `ALIGN32(max(221,584, 219,664))` | campaign | 221,600 |
+| campaign memory (controls 49,664 + two pixel spans 1,228,800 + 64 slack) | campaign | 1,278,528 |
+| AI service module (`AI_RAM`) | per battle | 75,616 |
+| **simultaneous total** (all sizes are 32-multiples, no placement gaps) | | **1,575,744** |
+| remaining | | 2,464,928 |
+
+That uses 3 of 8 slots. Each staging lease is taken on its owner's own
+allocation (AI ROM 63,616 ≤ `AI_RAM`; SC ROM ≤ its block).
+
+Lower pool (ceiling `0x80400000 − heap_BSS_START 0x8012a950` = 2,971,312):
+
+| consumer | bytes |
+|---|---|
+| fragment 62 RAM image | 815,216 |
+| checked display (workspaces, restore, context, headers, scope) | 131,296 |
+| BATL display lists `2 × 0x20000` + four 320×240×16 images | 876,544 |
+| SC image | 0 (now upper and persistent; `cold_invoke` refused while held) |
+| **listed total** | **1,823,056** |
+| upper bound left for everything unlisted | 1,148,256 |
+
+The listed values no longer refuse on a lower bound. Still unmeasured and
+excluded: pool headers/scopes for the BATL payloads, fonts, icons, text and
+archives acquired through `sc_native_resources`, models, other fragments,
+loader staging inside the pool, and the whole callback/interrupt/task stack
+peak. Complete combined fit is therefore **unproven**; this ledger is
+source/link accounting only.
 
 ## Current build authority inputs
 
