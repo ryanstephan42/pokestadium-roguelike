@@ -169,3 +169,9 @@ remain open. No fit/native/gate claim.
 - The `.fragmentSC` image and the cold RAM extent (225840) are unchanged, so the persistent-arena charge stays +2368.
 - `gPool` moved +0x120. As a result the main pool is 288 bytes smaller than on N.
 - The exception path charges 0 bytes to the interrupted stack. This is a routine audit (`irqcheck.py`), not a runtime claim.
+
+**N4 refresh** (`3c74ab2` + `0c3df6f`, ELF sha256 `ab138b61…bbc`, see GEOMETRY-STACK-SUPPLEMENT v7).
+- `resolve-SC-N4.txt` is the N3 list remapped to N4 (`.text` after `rl_main.c` moved −0x1a0).
+- `sc_cold_entry` is 2832 over 591 functions, 0 UNRESOLVED; all entry depths are identical to N3.
+- The 13 destructor targets are re-derived from the 18 N4 registrar sites.
+- `.fragmentSC` and the cold RAM extent are unchanged (arena charge +2368); the main pool is 416 bytes larger than N3.

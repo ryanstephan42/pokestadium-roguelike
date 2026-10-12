@@ -376,11 +376,11 @@ Prefixes at `func_80029008` entry (`outputs/prefix-*-N3.txt`, 0 UNRESOLVED; the 
 | Route | Prefix | Total (+32 +248 +632 +5208) | Margin vs 6352 |
 |---|---:|---:|---:|
 | story: Game_Thread 32 + `sc_campaign_state_launch` 120 | 152 | 6272 | 80 |
-| probe: Game_Thread 32 + `rl_main_state_roguelike` 32 + `sc_runtime_probe_poll` 144 | 208 | **6328** | **24** |
+| probe: Game_Thread 32 + `rl_main_state_roguelike` 32 + `sc_runtime_probe_poll` 88 + `rl_start_battle` 56 | 208 | **6328** | **24** |
 | ordinary roguelike: Game_Thread prefix 1048 (`anon_80069ad0` frame 928) | 1048 | 7168 | **−816 (open)** |
 
 Notes on the table:
-- The `sc_runtime_probe_poll` row includes `rl_start_battle`.
+- Correction (v7): an earlier revision of the probe row printed the N2 poll frame 144; the N3 terms are 32 + 32 + 88 + 56 = 208.
 - The only callers, found by `jal` and whole-word scans over all PROGBITS, are:
   - `sc_runtime_probe_poll` ← `rl_main_state_roguelike` @80069ee0;
   - `rl_main_state_roguelike` ← Game_Thread @8002c280;
@@ -416,7 +416,9 @@ Notes on the table:
   - the scheduler restore `ld sp,240(k0)`.
 - The only `__osSetHWIntrRoutine` call installs `(1, __osLeoInterrupt, leoDiskStack)`.
 - `__osHwIntTable` is initially zero.
-- So the exception path charges 0 bytes to the interrupted Game-thread stack.
+- So, under this installer/routine model, the exception path charges 0 bytes to the interrupted Game-thread stack.
+  The setter evidence is a direct-`jal` scan; computed setter calls or stores into `__osHwIntTable` are not
+  exhaustively excluded (qualified in v7).
 
 **Still open after v6.**
 - Ordinary roguelike route: 816 over.
@@ -425,6 +427,85 @@ Notes on the table:
 - Renderer co-occurrence beyond the single-layout bound.
 - The 0x820000/0x898000/stadium-model static layouts are scan-only.
 - Synthesised runtime layouts.
+
+## v7 ordinary-route fix, fail-closed guard and N4 refresh (static)
+
+**Ordinary route fix** (commit `3c74ab2`). `rl_main_run_pending_battle` (static, emitted as `anon_80069ad0`) kept a
+local `RlLaunchResult` (frame 928). `rl_start_battle` already fills the global `gRlLastBattleResult` and only copies it
+to `out` on success, so the runner now passes `NULL` and reads `&gRlLastBattleResult`. Semantics are unchanged: the
+runner only reads the result after a successful launch, which is exactly when the copy happened before. The host
+stub in `host_tests/test_play_ui.c` mirrors the launcher contract. Runner frame 928 → **48** in both the plain
+`make rl` build (`rl-plain-base.elf` / `rl-plain-fix.elf`) and the candidate. No stack size was increased.
+
+**Fail-closed guard** (commit `0c3df6f`; addresses the UI reviewer's negative fixtures on N3).
+- `frame()` fails when control flow precedes the prologue (a bare `jr ra` leaf counts as 0), on a positive sp adjust,
+  or when no prologue appears in 16 instructions.
+- `leaf()` is a bounded CFG walk with delay slots: only forward non-linking conditional branches are allowed, every
+  path must end in `jr ra`, and calls, `jalr`, tail `j`, backward branches, traps and sp writes fail.
+- The composer check rejects J/JAL and branch targets, aligned data words in any PROGBITS, and `lui`/`addiu|ori`
+  pairs equal to `sc_campaign_state`.
+- New runner rule: `rl_main_state_roguelike` has exactly one local helper that calls `rl_start_battle`, frame ≤ 48.
+- `tools/rl/test_check_story_frames.py` patches ELF copies and requires all 10 mutations to be rejected (oversized
+  probe prologue, composer tail-j, helper tail-j to a framed target, backward branch, jump in a branch delay slot,
+  `jalr`, unrecognised prologue, raised `rl_start_battle` frame, composer data word, composer lui/addiu).
+  N3 is rejected by the runner rule (928 > 48).
+
+**Candidate N4** = same build profile as N3 with `3c74ab2` + `0c3df6f`.
+- ELF sha256 `ab138b611938aa6b3e56efc99122e47a06b70828a40b05a0adffc0838d5f0bbc`.
+- ROM sha256 `97e41701a08bfa46382222fc62d9278dcacc81d2f6cff25f24cd573b91d4700f`.
+- Module-rights and AI-authority fixed point: the build consumed v69 and regenerated v70 identically; both bind the
+  N4 ELF (and the rights bind the N4 map `c4ffb20d…cbf`). Residency lint is reported separately and is not this evidence.
+
+Prefixes at `func_80029008` entry on N4 (0 UNRESOLVED):
+
+| Route | Prefix | Total (+32 +248 +632 +5208) | Margin vs 6352 |
+|---|---:|---:|---:|
+| story: Game_Thread 32 + `sc_campaign_state_launch` 120 | 152 | 6272 | 80 |
+| probe: Game_Thread 32 + `rl_main_state_roguelike` 32 + `sc_runtime_probe_poll` 88 + `rl_start_battle` 56 | 208 | 6328 | 24 |
+| ordinary: Game_Thread 32 + `rl_main_state_roguelike` 32 + runner 48 + `rl_start_battle` 56 | 168 | **6288** | **64** |
+
+- Game_Thread's overall prefix maximum 488 is the transfer-pak fatal screen (`func_8000A798` → `func_8002B274` →
+  fragment32), not a battle route; `rl_main_state_roguelike`'s 176 maximum is the probe route above.
+- These are static bounds over the stated paths with the single-layout renderer bound, not clearance.
+- Probe premise: `sc_runtime_probe_poll`'s static request buffer is only valid because the poll runs only on the
+  Game thread, is not re-entered, and its cold dispatch is synchronous. There is no runtime re-entry guard; this is a
+  stated premise, not a checked property.
+
+**Address-keyed refresh on N4.** N4 vs N3: `.text` −416, `.text_bss` unchanged, `gPool` `0x8012dd30` → `0x8012db90`, so
+the main pool is 416 bytes larger than N3 (128 larger than N). `.fragmentSC`, fragment and archive sections and the cold
+RAM extent (225840 → aligned 225856, +2368 arena charge) are unchanged. Code after `rl_main.c` moved −0x1a0.
+
+| Artifact | Result on N4 |
+|---|---|
+| `renderrec.py` | Handler table `0x8008b2b4`. CBmax 1144. |
+| `cmd8weight.py` | Wmax **5208**; stadium archive (`0x595660`) evaluated separately. |
+| `scenechain.py` | **632** (hosts `D_800AC840`/`D_800AC858` now at `800d20d0`/`800d20e8`). |
+| `cmd8domain.py` | 56 operands, 0 anomalies. |
+| `cmd8scan-v2.py` | `[0x80015ec0, 0x80015fdc)`, gPool `0x8012db90`, 4 and 8 MiB: 622231 candidates, **0 hits**. |
+| SC closure | `sc_cold_entry` **2832** over 591 functions, 0 UNRESOLVED; entry depths identical to N3. |
+| Destructors | 18 registrar sites; the 13 targets equal the resolve list (anonymous `.text` targets −0x1a0). |
+| TAILJR | 179 reached sites (new: io_status `0x80072528`, 12 entries; fragment43-parser closure `0x800289a4`). 178 validate with 0 outside targets; `__LeoBootGame3` remains the terminal transfer. Arguments are now produced by `tailjr_args.py`, which reproduces the N3 list byte-for-byte. |
+| IRQ | Same routine audit as v6. |
+
+**Game_Thread INDIRECT sites (20).** The UI reviewer's N3 classification is reproduced on N4 by `indirect20.py`:
+installed targets are derived from the ELF (`sc_native_terminal_install` materialises arm/drain/abort `8f90e304`/
+`8f90e374`/`8f90e410`; `native_call` materialises open/read/write `80072958`/`8007285c`/`8007287c`), each `jalr`'s field is
+taken from its `lw $25,OFF` (4/8/12), all installed, header and destructor targets are seeded as boundaries before
+analysis, and overlay headers are decoded from the raw `j` word. Per-site P+D maximum is **5248** (storage read under
+`read_slot`); hooks run before (arm) or after (drain/abort) fragment62 and are not summed with the renderer. The two
+fragment43 initialiser sites stay OPEN: they reach `process_geo_layout` (`jalr 0x800198a0`). The Game_Thread prefix at
+the fragment43 header target `func_83400020` entry is 496. The UI reviewer's corrected N3 figures (parser entry
+`0x80019810`, 40-byte frame; parser-live 600/712; dispatch-live 792/904 or 752/864 depending on whether the
+validator's 192-byte handler closure includes the parser) are conditional and are not re-derived here.
+
+**IRQ qualification.** The 0-byte exception-path charge holds for the audited routines and the single direct-`jal`
+`__osSetHWIntrRoutine` installer. Computed setter calls or stores into `__osHwIntTable` are not exhaustively excluded.
+
+**Still open after v7.**
+- 25 INDIRECT sites on the frag62 prefix; the two fragment43 parser sites above.
+- Renderer co-occurrence beyond the single-layout bound; static 0x820000/0x898000/stadium layouts are scan-only;
+  synthesised runtime layouts.
+- Full resource fit (the UI reviewer owns the phase ledger).
 
 ## Not claimed
 
