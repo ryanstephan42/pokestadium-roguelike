@@ -621,6 +621,63 @@ Applying these deltas to the validator's corrected arithmetic-only N4 remainder 
   payloads, per-phase occupancy and contiguous spans. These need owner traces or native runs.
 - **Clearance.** Renderer co-occurrence, full fit/contiguity, and native/gate. This is not clearance.
 
+## v9 actor-semantics, payload-admission and fragment31 callback fixes; N6 refresh (static)
+
+All changes are behind `ROGUELIKE`. Vanilla `make` still reports `build/pokestadium-us.z64: OK`.
+
+**Commits since N5 (`0911f55`):**
+
+| Commit | Change |
+|---|---|
+| `e4dc3dc` / `960de92` | The global "acting battler only" effect-dispatch guard was reverted. It changed the vanilla dispatcher semantics: confusion's self-hit deliberately keeps the current index for the phase-14 notification. |
+| `aba9fca` | In both effect-0x1D-gated blocks of `func_843703BC`, the roguelike build calls `func_84374E08` directly. This is table slot 0x1C, which is exact. The current index, the self-hit notification and the scratch mutation are preserved. There is no actor flip and no change to the global dispatcher. `host_tests/test_confusion_effect29.py` runs the 8 extracted fixtures plus edge cases under ASan/UBSan, and the vanilla mutant reproduces the fault or the wrong callback. |
+| `5b40b8a` | Geo cmd7/cmd8 payload pointers are admitted before dispatch (`rl_geo_guard`). |
+| `ae9115b` | `func_81000420` reads `func_800325B4()` only inside `arg0 == 2`, so phase-0 import never reads the actor. The getter is a side-effect-free read. In IDO, `bne a0,2` precedes `jal func_800325B4` (`host_tests/test_phase0_actor_getter.py`). |
+| `648b1f5` | The same callback's index is now `((u32)B0*3 + (u32)counter) & 7`, and the persistent counter is updated as `(counter + 1) & 7`. Normal 0..7 cycling and the positive B0 writer semantics are preserved. Fixtures: wrap at sum `0x80000001`, negative B0, and 6000-call repetition. The vanilla `-fwrapv` mutant reproduces index −7. IDO emits `andi a2,7` for the index and `andi t7,t6,7` for the counter. |
+| `9f8c9fc` | The CI callbacks `81000180/188/190/198` (`func_81002F38/FC0/31C0/33C0`) consume the fragment-8 offset through the fail-closed `rl_ci_frame`. See the checks below. |
+
+`rl_ci_frame` makes three checks:
+- Fragment 8 is resident at the exact relocation binding: `Memmap_GetLoadedFragmentVaddr(&D_862082A0[0]) == 0x862082A0` and `[3] == 0x862082AC`.
+- `palette − texture == 0x23288`.
+- `travel <= (0x23288 − 4·0x800)/4 = 33954`.
+
+Any violation calls `osSyncPrintf` and then `osStopThread`. The maximum legitimate travel is 32760: `func_862015C8` initialises the value positive and the updates are capped at 910. `host_tests/test_ci8_strip.py` covers 12492 fixtures. The writer's value history is not asserted; checked consumption covers it instead.
+
+**N6 candidate:** fixed point v94 = v95.
+
+| Artifact | SHA256 |
+|---|---|
+| ELF | `a5733fd7d05bffbf5d7d7be42318570ace9b7ce3dc53804a2a8843e736698321` |
+| ROM | `27c4e87a6624f23d83db6763b53cda85ac6443f650e2c53faed2765b86481a4d` |
+| Map | `58ccc63bd7277c5d8fba99595582774ae4e462f48d6a32f4e45c88e325f36d73` |
+
+The N5→N6 remaps of the v3, prefix, SC and site lists report no SHIFT. The stage GEN run and an independent fresh-scratch run both end with VERIFY PASSED.
+
+| Artifact | Result on N6 |
+|---|---|
+| `check_story_frames.py` | OK; the frames are identical to N5. |
+| Route totals | Unchanged: story **6272**, probe **6328**, ordinary **6288** of callable 6352. |
+| `renderrec.py` | Handler table `0x8008b674`. CBmax **1144**, terminal 1184. |
+| `cmd8weight.py` | Wmax **5208**. Stadium archive `0x595d50`: Wmax 648. |
+| `cmd8depth` | The maximum root is still `func_81001E24` at 1144. `func_81000420` is 1024, as before. The new CI path through `func_81002F38` reaches a worst of 224, via `rl_ci_fail`/`osStopThread`. |
+| `scenechain.py` / `cmd8domain.py` | 632. 56 operands, 0 anomalies. |
+| `cmd8scan-v2.py` | 622053 candidates, **0 hits** (4 and 8 MiB). |
+| SC closure | `sc_cold_entry` **2832**. |
+| `indirect20.py` | Per-site P+D maximum **5248**. The two fragment43 sites stay OPEN. |
+
+**Lower-pool static key 1:**
+- gPool is at `0x8012dfd0`.
+- The pool is `[0x8012dfe0, 0x803ffff0)`, capacity **2957328** (−96 versus N5).
+- fragment62 still charges 815648, has a raw `FRAGMENT` header, and occupies ROM `[0x310810, 0x39fce0)`.
+- Arithmetic-only remainder: 548096 − 96 = **548000**. This is not a fit claim.
+
+**Still open after v9:**
+- **Deferred render payloads.** Recursive borrowed G_DL with inherited GPU segment state. Segment-14 VTX (image or `0xa0`-generated through `366A4`). The callback 0x140 output bound through `32F94`. The lifetime of the last referencing task for the alternate image/frame generation.
+- **Render-domain payloads.** cmdA/cmd17 payloads. Runtime-synthesised or replaced roots and writers. The remaining 56-domain callback argument schemas.
+- **CI texture extent.** The CI strip is bounded only by the texture-to-palette distance `0x23288`. A texture-owned extent remains qualified.
+- **Effect history.** Whole-turn reachability and canon intent of the confusion and Substitute-break histories.
+- **Carried over from v8.** Stadium-models live 144 and BD9C conditional 592; the two fragment43 sites; lower keys 2–6; co-occurrence, fit/contiguity and native/gate.
+
 ## Not claimed
 
 - After v3, BD04 is bounded as a 0-byte leaf.
