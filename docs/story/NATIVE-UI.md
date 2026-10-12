@@ -286,3 +286,69 @@ visible execution or allocator/service authority.
 Successful close permits reuse of the same small loop/display control object.
 Open resets exit/queue/hold/event-serial bookkeeping for the new lease only
 after refusing an already acquired lifetime; pending retirement cannot rebind.
+
+### Production retirement helper and scheduler exclusion
+
+`sc_native_retirement.[ch]` supplies the production, nonblocking retirement
+mechanism; allocator admission, lease pins, crash-buffer restoration and final
+free remain owner-owned. The owner retains zeroed `ScNativeRetirement`, loop
+and display controls **outside the allocation being freed**. Acquire binds exact
+admitted spans, embedded descriptors and the live native `D_80083CA0.unk_9E0`
+fallback, plus an owner validation callback. Validation precedes descriptor
+reads and repeats after each atomic scheduler snapshot. It must establish exact
+physical lease/descriptor identities, pins, native presentation mode and all
+external-reference lifetimes; pointer shape is not admission.
+
+The `STORY_NATIVE_UI`-only DP seam admits one nonwrapping generation token bound
+to the exact token object, external control and actual Game Thread ID 6. Acquire
+requires DP waiting at its receive boundary (`unk_A8A`), empty request queue and
+consumed prior DONE. DP Thread 5 has priority 40; Game Thread 6 has priority 20,
+so the game observes this boundary after DP blocks on receive. Snapshots disable
+interrupts briefly to copy A8C/A9C/AAC, queues, RSP/RDP task states, native
+fallback, VI current/next and crash framebuffer. No blocking queue operation
+occurs with interrupts disabled. While held, ordinary `func_80001BA8` enqueue
+and `func_80001B7C` DONE consumption explicitly log through `osSyncPrintf` and
+stop the misusing thread; they do not silently drop work or allocate debug text.
+
+Step consumes at most one DONE and enqueues at most one genuine NULL request
+per call through
+the actual worker's `0152C/015A8` native 640x1 RGBA16 repeated-line protocol.
+No direct VI swap, NULL stage-helper invocation or fabricated descriptor is
+used. Pending requests retain the token/control and all owner pins. Inspection
+drains every frame descriptor/work reference without dereferencing foreign
+descriptors, waits for RSP/RDP/task completion, and requires both non-NULL VI
+pointers physically normalize to the admitted native fallback. At least one
+NULL request must complete, even if pointers already look safe. The helper
+checks fresh state on every call, never treating an earlier OK as permanent.
+`sc_native_retirement_check` only refreshes inspection; it does not enqueue,
+consume DONE or free. `sc_dp_quiescent` authenticates the exact token and permits
+an owner's brief outer IRQ fence around a quiescent-only restoration.
+
+The actual NULL worker branch leaves `gCrashScreen.frameBuf` unchanged.
+Once the other references drain, a NULL or lease-aliased crash pointer refuses
+retirement. Owner authority must restore an admitted full-size crash buffer,
+not the one-line VI fallback, and recheck. No crash-buffer authority or storage
+is invented here.
+
+After lower cleanup, `sc_native_retirement_finalize(control, retire_backing)`
+rechecks retirement and invokes the exact owner free callback **while scheduler
+exclusion is still held**. Pending/refusal retains backing. Callback OK records
+the one-way `backing_retired` phase, then releases only the external token:
+no images, spans, fallback, external display or owner validation is touched.
+A post-free token-release failure retains exclusion; retry never replays the
+callback. `sc_native_retirement_release` is an abort without backing free,
+not the final-free API.
+
+The focused `run_story_native_retirement.sh` runner uses the actual helper,
+extracted tracked DP seam/header/producer guards and `0152C/015A8` bodies.
+Synthetic OS/VI outcomes cover delayed DONE/current/next, aliases, references
+returning after OK, crash retention/restoration, invalid native mode, token
+thread/object/generation/exhaustion, guarded producer misuse, read-only checks,
+free refusal and actual descriptor free followed by token-release retries.
+Normal and strict ASan/UBSan modes plus full DP/helper IDO objects are source/HOST
+evidence, not installed native VI, owner callback pairing or combined-fit proof.
+IDO measures token 8, snapshot 92 and external retirement control 156 bytes.
+Helper own frames: acquire/check/step/abort-release/finalize 24/32/40/24/32;
+private identity checks 64, private inspection 48. DP seam own frames:
+acquire/snapshot/enqueue/quiescent/poll/release 32/40/40/32/24/32.
+These are individual function frames, not full call-chain or interrupt peaks.

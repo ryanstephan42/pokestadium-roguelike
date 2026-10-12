@@ -106,29 +106,35 @@ void func_80005EDC(void) {
 #include "../build/story/native-display-review-v1/image-restore-body.inc"
 #include "../src/story/sc_native_display.c"
 
-struct UnkArray4 {
+typedef struct UnkArray4 {
     u8 unk_00, unk_01, unk_02, unk_03;
     uintptr_t unk_04, unk_08;
     unk_D_80068BB0 *unk_0C;
-};
+} UnkArray4;
 static struct {
-    struct { struct { int validCount; } queue; } unk_A20;
+    struct { struct { int validCount; } queue; u16 unk_1C, unk_1E; } unk_A20;
     struct { int validCount; } unk_1C0;
+    OSMesgQueue unk_9EC, unk_A04;
+    int unk_A8A;
     struct UnkArray4 unk_A8C, unk_A9C, unk_AAC;
     unk_D_80068BB0 *unk_9E0;
 } D_80083CA0;
 static int D_80068B70;
 static void *vi_current, *vi_next;
+static int repeat_line;
+static struct { void *frameBuf; } gCrashScreen;
 #define THREAD5_END 0
 void func_800049AC(void *p) { (void)p; }
 void func_80001444(void *p, void *q, int n) { (void)p; (void)q; (void)n; }
 void func_80004CF4(void *p) { (void)p; }
-void func_80004D20(void *p) { (void)p; }
+void func_80004D20(void *p) { (void)p; D_80083CA0.unk_1C0.validCount--; }
 void osViSwapBuffer(void *p) { vi_next = p; }
-void osViRepeatLine(int n) { (void)n; }
+void osViRepeatLine(int n) { repeat_line = n; }
 void osViBlack(unsigned n) { (void)n; }
 void func_80001474(s8 a, s8 b) { (void)a; (void)b; }
-void crash_screen_set_draw_info(u16 *p, unsigned n, unsigned b) { (void)p; (void)n; (void)b; }
+void crash_screen_set_draw_info(u16 *p, unsigned n, unsigned b) {
+    (void)n; (void)b; gCrashScreen.frameBuf = (void *)((uintptr_t)p | 0xA0000000U);
+}
 void profiler_log_thread5_time(int n) { (void)n; }
 #include "../build/story/native-display-review-v1/scheduler-body.inc"
 static void scheduler_submit(unk_D_80068BB0 *image) {

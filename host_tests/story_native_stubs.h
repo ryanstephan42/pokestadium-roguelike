@@ -18,7 +18,7 @@ typedef int s32;
 typedef float f32;
 typedef struct OSContStatus { int unused; } OSContStatus;
 typedef struct OSContPad { int unused; } OSContPad;
-typedef struct OSMesgQueue { int unused; } OSMesgQueue;
+typedef struct OSMesgQueue { int validCount; } OSMesgQueue;
 typedef void *OSMesg;
 typedef struct OSPfs {
     OSMesgQueue *queue;
