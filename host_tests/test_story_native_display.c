@@ -1,4 +1,5 @@
 #include "story_native_stubs.h"
+#include "src/story/sc_native_owner.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ static unk_D_80068BB0 *D_80068BB0;
 static MainPool pool;
 static MainPoolState scopes[4];
 static unsigned depth, allocations, fail_at, used, marks[4], tasks;
+static unsigned workspace_allocations, pixel_allocations;
 static int fail_scope;
 static unsigned closures;
 static void scheduler_submit(unk_D_80068BB0 *image);
@@ -76,6 +78,8 @@ u32 main_pool_pop_state(u32 tag) {
 void *main_pool_alloc(u32 size, s32 side) {
     void *p;
     (void)side;
+    if (size == 0x10000U) workspace_allocations++;
+    if (size >= SC_NATIVE_FRAMEBUFFER_BYTES) pixel_allocations++;
     if (++allocations == fail_at) return NULL;
     assert(used < 16);
     p = malloc(size); assert(p);
@@ -215,7 +219,9 @@ int main(void) {
         assert(!memcmp(&D_800A7428, &workspace, sizeof(workspace)) && gDisplayListHead == borrowed_commands);
     }
     fail_scope = 0; fail_at = 0; allocations = 0;
+    workspace_allocations = pixel_allocations = 0;
     assert(sc_native_display_acquire(&display, spans) == SC_OK && allocations == 4);
+    assert(workspace_allocations == 2 && !pixel_allocations);
     assert(display.screen->unk_18[0] == &display.images[0] &&
            display.screen->unk_18[1] == &display.images[1]);
     assert(display.images[0].img_p == spans[0].pixels && display.images[1].img_p == spans[1].pixels);
