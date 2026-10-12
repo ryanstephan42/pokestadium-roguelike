@@ -4,6 +4,7 @@
 #include "src/19840.h"
 #include "src/memory.h"
 #include "src/dp_intro.h"
+#include "sc_batl_jobs.h"
 
 static struct {
     ScBatImports imports;
@@ -20,6 +21,8 @@ static struct {
     const void *workers[2];
     u32 bound, armed, taken, offset, live, generation, drained;
 } loader;
+static ScFxTable fx;
+static u32 fatal_code;
 
 static int roots_match(int capture) {
     unsigned i;
@@ -244,6 +247,7 @@ int sc_batl_loader_disarm(const void *worker0, const void *worker1) {
     loader.generation = scope.next_generation + 1;
     loader.drained = 0;
     loader.live = 1;
+    sc_fx_reset(&fx);
     return 1;
 }
 
@@ -267,6 +271,103 @@ void *sc_batl_loader_alloc(u32 size) {
     loader.offset += size;
     return span;
 }
+
+/* Loader job completion and effect-record publication (UI actor-history contracts). A story
+ * worker is one recorded by the loader install, or captured by the open scope. */
+
+static int story_worker(const unk_D_86002F58_004_000_010 *worker) {
+    int i;
+    for (i = 0; i < 2; ++i)
+        if ((loader.live && loader.workers[i] == worker) ||
+            (scope.active && scope.imports.workers[i] == worker)) return i;
+    return -1;
+}
+
+void sc_batl_job_fatal(u32 code) {
+    fatal_code = code;
+    osSyncPrintf("story BATL loader job fatal %x\n", code);
+    sc_batl_scope_require(0);
+}
+
+static int model_done(unk_D_86002F58_004_000_010 *worker, sp18_func_800198E4 *job) {
+    ScJobModelView v;
+    const u8 *header;
+    const u32 *roots;
+    u32 i, n, entry;
+    int result;
+    v.result = job->unk_08;
+    v.token = job->unk_0C;
+    v.size = job->unk_14;
+    v.buffer = job->unk_10;
+    v.expected = worker->unk_00 == 3 && worker->unk_02 == 0 ? worker->unk_04[0] : 0;
+    v.live = (u32)worker->unk_24;
+    v.live_model = worker->unk_24 ? worker->unk_24->unk_00 : 0;
+    v.request = job->unk_02 + 1U;
+    v.live_tint = worker->unk_2C.raw;
+    v.job_tint = job->unk_18.raw;
+    result = sc_job_model_result(&v);
+    if (result != SC_JOB_LOADED) return result == SC_JOB_CACHED;
+    header = (const u8 *)job->unk_08;
+    n = header[3];
+    roots = *(u32 *const *)(header + 8);
+    entry = *(const u32 *)(header + 0x14);
+    if (!sc_job_model_header_ok(v.buffer, entry, n, (u32)roots)) return 0;
+    for (i = 0; i < n; ++i) {
+        const u8 *root = (const u8 *)roots[i];
+        if (!sc_job_in(v.buffer, SC_JOB_MODEL_BYTES, (u32)root, SC_JOB_ROOT_NODE_BYTES) ||
+            !sc_job_model_root_ok(v.buffer, (u32)root, root[0],
+                                  root[0] == 0xE ? *(const u32 *)(root + 0x28) : 0, entry)) return 0;
+    }
+    return 1;
+}
+
+int sc_batl_job_admit(unk_D_86002F58_004_000_010 *worker, sp18_func_800198E4 *job) {
+    int w = story_worker(worker);
+    if (w < 0) return 1;
+    if (job->unk_00 == 1) return model_done(worker, job);
+    if (job->unk_00 != 2 ||
+        !sc_job_fx_complete(job->unk_14, job->unk_10, worker->unk_18, (const short *)job->unk_0C,
+                            (const unsigned int *)job->unk_08)) return 0;
+    return !loader.live || sc_fx_complete(&fx, w);
+}
+
+/* 19A7C send: both sides share the request list and the result array. */
+int sc_batl_fx_send(unk_D_86002F58_004_000_010 *worker) {
+    int w = story_worker(worker);
+    if (w < 0 || !loader.live) return 1;
+    return sc_fx_send(&fx, w, (loader.workers[w ^ 1] != 0 &&
+                               (((const unk_D_86002F58_004_000_010 *)loader.workers[w ^ 1])->unk_01 & 2)));
+}
+
+static int fx_pending(void) {
+    int i;
+    for (i = 0; i < 2; ++i)
+        if (loader.workers[i] && (((const unk_D_86002F58_004_000_010 *)loader.workers[i])->unk_01 & 2)) return 1;
+    return 0;
+}
+
+/* C958/C9C0 rewrite the shared request list. */
+int sc_batl_fx_request(void) { return !loader.live || !fx_pending(); }
+
+/* begin: 1 for C86C base records, 2 for CA48 results; end: 0. */
+int sc_batl_fx_publish(int phase) {
+    if (!loader.live) return 1;
+    if (phase == 0) {
+        sc_fx_publish_end(&fx);
+        return 1;
+    }
+    if (phase == 1) {
+        sc_fx_base_begin(&fx);
+        return 1;
+    }
+    return sc_fx_publish_begin(&fx, fx_pending());
+}
+
+void sc_batl_fx_note(s32 id, s32 kind) {
+    if (loader.live) sc_fx_note(&fx, id, kind);
+}
+
+int sc_batl_fx_admit(s32 id, s32 graph) { return !loader.live || sc_fx_admit(&fx, id, graph); }
 
 int sc_batl_scope_map_change(void) {
     return !scope.active && !scope.ticket && !scope.failed;

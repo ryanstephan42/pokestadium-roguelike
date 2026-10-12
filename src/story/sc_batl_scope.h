@@ -31,6 +31,17 @@ int sc_batl_worker_admit(unk_D_86002F58_004_000_010 *);
 int sc_batl_model_admit(unk_D_86002F58_004_000_010 *, u16);
 int sc_batl_scope_drain(const ScBatPermit *);
 u32 Memmap_GetStoryBattleMapGeneration(void);
+/* Loader job completion admission; failure is terminal through sc_batl_job_fatal. */
+struct sp18_func_800198E4;
+int sc_batl_job_admit(unk_D_86002F58_004_000_010 *, struct sp18_func_800198E4 *);
+void sc_batl_job_fatal(u32);
+enum { SC_BATL_JOB_REFUSED = 1, SC_BATL_JOB_UNPUBLISHED = 2, SC_BATL_FX_SEND = 3, SC_BATL_FX_REQUEST = 4,
+       SC_BATL_FX_PUBLISH = 5, SC_BATL_FX_STALE = 6 };
+int sc_batl_fx_send(unk_D_86002F58_004_000_010 *);
+int sc_batl_fx_request(void);
+int sc_batl_fx_publish(int);
+void sc_batl_fx_note(s32, s32);
+int sc_batl_fx_admit(s32, s32);
 
 
 #endif
