@@ -1,12 +1,18 @@
 {
   "schema": 1,
-  "scope": "proposed-controller-inputs-not-native-menu-binding-proof",
+  "scope": "source-derived-direct-menu-policy-not-native-core-calibration-proof",
   "core": "mupen64plus_next",
   "shared_frame_limit": 18000,
   "shared_seconds_limit": 180,
   "controller": 1,
   "press_frames": 1,
   "release_frames": 1,
+  "native_button_masks": {"N64_A": 32768, "N64_B": 16384, "C_UP": 8, "C_RIGHT": 1, "C_DOWN": 4, "C_LEFT": 2},
+  "move_slots": ["C_UP", "C_RIGHT", "C_DOWN", "C_LEFT"],
+  "six_party_slots": ["C_UP", "C_LEFT", "N64_B", "C_RIGHT", "C_DOWN", "N64_A"],
+  "native_acknowledgement": "unlocked actual menu mode1 move/action1 or mode2 party; after edge/release require mode3 and selected native slot; never assume a press succeeded",
+  "core_calibration": "observe this exact core's N64 buttonPressed bits; no guessed RetroPad C aliases; verify all six slot buttons before scenario input",
+  "supervisor": "one dedicated Linux subreaper; deadline starts before worker/core boot; every fresh frontend binds counted step before first frame; reserve frame batches before stepping; carry counters across reloads; pidfd kill/reap detached descendants on every exit",
   "checkpoint_scope": "legal-pure-HOST-prehistory-not-native-wins",
   "entry": [
     {"when": "Menu Select top page", "button": "R"},
@@ -20,7 +26,7 @@
     "win": {
       "frame_limit": 7000,
       "checkpoint": "normal-route.sc01",
-      "battle_policy": "select living Charmander slot 0 and Ember move 52 in move slot 3 through verified battle menu cursors; use other legal damaging moves if it faints; no writes to battle memory",
+      "battle_policy": "select living Charmander story slot 0 via verified native mapping and Ember move 52 in move slot 3 with C_LEFT at unlocked move menu; use other legal damaging moves if it faints; no writes to battle memory",
       "required_outcome": "SC_WIN",
       "earned_policy": "decline learning and skip evolution through explicit UI rows; inspect earned XP before reward; decline recruit/transfer to preserve carry"
     },
@@ -33,22 +39,22 @@
     "loss": {
       "frame_limit": 5000,
       "checkpoint": "normal-route.sc01 in a separate isolated story save",
-      "battle_policy": "use Charmander slot 0 Growl move 45 and non-damaging legal actions for other slots through verified battle menu cursors; no forced outcome",
+      "battle_policy": "use Charmander slot 0 Growl move 45 in move slot 1 with C_RIGHT at unlocked move menu and other legal non-damaging actions; no forced outcome",
       "required_outcome": "SC_LOSS then fresh Continue SC_LOST",
       "required_state": "normal-interrupted.sc01 prebattle party and progression, terminal; no earned mutation"
     },
     "transform": {
       "frame_limit": 4000,
       "checkpoint": "transform-route.sc01",
-      "battle_policy": "select Ditto slot 0 and Transform move 144 through verified battle menu cursors; observe original-species carry on result",
+      "battle_policy": "select Ditto story slot 0 via verified native mapping and Transform move 144 in move slot 0 with C_UP at unlocked move menu; observe original-species carry on result",
       "required_outcome": "actual Transform observed; win or loss recorded explicitly",
       "optional": true
     }
   },
   "pre_execution_blockers": [
     "native ELF binding of HOST-derived layout and all checkpoint/data/source hashes",
-    "reviewed battle-menu cursor/button mapping for select-slot and select-move policies",
-    "reviewed conversion of SC01 source checkpoint into an isolated actual story Pak note",
+    "native core calibration and actual acknowledgement of source-derived button mapping",
+    "native acceptance of converted isolated formatted Pak template",
     "exclusive slot and explicit user execution grant"
   ],
   "failure_policy": "abort and reap exact owned process tree; never retry, force outcomes, enlarge budgets or mark unobserved cases passed"

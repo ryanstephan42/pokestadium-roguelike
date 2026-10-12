@@ -45,14 +45,27 @@ def prepare(output, catalog_c, catalog_json):
     inputs = ROOT / "tools/rltest/story_sequential_inputs.json"
     tracked = SOURCES + [
         "tools/rltest/story_six_fixture.h", "tools/rltest/story_sequential.py",
+        "tools/rltest/story_sequential_pak.py",
+        "tools/rltest/story_sequential_buttons.py",
+        "tools/rltest/story_sequential_supervisor.py",
+        "tools/rltest/bind_story_sequential.py",
+        "src/fragments/62/fragment62_2F74E0.c", "src/fragments/62/fragment62.h",
         "tools/rltest/prepare_story_sequential.py",
         "tools/rltest/story_sequential_inputs.json",
         "src/story/sc_campaign.c", "src/story/sc_campaign_run.c",
+        "src/story/sc_observer_layout.inc",
         "src/story/sc_native_campaign.c", "src/story/sc_native_campaign.h",
         "src/story/sc_campaign_battle.h", "src/story/sc_ui.c", "src/story/sc_ui.h",
         "src/story/sc_combat.h", "src/story/sc_core.h",
         "host_tests/story_campaign_run_seams.h",
     ]
+    tracked = sorted(set(tracked) | {
+        str(path.relative_to(ROOT)) for directory, pattern in
+        (("src/story", "*.[ch]"), ("src/story", "*.inc"), ("src/roguelike", "*.h"))
+        for path in (ROOT / directory).glob(pattern)
+    } | {"include/rl_battle.h", "src/22630.h", "src/29BA0.h",
+         "tools/rltest/frontend.py", "tools/rltest/save_roundtrip.py",
+         "tools/rltest/story_probe.py", "tools/rltest/seal_story_current_six.py"})
     manifest = {
         "schema": 1,
         "scope": "source-HOST-only-not-native-seal-or-execution-authorization",
@@ -63,7 +76,8 @@ def prepare(output, catalog_c, catalog_json):
         "input_sha256": digest(inputs),
         "files": {name: digest(output / name) for name in
                   ("normal-route.sc01", "normal-interrupted.sc01",
-                   "transform-route.sc01", "layout.json")},
+                   "transform-route.sc01", "normal-route.note",
+                   "normal-interrupted.note", "transform-route.note", "layout.json")},
         "source_sha256": {name: digest(ROOT / name) for name in tracked},
         "carry_reload": "runtime-derived win journal; cannot honestly pin its bytes before execution",
         "native_prerequisites": json.loads(inputs.read_text())["pre_execution_blockers"],

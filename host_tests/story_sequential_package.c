@@ -32,6 +32,44 @@ static void write_save(const char *directory, const char *name, const ScState *s
     assert(!fclose(file));
 }
 
+static RlU8 note[SC_SAVE_NOTE_SIZE];
+static int note_open(void *context, unsigned company, RlU32 game,
+                     const RlU8 name[16], const RlU8 extension[4], unsigned size, int create) {
+    (void)context;
+    assert(company == SC_SAVE_COMPANY && game == SC_SAVE_GAME && (create == 0 || create == 1));
+    assert(size == sizeof(note) && !memcmp(name, sc_save_name, 16) &&
+           !memcmp(extension, sc_save_extension, 4));
+    return SC_SAVE_OK;
+}
+static int note_read(void *context, unsigned offset, RlU8 *data, unsigned size) {
+    (void)context; assert(offset + size <= sizeof(note));
+    memcpy(data, note + offset, size); return SC_SAVE_OK;
+}
+static int note_write(void *context, unsigned offset, const RlU8 *data, unsigned size) {
+    (void)context; assert(offset + size <= sizeof(note));
+    memcpy(note + offset, data, size); return SC_SAVE_OK;
+}
+static void write_note(const char *directory, const char *name, const ScState *state,
+                       unsigned interrupted) {
+    ScSaveDevice device = {NULL, note_open, note_read, note_write};
+    ScSnapshot snapshot, decoded;
+    RlU32 generation;
+    char path[1024];
+    FILE *file;
+    assert(strlen(directory) + strlen(name) + 2 < sizeof(path));
+    memset(note, 0, sizeof(note));
+    snapshot.state = *state; snapshot.interrupted = (RlU8)interrupted;
+    assert(sc_storage_store(&device, &sc_catalog, &snapshot, 1) == SC_SAVE_OK);
+    assert(sc_save_decode(&decoded, &sc_catalog, &generation, note, SC_SAVE_SIZE) == SC_SAVE_OK);
+    assert(generation == 0 && decoded.interrupted == interrupted &&
+           !memcmp(&decoded.state, state, sizeof(*state)));
+    assert(sc_storage_load(&device, &sc_catalog, &decoded) == SC_SAVE_OK);
+    assert(decoded.interrupted == interrupted && !memcmp(&decoded.state, state, sizeof(*state)));
+    sprintf(path, "%s/%s", directory, name);
+    file = fopen(path, "wb");
+    assert(file && fwrite(note, 1, sizeof(note), file) == sizeof(note) && !fclose(file));
+}
+
 static void state_proof(const char *name, const ScState *state) {
     unsigned i, j;
     printf("\"%s\":{\"seed\":%lu,\"rng\":%lu,\"party\":[", name,
@@ -61,6 +99,9 @@ int main(int argc, char **argv) {
     write_save(argv[1], "normal-route.sc01", &normal, 0);
     write_save(argv[1], "normal-interrupted.sc01", &normal, 1);
     write_save(argv[1], "transform-route.sc01", &transform, 0);
+    write_note(argv[1], "normal-route.note", &normal, 0);
+    write_note(argv[1], "normal-interrupted.note", &normal, 1);
+    write_note(argv[1], "transform-route.note", &transform, 0);
     printf("{\"schema\":1,\"pointer_size\":4,\"scope\":\"HOST-layout-requires-native-ELF-binding\",");
     printf("\"control\":{");
     FIELD(ScCampaignControl, sequential_request); FIELD(ScCampaignControl, sequential_state);
@@ -94,6 +135,16 @@ int main(int argc, char **argv) {
     FIELD(RlLaunchResult, player); FIELD(RlLaunchResult, player_index);
     FIELD(RlLaunchResult, player_count); FIELD(RlLaunchResult, enemy_count);
     FIELD(RlLaunchResult, outcome); SIZE(RlLaunchResult);
+    printf(",\"mon\":{");
+    FIELD(RlMon, species); FIELD(RlMon, level); FIELD(RlMon, growth);
+    FIELD(RlMon, fainted); FIELD(RlMon, exp); FIELD(RlMon, dvs);
+    FIELD(RlMon, stat_exp); FIELD(RlMon, base_stats); FIELD(RlMon, current_stats);
+    FIELD(RlMon, moves); FIELD(RlMon, pp); FIELD(RlMon, max_pp);
+    FIELD(RlMon, cur_hp); FIELD(RlMon, max_hp); FIELD(RlMon, status);
+    FIELD(RlMon, held_relic); FIELD(RlMon, nickname); SIZE(RlMon);
+    printf(",\"event\":{");
+    FIELD(ScKoEvent, enemy_slot); FIELD(ScKoEvent, participants);
+    FIELD(ScKoEvent, recipients); SIZE(ScKoEvent);
     printf(",\"mon_size\":%lu,\"event_size\":%lu,\"target\":{\"index\":%u,"
            "\"id\":\"PewterGym/TEXT_PEWTERGYM_BROCK\",\"variant\":0},\"checkpoints\":{",
            (unsigned long)sizeof(RlMon), (unsigned long)sizeof(ScKoEvent), target);

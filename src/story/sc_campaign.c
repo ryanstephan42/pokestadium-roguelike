@@ -3,9 +3,26 @@
    pin and the resident controls. Never imports image symbols; enters the image
    only through sc_persist_call*. */
 #include "sc_native_campaign.h"
+#ifdef STORY_NATIVE_PROBE
+#include "sc_campaign_battle.h"
+#endif
 
 static ScCampaignControl control;
 const ScCampaignControl *const gScCampaignObserverControl = &control;
+#ifdef STORY_NATIVE_PROBE
+/* Compiled target layout witnesses, diagnostic only. */
+const RlU32 gScCampaignObserverLayout[] = {
+#define SC_OBSERVER_OFFSET(type, member) ((unsigned long)&(((type *)0)->member))
+#define SC_SIZE(group, type) sizeof(type),
+#define SC_OFFSET(group, type, member) SC_OBSERVER_OFFSET(type, member),
+#define SC_VALUE(group, key, expression) expression,
+#include "sc_observer_layout.inc"
+#undef SC_SIZE
+#undef SC_OFFSET
+#undef SC_VALUE
+#undef SC_OBSERVER_OFFSET
+};
+#endif
 static const ScNativeOperation zero_operation;
 static const ScNativeTerminal zero_terminal;
 static const ScNativeTerminalBinding zero_binding;
