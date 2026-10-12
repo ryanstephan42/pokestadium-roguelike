@@ -141,6 +141,14 @@ previously requested EnableExpansionPak=True, but offline inspection of the
 pinned core has no such key. The worker now uses the same core default as
 normal play-run, with actual ELF-bound osMemSize8MiB still mandatory for story.
 It does not guess a replacement from the "Disable Expansion Pak" label.
+During real negotiation, the worker captures registered legacy SET_VARIABLES
+and V1/V2 option definitions (including US international definitions). It
+refuses any explicitly requested or active Mupen option absent from those
+definitions, and any requested value outside registered choices. A registered
+extra-memory-disable option is set only to its unique registered False/off/
+disabled value; ambiguity refuses. Negotiated options and the selected extra
+memory value are persisted before frame zero. Story also refuses unless the
+ELF-bound actual osMemSize is8MiB from frame120 onward, independent of options.
 Save type is ROM/core-selected, not overridden.
 Both configure joypad device1 at ports0/1; story additionally calibrates right
 stick/controller bits and uses preboot private note setup. Historical exact

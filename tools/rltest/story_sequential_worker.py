@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 
-from tools.rltest.frontend import Frontend, HarnessError, _png
+from tools.rltest.frontend import Frontend, HarnessError, Variable, _png
 from tools.rltest.save_roundtrip import find_pak, save_ram
 from tools.rltest.story_probe import decode_mon, story_owned_changes
 from tools.rltest.story_sequential import ACTIVE, BATTLE, SequentialLedger, capture, field, require
@@ -28,6 +28,31 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCENARIOS = ("win", "carry-reload", "loss-terminal-reload", "transform")
 EXTRA_MASKS = dict(UP=0x800, DOWN=0x400, R=0x10)
 STORY_STATE = 0x32
+
+
+class OptionValue(ctypes.Structure):
+    _fields_ = [("value", ctypes.c_char_p), ("label", ctypes.c_char_p)]
+
+
+class OptionV1(ctypes.Structure):
+    _fields_ = [("key", ctypes.c_char_p), ("desc", ctypes.c_char_p),
+                ("info", ctypes.c_char_p), ("values", OptionValue * 128),
+                ("default", ctypes.c_char_p)]
+
+
+class OptionV2(ctypes.Structure):
+    _fields_ = [("key", ctypes.c_char_p), ("desc", ctypes.c_char_p),
+                ("desc_categorized", ctypes.c_char_p), ("info", ctypes.c_char_p),
+                ("info_categorized", ctypes.c_char_p), ("category_key", ctypes.c_char_p),
+                ("values", OptionValue * 128), ("default", ctypes.c_char_p)]
+
+
+class OptionsV2(ctypes.Structure):
+    _fields_ = [("categories", ctypes.c_void_p), ("definitions", ctypes.POINTER(OptionV2))]
+
+
+class IntlOptions(ctypes.Structure):
+    _fields_ = [("us", ctypes.c_void_p), ("local", ctypes.c_void_p)]
 
 
 def atomic_bytes(path, data):
@@ -107,13 +132,87 @@ class Progress:
 class LeasedFrontend(Frontend):
     """Frontend construction itself runs frame one; lease it before dispatch."""
 
-    def __init__(self, *args, frame_lease, prepare_save, progress=None, boot_symbols=None, **kwargs):
+    def __init__(self, *args, frame_lease, prepare_save, progress=None, boot_symbols=None,
+                 require_expansion=False, **kwargs):
         self.frame_lease = frame_lease
         self.prepare_save = prepare_save
         self.progress = progress
         self.boot_symbols = boot_symbols or {}
+        self.require_expansion = require_expansion
+        self.registered_options = {}
+        self.expansion_choice = None
+        self.requested_options = set((kwargs.get("options") or {}).keys())
         self._sc_budget_bound = True
         super().__init__(*args, **kwargs)
+
+    def register_option(self, key, values, default, labels, description):
+        require(values and default in values, f"Invalid registered core option: {key}")
+        self.registered_options[key] = dict(values=values, default=default,
+                                            labels=labels, description=description)
+        if "disable" in (key + " " + description).lower() and (
+                "extra" in key.lower() or "expansion pak" in description.lower()):
+            enabled = [value for value, label in zip(values, labels)
+                       if value.lower() in ("false", "disabled", "off") or
+                       label.lower() in ("false", "disabled", "off")]
+            require(len(enabled) == 1, "Ambiguous registered extra-memory enable value")
+            self.options[key] = enabled[0]
+            self.expansion_choice = dict(key=key, value=enabled[0])
+        self.options.setdefault(key, default)
+        require(self.options[key] in values, f"Unsupported requested core value: {key}")
+
+    def _environment(self, command, data):
+        if command not in (16, 53, 54, 67, 68):
+            return super()._environment(command, data)
+        try:
+            if command == 16:
+                definitions = ctypes.cast(data, ctypes.POINTER(Variable))
+                for i in range(1024):
+                    entry = definitions[i]
+                    if not entry.key:
+                        break
+                    description, choices = entry.value.decode().split(";", 1)
+                    values = choices.strip().split("|")
+                    self.register_option(entry.key.decode(), values, values[0], values, description)
+                else:
+                    raise HarnessError("Too many legacy option definitions")
+                return super()._environment(command, data)
+            pointer = data
+            if command in (54, 68):
+                pointer = ctypes.cast(data, ctypes.POINTER(IntlOptions)).contents.us
+            if command in (67, 68):
+                definitions = ctypes.cast(pointer, ctypes.POINTER(OptionsV2)).contents.definitions
+            else:
+                definitions = ctypes.cast(pointer, ctypes.POINTER(OptionV1))
+            for i in range(1024):
+                entry = definitions[i]
+                if not entry.key:
+                    break
+                values, labels = [], []
+                for item in entry.values:
+                    if not item.value:
+                        break
+                    values.append(item.value.decode())
+                    labels.append((item.label or item.value).decode())
+                self.register_option(entry.key.decode(), values,
+                                     (entry.default or entry.values[0].value).decode(),
+                                     labels, (entry.desc or b"").decode())
+            else:
+                raise HarnessError("Too many core option definitions")
+            return True
+        except (HarnessError, ValueError) as exc:
+            self.callback_error = exc
+            return False
+
+    def verify_options(self):
+        requested = self.requested_options | {key for key in self.options
+                                             if key.startswith("mupen64plus-")}
+        require(requested <= self.registered_options.keys(),
+                f"Unregistered requested core keys: {requested - self.registered_options.keys()}")
+        if self.progress:
+            self.progress.mark("core-options-negotiated", negotiated_options={
+                key: self.options[key] for key in self.registered_options},
+                expansion_choice=self.expansion_choice,
+                expansion_admission="actual bound osMemSize must equal 8 MiB")
 
     def resolve(self, address):
         if isinstance(address, str) and address in self.boot_symbols:
@@ -122,6 +221,7 @@ class LeasedFrontend(Frontend):
 
     def step(self, frames=1):
         if self.frame == 0:
+            self.verify_options()
             if self.progress:
                 self.progress.mark("preboot-save-setup")
             self.prepare_save(self)
@@ -133,6 +233,9 @@ class LeasedFrontend(Frontend):
             if self.progress:
                 self.progress.completed = self.frame
                 self.progress.persist(self)
+            if self.require_expansion and self.frame >= 120:
+                require(self.read_u32("osMemSize") == 0x800000,
+                        "Boot did not establish required 8 MiB Expansion Pak")
 
 
 def digest(data):
@@ -629,6 +732,7 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
                   options={"mupen64plus-pak1": "memory"},
                   timeout=180, prepare_save=prepare_save, progress=progress,
                   boot_symbols=binding.get("boot_symbols"),
+                  require_expansion=True,
                   frame_lease=lambda n: reserve_frames(
                       stream_in, stream_out, name, n))
     require(getattr(emu, "_sc_budget_bound", False) and emu.frame == 1,

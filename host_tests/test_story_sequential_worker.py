@@ -26,7 +26,7 @@ class FakeCore:
     """Real save-buffer and frame leases; no ROM is loaded or executed."""
 
     def __init__(self, core, rom, map_path, out, *, options, timeout, frame_lease, prepare_save,
-                 progress=None, boot_symbols=None):
+                 progress=None, boot_symbols=None, require_expansion=False):
         self.options, self.frame_lease = options, frame_lease
         self.progress = progress
         self.frame = 0
@@ -271,7 +271,8 @@ class SequentialWorkerTests(unittest.TestCase):
             events.append(("core-run", n))
             emu.frame += n
 
-        with patch.object(Frontend, "__init__", init), patch.object(Frontend, "step", step):
+        with patch.object(Frontend, "__init__", init), patch.object(Frontend, "step", step), \
+             patch.object(worker.LeasedFrontend, "verify_options"):
             emu = worker.LeasedFrontend(frame_lease=lambda n: events.append(("lease", n)),
                                        prepare_save=lambda emu: events.append(("setup", emu.frame)))
             self.assertEqual(events, [("setup", 0), ("lease", 1), ("core-run", 1)])
@@ -282,6 +283,23 @@ class SequentialWorkerTests(unittest.TestCase):
             with self.assertRaises(HarnessError):
                 worker.LeasedFrontend(frame_lease=refuse, prepare_save=lambda emu: None)
             self.assertEqual(len(events), 3)
+
+    def test_registered_extra_memory_value_and_unknown_key_refusal(self):
+        emu = worker.LeasedFrontend.__new__(worker.LeasedFrontend)
+        emu.options = {"mupen64plus-pak1": "memory"}
+        emu.registered_options = {}
+        emu.requested_options = {"mupen64plus-pak1"}
+        emu.progress = None
+        emu.expansion_choice = None
+        emu.register_option("mupen64plus-pak1", ["none", "memory"], "none",
+                            ["None", "Memory"], "Controller Pak")
+        emu.register_option("mupen64plus-DisableExtraMem", ["True", "False"], "True",
+                            ["Enabled", "Disabled"], "Disable Expansion Pak")
+        self.assertEqual(emu.options["mupen64plus-DisableExtraMem"], "False")
+        emu.verify_options()
+        emu.requested_options.add("invented")
+        with self.assertRaisesRegex(HarnessError, "Unregistered"):
+            emu.verify_options()
 
     def test_reload_and_postboot_save_writes_refused(self):
         for frame, reload in ((0, True), (1, False)):
