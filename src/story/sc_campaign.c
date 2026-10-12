@@ -78,6 +78,7 @@ int sc_campaign_open(ScMaArena *arena, RlU32 seed) {
     if (!sc_persist_pin(SC_PERSIST_PIN_LIFETIME)) return fail(SC_INVALID);
     phase = SC_CAMPAIGN_ACTIVE;
     if (!enter(SC_CAMPAIGN_OPEN, &status)) return fail(SC_INVALID);
+    if (phase == SC_CAMPAIGN_FAILED) return status;
     if (status != SC_OK) {
         if (!sc_persist_unpublish()) return fail(status);
         phase = SC_CAMPAIGN_CLOSING;

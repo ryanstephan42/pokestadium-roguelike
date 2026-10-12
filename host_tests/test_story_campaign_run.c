@@ -269,7 +269,9 @@ static void refused_postbattle_pak_end(void) {
     pak_end_status = SC_SAVE_IO;
     assert(sc_campaign_open(&arena, 77) == SC_INVALID);
     assert(!pak_session && reopened == 1);
-    assert(ctl()->sequential_active && ctl()->sequential_result_ready);
+    assert(!ctl()->sequential_active && !ctl()->sequential_result_ready);
+    assert(sc_campaign_phase() == SC_CAMPAIGN_FAILED && mapped && shell_live);
+    assert(sc_campaign_open(&arena, 77) == SC_INVALID && reopened == 1);
 }
 static void close_pending(void) {
     start(); state(); want_launch = 1; state(); state();
@@ -316,7 +318,7 @@ int main(void) {
     run(full_cycle, "close/unmap -> isolated BATL allocation -> capture -> release/reopen x2");
     run(loss_cycle, "loss result and ordered ledger handed to postbattle UI without mutation");
     run(refused_postbattle_pak, "postbattle Pak refusal retains unconsumed result");
-    run(refused_postbattle_pak_end, "postbattle Pak release refusal retains unconsumed result");
+    run(refused_postbattle_pak_end, "applied result cannot replay after Pak release refusal");
     run(close_pending, "retirement/quiescence pending blocks battle allocation and launch");
     run(refused_loader, "refused BATL binding fail-stops without re-entry");
     run(pinned_loader, "pinned BATL storage prevents reopening");

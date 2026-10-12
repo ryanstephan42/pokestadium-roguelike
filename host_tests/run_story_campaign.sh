@@ -11,7 +11,7 @@ sources=(host_tests/test_story_campaign.c src/story/sc_campaign.c src/story/sc_n
 flags=(-DSTORY_NATIVE_UI -DSTORY_NATIVE_PROBE -DSTORY_SERVICE_CANDIDATE -DROGUELIKE
     -std=gnu89
     -Wall -Wextra -Werror -Wno-endif-labels -I. -iquote include -iquote src
-    -include host_tests/story_campaign_stubs.h)
+    -include host_tests/story_campaign_run_seams.h)
 for mode in host san; do
     extra=(-O2)
     if [[ "$mode" == san ]]; then

@@ -28,6 +28,11 @@ int sc_native_pak_end(ScNativePak *pak) {
 }
 
 #ifndef SC_CAMPAIGN_RUN_TEST
+int sc_ui_driver_detach_battle(ScUiDriver *driver) {
+    (void)driver;
+    assert(!"installer-only fixture must not detach a sequential battle");
+    return SC_INVALID;
+}
 int sc_ui_resume_postbattle(ScUi *ui, const ScUiBattleRequest *request,
                             const ScState *state, const RlLaunchResult *result,
                             const ScKoLedger *ledger, unsigned outcome) {

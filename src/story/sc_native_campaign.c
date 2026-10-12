@@ -115,14 +115,16 @@ int sc_campaign_dispatch(unsigned command) {
         if (c->sequential_result_ready) {
             status = sc_native_pak_begin(loop->backing.pak);
             if (status != SC_SAVE_OK) return SC_UNAVAILABLE;
+            c->sequential_result_ready = 0;
+            c->sequential_active = 0;
             status = sc_ui_resume_postbattle(loop->backing.ui, &c->sequential_request,
                 &c->sequential_state, &c->sequential_result, &c->sequential_ledger,
                 c->sequential_outcome);
             ended = sc_native_pak_end(loop->backing.pak);
-            if (ended != SC_SAVE_OK) return SC_INVALID;
-            if (status != SC_OK && status != SC_PENDING) return status;
-            c->sequential_result_ready = 0;
-            c->sequential_active = 0;
+            if (ended != SC_SAVE_OK || (status != SC_OK && status != SC_PENDING)) {
+                sc_campaign_fail_stop();
+                return ended != SC_SAVE_OK ? SC_INVALID : status;
+            }
         }
         return SC_OK;
     case SC_CAMPAIGN_STEP:
