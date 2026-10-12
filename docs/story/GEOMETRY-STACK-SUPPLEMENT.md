@@ -40,12 +40,34 @@ All of these are identical in C and O, with addresses shifted.
 | `func_8432C1E0` #0 / #1 | `D_84388280` (150/23) / `D_843884D8` (100/8) | fragment62_347330.c:35/60 (C 84389180 / 843893d8) |
 | `func_8432CEF0` (`D_84390300[i]`) | `D_84388668` ∪ `D_843888C0` | the only non-NULL writer is `func_8432C194` (:4645), called only from `func_8432C1E0` (:4681/:4698) |
 | `func_8432CF74` (`D_84390320[i]`) | `D_84388A50` ∪ `D_84388CA8` | same writer (:4646) |
-| `func_8140C468` (`unk_04`), `func_8140C530` (`unk_08`, `unk_04.func`), `func_8432E184` (`unk_08` over 300 `D_8140E720` records) | effect-callback domain: 189 functions in C and O | every function named outside a call in fragment34/62 C source whose first parameter is `unk_D_8140E720*` (`srcdomain.py`); no casts into these types; fragment62 asm-only bodies have no `%hi`/`%lo(func_…)` materializations |
+| `func_8140C468` (`unk_04`), `func_8140C530` (`unk_08`, `unk_04.func`), `func_8432E184` (`unk_08` over 300 `D_8140E720` records) | effect-callback domain: **250** functions in C and O (v2; see below) | every function named outside a call in fragment34/62 C source whose first parameter is `unk_D_8140E720*` (`srcdomain.py`); all 250 resolve to F symbols in both ELFs; the only `#include`d `.c` (`src/story/sc_ai_native.c`) does not use the type; no casts into these types; fragment62 asm-only bodies have no `%hi`/`%lo(func_…)` materializations |
 | `func_8003260C` #0 | `func_810007A8` (fragment31, depth 144) | `Util_ConvertAddrToVirtAddr(func_810007A8)`; taken only if `unk_01A < 0x98` (32D10.c:147) |
 | **`func_8001BD04` #0 (UNRESOLVED)** | entry of a relocated Pokémon model fragment from the 0x920000 archive | `func_80019328` stores the `Fragment*` in node `unk_28` (19840.c:212); the code is asset bytes, not ELF |
 | **`func_80015220` `unk_10` (UNRESOLVED)** | GraphNode callback domain, not enumerated | 12D80.c:1035; recurses over `unk_0C` (:1071), so depth = scene-graph depth |
 
 TAILJR: C 61 / O 60 reached sites, all matching validated switch tables (0 unverified).
+
+## v2 correction: effect-callback domain (189 → 250)
+
+`srcdomain.py` v1 stripped comments with `re.sub(r'//.*|/\*.*?\*/', '', s, flags=re.S)`. Under `re.S` the
+first `//` consumed the rest of each file, so only definitions and address-taken uses before the first line
+comment were seen. The validator caught this.
+
+v2 uses a C-aware stripper:
+- string and char literals are preserved;
+- `//` runs to end of line;
+- `/* */` blocks are replaced, keeping their newlines.
+
+It yields 250 typed targets, which is the 189 from v1 plus 61 added, none removed. The number of
+address-taken names undefined in source drops from 3 to 0.
+
+With `func_8003260C` resolved in every run:
+- largest member depth: 312 for both the v1 and v2 domains;
+- largest among the 61 added members: 296.
+
+The unsent figure of 248 came from a run without the resolve file. Every root depth below is unchanged
+under v2, and so are the UNRESOLVED, CROSS, MISSING, and recursion counts. The reached switch dispatches
+(TAILJR) are still C 61 / O 60, with 0 unverified.
 
 ## Results (worst static depth in bytes, root frame included)
 
