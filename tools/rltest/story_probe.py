@@ -115,6 +115,9 @@ CURRENT_STORY_ABI = {
     "gScProbeMonSize": 68, "gScProbePartyOffset": 168,
     "gScProbePartyCountOffset": 21, "gScProbeInventoryOffset": 644,
     "gScProbeSpentOffset": 645,
+    "gScProbeSnapshotStateOffset": 0, "gScProbeSnapshotInterruptedOffset": 648,
+    "gScProbeSnapshotWireVersionOffset": 649, "gScProbeSaveVersion": 2,
+    "gScProbeSaveSize": 736,
 }
 CURRENT_SIX_ABI = {
     "gScSixPrecommitSize": 648, "gScSixCombatSize": 732,
@@ -151,11 +154,29 @@ def read_service_lifecycle(emu):
 
 
 def verify_current_six_package(package, rom, map_path):
+    from tools.rltest.seal_story_current_six import (
+        FILES, MANIFEST_FIELDS, source_paths, verify_link, workspace_path,
+    )
     package = Path(package)
     manifest_path = package / "manifest.json"
     require(manifest_path.is_file(), "Six natural requires a sealed current Moon fixture/codec package")
-    manifest = json.loads(manifest_path.read_text())
-    require(manifest["abi"] == {**CURRENT_STORY_ABI, **CURRENT_SIX_ABI} and
+    try:
+        data = manifest_path.read_bytes()
+        require(hashlib.sha256(data).hexdigest() ==
+                (package / "manifest.sha256").read_text().strip(), "Six manifest seal mismatch")
+        manifest = json.loads(data)
+        require(isinstance(manifest, dict) and set(manifest) == MANIFEST_FIELDS,
+                "Six package manifest field set mismatch")
+        return _verify_current_six_manifest(package, rom, map_path, manifest, FILES,
+                                            source_paths, verify_link, workspace_path)
+    except (OSError, ValueError, KeyError, TypeError, struct.error) as error:
+        raise HarnessError(f"Invalid current six package: {error}") from error
+
+
+def _verify_current_six_manifest(package, rom, map_path, manifest, files,
+                                 source_paths, verify_link, workspace_path):
+    require(type(manifest["schema"]) is int and manifest["schema"] == 1 and
+            manifest["abi"] == {**CURRENT_STORY_ABI, **CURRENT_SIX_ABI} and
             manifest["catalog_identity"] ==
             "cc2fc13257f1e82205661a8fb282cddc0257f3f8a261a48a2650e29c45a4ee83" and
             manifest["base_identity"] ==
@@ -166,17 +187,33 @@ def verify_current_six_package(package, rom, map_path):
                       (Path(map_path).parent / "story/data.json", "catalog_data_sha256")):
         require(hashlib.sha256(path.read_bytes()).hexdigest() == manifest[key],
                 f"Six package candidate binding mismatch: {key}")
-    for name in ("codec", "sc_data.c", "data.json", "checkpoint.sc01", "host-proof.jsonl"):
+    require(set(manifest["files"]) == set(files), "Six package artifact set mismatch")
+    for name in files:
+        require((package / name).resolve().is_relative_to(package.resolve()),
+                "Six package artifact outside package")
         require(hashlib.sha256((package / name).read_bytes()).hexdigest() ==
                 manifest["files"][name], f"Six package file hash mismatch: {name}")
     require(manifest["files"]["sc_data.c"] == manifest["catalog_source_sha256"] and
             manifest["files"]["data.json"] == manifest["catalog_data_sha256"] and
-            manifest["sources"], "Six package catalog/source binding missing")
+            set(manifest["sources"]) == set(source_paths()),
+            "Six package catalog/source binding missing")
     for name, digest in manifest["sources"].items():
         source = (ROOT / name).resolve()
         require(source.is_relative_to(ROOT.resolve()), "Six package source outside workspace")
         require(hashlib.sha256(source.read_bytes()).hexdigest() == digest,
                 f"Six package source hash mismatch: {name}")
+    candidates = {}
+    for prefix in ("elf", "catalog_object"):
+        path = ROOT / manifest[prefix + "_path"]
+        require(workspace_path(path) == manifest[prefix + "_path"] and
+                path.resolve().is_relative_to(Path(map_path).parent.resolve()),
+                f"Six {prefix} outside candidate build")
+        require(hashlib.sha256(path.read_bytes()).hexdigest() == manifest[prefix + "_sha256"],
+                f"Six candidate {prefix} hash mismatch")
+        candidates[prefix] = path
+    require(manifest["files"]["sc_data.o"] == manifest["catalog_object_sha256"],
+            "Six catalog object/package binding mismatch")
+    verify_link(candidates["elf"], candidates["catalog_object"], rom, map_path)
     return manifest
 
 

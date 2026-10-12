@@ -61,3 +61,48 @@ playable campaign acceptance yet**. Non-Moon shop stones and trade evolution
 remain unavailable under excluded shops/no actual exchange; no synthetic
 permission toggles are exposed. These integration tasks stay with their owners,
 not duplicated by host test battle logic.
+
+## Current six-party harness readiness (source/HOST only)
+
+The current harness requires compiled 648-byte state, 652-byte snapshot and
+648-byte precommit metadata, snapshot state/interrupted/wire offsets 0/648/649,
+save version/size 2/736, the reviewed Moon catalog and v2 codec. Historical
+644-byte/v1 evidence and its separate reload validator are not rewritten or
+accepted as current proof. Combat/event/terminal/bridge/launcher storage remains
+732/416/696/736/828 bytes. Shared combat budget remains 18,000 frames, excluding
+only one verified 60-frame hold per unique learning generation; the 180-second
+watchdog remains unchanged.
+
+After a same-candidate guarded link, prepare the required package without
+starting an emulator:
+
+```sh
+TMPDIR="$PWD/build/story/tmp" python3 -m tools.rltest.seal_story_current_six \
+  --rom BUILD/pokestadium-rl.z64 --map BUILD/pokestadium-rl.map \
+  --elf BUILD/pokestadium-rl.elf --catalog-object BUILD/story/sc_data.o
+```
+
+`BUILD/story/current-six` must not already exist. The sealer reads actual
+ELF32/MSB/MIPS constants, checks map addresses and corresponding ROM load
+bytes, reconstructs the complete catalog `.data`/`.rodata` from its object
+(supported `R_MIPS_32` relocations only), then compares both linked ELF and ROM.
+It generates fresh audited Moon data, real HOST six-party checkpoint/proof,
+current codec and malformed-input refusal fixtures; an independent IDO compile
+of that fresh catalog must reconstruct the same linked bytes. Unsupported
+packing, missing metadata, stale catalogs or mutated candidates fail closed.
+Header/LEO postprocessing is outside these catalog/constant checks.
+
+The manifest seals the ROM/map/ELF, candidate catalog source/data/object,
+codec/checkpoint/proof and explicit source set. The consumer checks the seal,
+exact artifact/source set, workspace/build bounds, every hash and actual linked
+catalog/ABI binding before starting the harness. Source or candidate changes
+require a fresh package; neither old evidence nor an existing package is
+overwritten. These checks establish current harness readiness, **not** allocator
+rights, full memory fit, service retirement safety or native battle completion.
+
+`python3 -m unittest host_tests.test_story_current_six_manifest
+host_tests.test_story_probe` covers synthetic ELF relocation/load fixtures and
+mutation refusals alongside existing ABI, full-party and budget tests.
+`bash host_tests/run_story_current_reload.sh FRESH_OUTPUT` checks genuine current
+HOST codec/648-byte terminal/precommit fixtures in normal and sanitizer modes.
+The synthetic ELF fixtures are explicitly not a production ROM or native proof.
