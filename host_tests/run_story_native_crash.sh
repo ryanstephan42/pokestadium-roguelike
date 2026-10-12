@@ -20,7 +20,7 @@ for mode in host san; do
     if [[ "$mode" == san ]]; then
         extra=(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
     fi
-    gcc -DSTORY_NATIVE_UI -std=gnu89 -O2 -Wall -Wextra -Werror \
+    gcc -DSTORY_NATIVE_UI -DSC_NATIVE_CRASH_HOST -std=gnu89 -O2 -Wall -Wextra -Werror \
         -Wno-endif-labels -I. -I"$out" -iquote include \
         -include host_tests/story_native_crash_stubs.h "${extra[@]}" \
         src/story/sc_native_crash.c host_tests/test_story_native_crash.c \
@@ -33,7 +33,7 @@ for mode in host san; do
     if [[ "$mode" == san ]]; then
         extra=(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
     fi
-    gcc -DSTORY_NATIVE_UI -DROGUELIKE -std=gnu89 -O2 -Wall -Wextra -Werror \
+    gcc -DSTORY_NATIVE_UI -DSC_NATIVE_CRASH_HOST -DROGUELIKE -std=gnu89 -O2 -Wall -Wextra -Werror \
         -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-int-conversion \
         -Wno-unused-variable -Wno-endif-labels -I. -iquote include -iquote src \
         -include host_tests/story_native_stubs.h "${extra[@]}" \

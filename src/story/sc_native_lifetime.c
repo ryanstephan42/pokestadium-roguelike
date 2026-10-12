@@ -2,6 +2,9 @@
 #include "sc_native_lifetime.h"
 #include "src/util.h"
 #include "src/crash_screen.h"
+#ifndef SC_NATIVE_MEMORY_HOST
+#include <PR/os_internal_reg.h>
+#endif
 
 extern UnkStruct80083CA0_2 D_80083CA0;
 

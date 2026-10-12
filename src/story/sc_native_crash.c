@@ -1,6 +1,9 @@
 #ifdef STORY_NATIVE_UI
 #include "sc_native_crash.h"
 #include "src/crash_screen.h"
+#ifndef SC_NATIVE_CRASH_HOST
+#include <PR/os_internal_reg.h>
+#endif
 
 #define SC_CRASH_FRAME ((u16 *)0xa07da800U)
 

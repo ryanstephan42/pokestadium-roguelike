@@ -9,7 +9,7 @@ for mode in host san; do
     if [[ "$mode" == san ]]; then
         extra=(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
     fi
-    gcc -m32 -DSTORY_NATIVE_UI -DROGUELIKE -DSC_NATIVE_MEMORY_HOST \
+    gcc -m32 -DSTORY_NATIVE_UI -DROGUELIKE -DSC_NATIVE_MEMORY_HOST -DSC_NATIVE_CRASH_HOST \
         -std=gnu89 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections \
         -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-int-conversion \
         -Wno-unused-variable -Wno-endif-labels -I. -iquote include -iquote src \
