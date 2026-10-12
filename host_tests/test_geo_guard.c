@@ -178,6 +178,14 @@ int main(void) {
         CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
         *(short*)(c + 4) = 0;
         CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        /* palette array endpoint: two 12-byte descriptors must end at or before hi */
+        *(short*)(c + 4) = 2;
+        img[3] = hi - 24;
+        CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[3] = hi - 20;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[3] = hi - 12;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
         *(short*)(c + 4) = 1;
         img[3] = lo + 0x200;
         img[4] = 0;
