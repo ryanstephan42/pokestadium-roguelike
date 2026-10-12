@@ -6,6 +6,8 @@
 
 static unsigned checks, retire_calls;
 static int retirement = SC_PENDING;
+static ScNativeMemory *tamper_memory;
+static ScMaHandle tamper_allocation;
 #define CHECK(c) do { ++checks; if (!(c)) { \
     fprintf(stderr, "%d: %s\n", __LINE__, #c); exit(1); } } while (0)
 
@@ -19,6 +21,7 @@ void osSyncPrintf(const char *format, ...) {
 static int retired(void *context, const ScNativeCampaignBacking *backing) {
     CHECK(context == &retirement && backing->lease_id);
     ++retire_calls;
+    if (tamper_memory) tamper_memory->allocation = tamper_allocation;
     return retirement;
 }
 
@@ -28,7 +31,7 @@ int main(void) {
     ScNativeLoop loop = {0};
     ScNativeDisplay display = {0};
     ScNativeCampaignBacking backing, stale, wrong;
-    ScMaHandle service, filler;
+    ScMaHandle service, filler, allocation;
     ScMaLease service_lease = {{0, 0}, 0, 0};
     ScCatalog catalog;
     RlU8 *buffer = malloc(0x3da7e0U);
@@ -60,6 +63,15 @@ int main(void) {
     CHECK(sc_native_memory_validate(&memory, &wrong) == SC_INVALID);
     wrong = backing; --wrong.framebuffer[1].bytes;
     CHECK(sc_native_memory_validate(&memory, &wrong) == SC_INVALID);
+    allocation = memory.allocation;
+    memory.allocation = service;
+    CHECK(sc_native_memory_validate(&memory, &backing) == SC_INVALID);
+    CHECK(sc_native_memory_release(&memory, &backing, retired, &retirement) == SC_INVALID);
+    CHECK(!retire_calls && service_lease.ticket && memory.lease.ticket);
+    memory.allocation = allocation;
+    ++memory.allocation.generation;
+    CHECK(sc_native_memory_validate(&memory, &backing) == SC_INVALID);
+    memory.allocation = allocation;
     tickets = arena.next_ticket;
     CHECK(sc_native_memory_acquire(&memory, &arena, &catalog, 42, &loop, &display, &wrong) == SC_INVALID);
     for (i = 0; i < sizeof(wrong); i++) CHECK(((RlU8 *)&wrong)[i] == 0);
@@ -77,6 +89,13 @@ int main(void) {
     CHECK(sc_native_memory_release(&memory, &backing, retired, &retirement) == SC_PENDING);
     loop.exited = 1;
     retirement = SC_OK;
+    tamper_memory = &memory;
+    tamper_allocation = service;
+    CHECK(sc_native_memory_release(&memory, &backing, retired, &retirement) == SC_INVALID);
+    CHECK(memory.live && memory.lease.ticket);
+    CHECK(sc_ma_map(&arena, &service_lease, 0, 4, SC_MA_READ));
+    memory.allocation = allocation;
+    tamper_memory = NULL;
     stale = backing;
     CHECK(sc_native_memory_release(&memory, &backing, retired, &retirement) == SC_OK);
     CHECK(!memory.live && !memory.storage);

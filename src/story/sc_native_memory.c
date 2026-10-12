@@ -100,6 +100,8 @@ int sc_native_memory_validate(ScNativeMemory *memory,
         !memory->arena || !memory->catalog || !memory->storage ||
         !memory->loop || !memory->display ||
         memory->lease.kind != 3 || !memory->lease.ticket ||
+        memory->allocation.slot != memory->lease.handle.slot ||
+        memory->allocation.generation != memory->lease.handle.generation ||
         memory->bytes != controls() + 2U * SC_NATIVE_FRAMEBUFFER_BYTES + 64U ||
         memory->offset > 63U)
         return SC_INVALID;
