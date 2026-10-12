@@ -26,7 +26,7 @@ class FakeCore:
     """Real save-buffer and frame leases; no ROM is loaded or executed."""
 
     def __init__(self, core, rom, map_path, out, *, options, timeout, frame_lease, prepare_save,
-                 progress=None):
+                 progress=None, boot_symbols=None):
         self.options, self.frame_lease = options, frame_lease
         self.progress = progress
         self.frame = 0
@@ -58,6 +58,12 @@ class FakeCore:
 
     def read_u32(self, name):
         return 0x800000 if name == "osMemSize" else 4
+
+    def hold(self, name):
+        self.held[0].add(name)
+
+    def release(self, name):
+        self.held[0].discard(name)
 
     def close(self):
         os.close(self.fd)
@@ -188,6 +194,49 @@ class SequentialWorkerTests(unittest.TestCase):
             self.assertEqual(report["scenarios"]["win"]["status"], "fail")
             self.assertIsNone(report["frames_observed"])
             self.assertEqual(report["frames_completed_persisted"], 1)
+
+    def test_snapshot_retains_early_frames_and_repeated_boundary_is_throttled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            progress = worker.Progress(pathlib.Path(directory))
+            emu = types.SimpleNamespace(frame=1, framebuffer=(bytes(16), 2, 2, 8),
+                                        pixel_format=1, read_u32=lambda symbol: 1)
+            progress.mark("boot", emu)
+            emu.frame = 2
+            progress.mark("intro", emu)
+            for frame in range(3, 499):
+                emu.frame = frame
+                progress.mark("boot", emu)
+            self.assertEqual(progress.snapshots, 2)
+            for frame in range(502, 6503, 500):
+                emu.frame = frame
+                progress.persist(emu)
+            self.assertEqual(progress.details["videos"]["0"]["frame"], 1)
+            self.assertEqual(progress.details["videos"]["1"]["frame"], 2)
+            self.assertEqual(len(list(pathlib.Path(directory).glob("video-*.png"))), 8)
+
+    def test_absolute_boot_symbol_resolves_from_binding_not_map(self):
+        emu = worker.LeasedFrontend.__new__(worker.LeasedFrontend)
+        emu.boot_symbols = {"osMemSize": 0x80000318}
+        self.assertEqual(emu.resolve("osMemSize"), 0x80000318)
+
+    def test_control_core_has_exact_1500_frames_and_fresh_private_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory) / "run"
+            out.mkdir()
+            core = out.parent / "fake-core"
+            core.write_bytes(b"fake")
+            args = types.SimpleNamespace(out=out, core=core, control=out.parent / "control.json",
+                                         seal=out / "seal", package=out / "package",
+                                         binding=out / "binding", seal_sha256="fake")
+            control = {"rom": "fake-rom", "map": "fake-map", "boot_symbols": {}}
+            with patch.object(worker, "verify_candidate", return_value=({}, {}, {})), \
+                 patch.object(worker, "control_inputs", return_value=control), \
+                 patch.object(worker, "reserve_frames") as reserve:
+                worker.execute_control(args, io.StringIO(), factory=FakeCore)
+            self.assertEqual(sum(call.args[-1] for call in reserve.call_args_list), 1500)
+            report = json.loads((out / "control/report.json").read_text())
+            self.assertEqual(report["local_frames"], 1500)
+            self.assertFalse((out / "core-live").exists())
 
     def test_intro_Start_reaches_title_without_waiting_for_full_movie(self):
         class Intro:

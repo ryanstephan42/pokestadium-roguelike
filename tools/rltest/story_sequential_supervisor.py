@@ -20,6 +20,8 @@ from tools.rltest.frontend import HarnessError
 
 CAPS = {"win": 7000, "carry-reload": 2000, "loss-terminal-reload": 5000,
         "transform": 4000}
+CONTROL_CAPS = {"control": 1500, "win": 5500, "carry-reload": 2000,
+                "loss-terminal-reload": 5000, "transform": 4000}
 
 
 @dataclass
@@ -29,6 +31,13 @@ class RunBudget:
     frames: int = 0
     per_scenario: dict = field(default_factory=lambda: {name: 0 for name in CAPS})
     scenario_index: int = -1
+    caps: dict = field(default_factory=lambda: CAPS.copy())
+
+    def __post_init__(self):
+        if self.caps == CONTROL_CAPS:
+            self.per_scenario = {name: 0 for name in self.caps}
+        elif self.caps != CAPS:
+            raise HarnessError("Unreviewed sequential budget partition")
 
     def check(self, now):
         if now >= self.deadline:
@@ -36,12 +45,12 @@ class RunBudget:
 
     def reserve(self, scenario, frames, now):
         self.check(now)
-        if type(scenario) is not str or scenario not in CAPS or type(frames) is not int or not 1 <= frames <= 18000:
+        if type(scenario) is not str or scenario not in self.caps or type(frames) is not int or not 1 <= frames <= 18000:
             raise HarnessError("Invalid pre-step frame request")
-        index = list(CAPS).index(scenario)
+        index = list(self.caps).index(scenario)
         if index < self.scenario_index or index > self.scenario_index + 1:
             raise HarnessError("Sequential scenario reordered/skipped")
-        if self.frames + frames > 18000 or self.per_scenario[scenario] + frames > CAPS[scenario]:
+        if self.frames + frames > 18000 or self.per_scenario[scenario] + frames > self.caps[scenario]:
             raise HarnessError("Sequential aggregate/scenario frame cap exhausted")
         self.frames += frames
         self.per_scenario[scenario] += frames
@@ -110,12 +119,12 @@ def stop_tree(process):
         time.sleep(.005)
 
 
-def supervise(command, log, seconds=180, clock=time.monotonic, on_exit=None):
+def supervise(command, log, seconds=180, clock=time.monotonic, on_exit=None, caps=None):
     if not 0 < seconds <= 180:
         raise HarnessError("Watchdog cannot exceed approved 180 seconds")
     enable_subreaper()
     started = clock()  # Before Popen, worker/core load, boot or fresh reload.
-    budget = RunBudget(started, started + seconds)
+    budget = RunBudget(started, started + seconds, caps=CAPS.copy() if caps is None else caps)
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=log, start_new_session=True, bufsize=0)
     pending = b""
@@ -151,7 +160,7 @@ def supervise(command, log, seconds=180, clock=time.monotonic, on_exit=None):
                 if completed or not isinstance(message, dict):
                     raise HarnessError("Unexpected sequential frame protocol")
                 if set(message) == {"done"} and message["done"] is True:
-                    if budget.scenario_index < 2:
+                    if budget.scenario_index < list(budget.caps).index("loss-terminal-reload"):
                         raise HarnessError("Missing required win/reload/loss scenarios")
                     completed = True
                     budget.check(clock())

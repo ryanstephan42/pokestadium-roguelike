@@ -183,12 +183,23 @@ def main():
     result = dict(scope="linked-layout binding only; not catalog/heap/fence/Pak or execution acceptance",
                   binding=bound, abi=native_abi, package_sha256=hashlib.sha256(raw).hexdigest(),
                   native_lifecycle=native_lifecycle,
+                  boot_symbols=bind_boot_symbols(elf),
                   elf_sha256=hashlib.sha256(args.elf.read_bytes()).hexdigest(),
                   map_sha256=hashlib.sha256(args.map.read_bytes()).hexdigest(),
                   rom_sha256=hashlib.sha256(args.rom.read_bytes()).hexdigest())
     with args.out.open("x") as output:
         json.dump(result, output, indent=2)
         output.write("\n")
+
+
+def bind_boot_symbols(elf):
+    addresses = {name: elf.symbol(name)[1] for name in
+                 ("osMemSize", "gCurrentGameState", "gScCampaignRun",
+                  "gScCampaignMenuReady", "gFragments")}
+    require(addresses["osMemSize"] == 0x80000318, "Unexpected ELF boot memory parameter")
+    require(all(0x80000000 <= address < 0x80400000 for address in addresses.values()),
+            "Boot witness outside resident lower RAM")
+    return addresses
 
 
 if __name__ == "__main__":

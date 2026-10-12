@@ -8,9 +8,24 @@ import tempfile
 import unittest
 
 from tools.rltest.frontend import HarnessError
-from tools.rltest.story_sequential_supervisor import RunBudget, counted_step, bind_frontend_budget
+from tools.rltest.story_sequential_supervisor import RunBudget, counted_step, bind_frontend_budget, CONTROL_CAPS
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+class ControlPartitionTests(unittest.TestCase):
+    def test_control_is_nontransferable_within_same_aggregate(self):
+        budget = RunBudget(0, 180, caps=CONTROL_CAPS)
+        budget.reserve("control", 1500, 1)
+        with self.assertRaises(HarnessError):
+            budget.reserve("control", 1, 2)
+        budget.reserve("win", 5500, 3)
+        with self.assertRaises(HarnessError):
+            budget.reserve("win", 1, 4)
+        budget.reserve("carry-reload", 2000, 5)
+        budget.reserve("loss-terminal-reload", 5000, 6)
+        budget.reserve("transform", 4000, 7)
+        self.assertEqual(budget.frames, 18000)
 
 SUPERVISE = """
 import sys

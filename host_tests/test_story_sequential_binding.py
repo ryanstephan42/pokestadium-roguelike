@@ -3,7 +3,7 @@ import struct
 import tempfile
 import unittest
 
-from tools.rltest.bind_story_sequential import layout_keys, expected_words, verify_layout, bind_words
+from tools.rltest.bind_story_sequential import layout_keys, expected_words, verify_layout, bind_words, bind_boot_symbols
 from tools.rltest.seal_story_current_six import Elf
 from tools.rltest.frontend import HarnessError
 
@@ -48,6 +48,16 @@ def fixture(words, control_size, run_size):
 
 
 class SequentialBindingTests(unittest.TestCase):
+    def test_boot_memory_symbol_comes_from_exact_elf(self):
+        class Symbols:
+            memory = 0x80000318
+            def symbol(self, name):
+                return (0, self.memory if name == "osMemSize" else 0x80001000, 0)
+        elf = Symbols()
+        self.assertEqual(bind_boot_symbols(elf)["osMemSize"], 0x80000318)
+        elf.memory += 4
+        with self.assertRaises(HarnessError):
+            bind_boot_symbols(elf)
     def test_native_os_prefix_shift_is_bound_not_guessed(self):
         host = {"control": {"size": 3768, "sequential_request": 588,
                             "sequential_ledger": 2812, "ui_pointer": 80},

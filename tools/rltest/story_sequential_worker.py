@@ -48,6 +48,7 @@ class Progress:
         self.snapshots = 0
         self.last_snapshot = -500
         self.last_boundary = None
+        self.snapshot_boundaries = set()
         self.completed = 0
         self.details = {}
         self.boot_witness = {}
@@ -60,22 +61,30 @@ class Progress:
             try:
                 state = emu.read_u32("gCurrentGameState")
                 if isinstance(emu, Frontend):
-                    self.boot_witness = dict(
-                        game_state=state, os_mem_size=emu.read_u32("osMemSize"),
-                        runner_stage=emu.read_u32("gScCampaignRun"),
-                        menu_ready=emu.read_u32("gScCampaignMenuReady"))
+                    for key, symbol in (("game_state", "gCurrentGameState"),
+                                        ("os_mem_size", "osMemSize"),
+                                        ("runner_stage", "gScCampaignRun"),
+                                        ("menu_ready", "gScCampaignMenuReady")):
+                        try:
+                            self.boot_witness[key] = emu.read_u32(symbol)
+                        except HarnessError as exc:
+                            self.boot_witness[key] = {"error": str(exc)}
+                    fragments = emu.read("gFragments", 0xEA * 8)
+                    self.boot_witness["mapped_fragments"] = [
+                        i for i in range(0xEA) if any(fragments[i * 8:(i + 1) * 8])]
             except HarnessError as exc:
                 error = str(exc)
-        changed = self.last_boundary != self.boundary
+        changed = self.boundary not in self.snapshot_boundaries
         if emu is not None and (changed or emu.frame - self.last_snapshot >= 500):
             framebuffer = getattr(emu, "framebuffer", None)
             if framebuffer is not None:
                 data, width, height, pitch = framebuffer
                 require(len(data) <= 4 * 1024 * 1024, "Diagnostic framebuffer exceeds bound")
-                slot = self.snapshots % 8
+                slot = self.snapshots if self.snapshots < 2 else 2 + (self.snapshots - 2) % 6
                 atomic_bytes(self.directory / f"video-{slot}.png",
                              _png(data, width, height, pitch, emu.pixel_format))
                 self.snapshots += 1
+                self.snapshot_boundaries.add(self.boundary)
                 self.last_snapshot = emu.frame
                 self.details["last_video"] = dict(slot=slot, frame=emu.frame,
                                                  boundary=self.boundary)
@@ -98,12 +107,18 @@ class Progress:
 class LeasedFrontend(Frontend):
     """Frontend construction itself runs frame one; lease it before dispatch."""
 
-    def __init__(self, *args, frame_lease, prepare_save, progress=None, **kwargs):
+    def __init__(self, *args, frame_lease, prepare_save, progress=None, boot_symbols=None, **kwargs):
         self.frame_lease = frame_lease
         self.prepare_save = prepare_save
         self.progress = progress
+        self.boot_symbols = boot_symbols or {}
         self._sc_budget_bound = True
         super().__init__(*args, **kwargs)
+
+    def resolve(self, address):
+        if isinstance(address, str) and address in self.boot_symbols:
+            return self.boot_symbols[address]
+        return super().resolve(address)
 
     def step(self, frames=1):
         if self.frame == 0:
@@ -179,6 +194,8 @@ def verify_candidate(seal_path, package, binding_path, expected_seal_sha):
             "list" in binding["abi"] and "labels" in binding["abi"]["ui"] and
             "native_lifecycle" in binding,
             "Worker requires final bound menu witnesses")
+    require(binding.get("boot_symbols", {}).get("osMemSize") == 0x80000318,
+            "Worker requires ELF-bound boot symbols")
     config = seal["configuration"]
     for name, key in (("pokestadium-rl.elf", "elf_sha256"),
                       ("pokestadium-rl.map", "map_sha256"),
@@ -611,6 +628,7 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
                   ROOT / config["BUILD_DIR"] / "pokestadium-rl.map", directory,
                   options={"mupen64plus-pak1": "memory", "mupen64plus-EnableExpansionPak": "True"},
                   timeout=180, prepare_save=prepare_save, progress=progress,
+                  boot_symbols=binding.get("boot_symbols"),
                   frame_lease=lambda n: reserve_frames(
                       stream_in, stream_out, name, n))
     require(getattr(emu, "_sc_budget_bound", False) and emu.frame == 1,
@@ -698,16 +716,63 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
         emu.close()
 
 
+def control_inputs(seal, path, core):
+    require(path is not None, "Control manifest required")
+    relative = str(path.resolve().relative_to(ROOT))
+    require(seal["artifacts_sha256"].get(relative) == digest(path.read_bytes()),
+            "Control manifest is not sealed")
+    control = json.loads(path.read_text())
+    require(control["core_sha256"] == digest(core.read_bytes()), "Control core pin differs")
+    for name, expected in control["files"].items():
+        target = (path.parent / name).resolve()
+        require(target.is_relative_to(ROOT) and digest(target.read_bytes()) == expected,
+                "Control artifact changed")
+    return control
+
+
+def execute_control(args, stream_out, factory=LeasedFrontend):
+    seal, _, _ = verify_candidate(args.seal, args.package, args.binding, args.seal_sha256)
+    control = control_inputs(seal, args.control, args.core)
+    directory = args.out / "control"
+    directory.mkdir()
+    progress = Progress(directory)
+    emu = factory(args.core, args.control.parent / control["rom"],
+                  args.control.parent / control["map"], directory,
+                  options={"mupen64plus-pak1": "memory", "mupen64plus-EnableExpansionPak": "True"},
+                  timeout=180, prepare_save=lambda emu: None, progress=progress,
+                  boot_symbols=control["boot_symbols"],
+                  frame_lease=lambda n: reserve_frames(sys.stdin, stream_out, "control", n))
+    try:
+        while emu.frame < 1500:
+            progress.mark("control-boot", emu)
+            if emu.frame >= 120 and emu.frame % 120 == 0:
+                emu.hold("START")
+            else:
+                emu.release("START")
+            emu.step(1)
+        state = emu.read_u32("gCurrentGameState")
+        write_json(directory / "report.json", dict(
+            status="pass" if state in (2, 4) else "fail",
+            scope="diagnostic normal-ROM boot only; not normal gameplay revalidation",
+            last_verified_boundary="control-1500-frame-boundary", local_frames=emu.frame,
+            game_state=state, options=emu.options, core_sha256=digest(args.core.read_bytes())))
+    finally:
+        emu.close()
+
+
 def run_children(args, command_factory=None):
     require(not args.out.exists(), "Use a fresh private run directory")
     args.out.mkdir(parents=True)
     # Each child loads exactly one core; reloads are fresh OS processes.
-    for name in SCENARIOS:
+    names = ("control",) + SCENARIOS if getattr(args, "control", None) else SCENARIOS
+    for name in names:
         write_json(args.out / (name + ".attempted.json"), dict(scenario=name))
         if command_factory is None:
             command = [sys.executable, "-m", "tools.rltest.story_sequential_worker"]
             for key in ("seal", "package", "binding", "core", "out", "seal_sha256", "core_sha256"):
                 command += ["--" + key.replace("_", "-"), str(getattr(args, key))]
+            if getattr(args, "control", None):
+                command += ["--control", str(args.control)]
         else:
             command = command_factory(args)
         result = subprocess.run(command + ["--scenario", name], stdin=sys.stdin,
@@ -726,10 +791,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("seal", "package", "binding", "core", "out"):
         parser.add_argument("--" + name, type=pathlib.Path, required=True)
-    parser.add_argument("--scenario", choices=SCENARIOS)
+    parser.add_argument("--scenario", choices=("control",) + SCENARIOS)
     parser.add_argument("--seal-sha256", required=True)
     parser.add_argument("--core-sha256", required=True)
     parser.add_argument("--terminal-reload", action="store_true")
+    parser.add_argument("--control", type=pathlib.Path)
     args = parser.parse_args()
     if args.scenario:
         require(not args.terminal_reload or args.scenario == "loss-terminal-reload",
@@ -737,7 +803,10 @@ def main():
         # Core C stdout must not share the supervisor's JSON protocol.
         protocol = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1)
         os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
-        execute_scenario(args.scenario, args, stream_out=protocol)
+        if args.scenario == "control":
+            execute_control(args, stream_out=protocol)
+        else:
+            execute_scenario(args.scenario, args, stream_out=protocol)
     else:
         run_children(args)
 

@@ -9,13 +9,13 @@ import pathlib
 import sys
 
 from tools.rltest.frontend import HarnessError
-from tools.rltest.story_sequential_supervisor import CAPS, supervise
-from tools.rltest.story_sequential_worker import verify_candidate, write_json, digest
+from tools.rltest.story_sequential_supervisor import CAPS, CONTROL_CAPS, supervise
+from tools.rltest.story_sequential_worker import verify_candidate, write_json, digest, control_inputs
 
 
 def collect(directory, budget, elapsed, reaped):
     scenarios = {}
-    for name in CAPS:
+    for name in budget.per_scenario:
         path = directory / name / "report.json"
         if path.is_file():
             row = json.loads(path.read_text())
@@ -84,8 +84,11 @@ def main():
     parser.add_argument("--exclusive-approved-reservation", action="store_true", required=True)
     parser.add_argument("--seal-sha256", required=True)
     parser.add_argument("--core-sha256", required=True)
+    parser.add_argument("--control", type=pathlib.Path)
     args = parser.parse_args()
-    verify_candidate(args.seal, args.package, args.binding, args.seal_sha256)
+    seal, _, _ = verify_candidate(args.seal, args.package, args.binding, args.seal_sha256)
+    if args.control:
+        control_inputs(seal, args.control, args.core)
     if digest(args.core.read_bytes()) != args.core_sha256:
         raise HarnessError("Core differs from approved external pin")
     if args.out.exists() or args.out.with_suffix(".report.json").exists():
@@ -96,12 +99,14 @@ def main():
         command += ["--" + name, str(getattr(args, name).resolve())]
     command += ["--seal-sha256", args.seal_sha256]
     command += ["--core-sha256", args.core_sha256]
+    if args.control:
+        command += ["--control", str(args.control.resolve())]
 
     def report(budget, elapsed, reaped):
         write_json(args.out.with_suffix(".report.json"), collect(args.out, budget, elapsed, reaped))
 
     with args.out.with_suffix(".stderr.log").open("x") as log:
-        supervise(command, log, on_exit=report)
+        supervise(command, log, on_exit=report, caps=CONTROL_CAPS if args.control else CAPS)
 
 
 if __name__ == "__main__":

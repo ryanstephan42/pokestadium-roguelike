@@ -106,7 +106,13 @@ individual calibration candidates are recorded before dispatch. The last
 32 observer transitions and last bound witness survive a cap kill without
 depending on `finally`. Up to eight rotating read-only video PNG slots capture
 boundaries and every500 waiting frames; files stay in private ignored output.
-Boot witnesses include game state, memory size, runner stage and menu readiness.
+Boot witnesses include game state, memory size, runner stage, menu readiness
+and mapped overlay indices. Each leaf records its own read error; one missing
+symbol cannot erase the other leaves. Boot addresses, including ELF absolute
+`osMemSize`, are bound from the sealed ELF rather than assumed present in GNU
+map standalone-symbol lines. The first two video slots preserve early frames;
+six later slots rotate. Repeated Start/wait boundaries do not trigger a new
+snapshot every pulse; unseen boundaries or500 elapsed frames do.
 An interrupted frame remains unverified; the report uses persisted completed
 frames and names the last boundary instead of inferring from reservations.
 
@@ -122,6 +128,35 @@ The title loop has a30-tick readiness gate (`func_821009B4`); menu entry still
 requires the guarded input-ready witness, never a guessed fade delay.
 This is a source-derived stall hypothesis, not evidence recovered from the
 failed583b2d6 reservation.
+
+The approved04b5d09 run reached7000 persisted completed frames in127.47s but
+stayed state1 despite verified Start bit0x1000. All eight viewed surviving
+PNGs were nearly black with faint banding, no visible title/menu. No story,
+calibration, battle or save accuracy was reached. This does not establish a
+specific native boot cause. Source comparison with `tools/rl/boot_test.py`
+and `test_play_run.py` finds the same Frontend, Angrylion software RDP, HLE
+RSP, dynamic-recompiler CPU, word-swapped RAM and software video callback.
+Boot smoke uses default Pak; play-run and story use pak1=memory. Story alone
+requests EnableExpansionPak=True, which must still be verified against real
+ELF-bound osMemSize8MiB. Save type is ROM/core-selected, not overridden.
+Both configure joypad device1 at ports0/1; story additionally calibrates right
+stick/controller bits and uses preboot private note setup. Historical exact
+core bytes/settings cannot be claimed identical without prior pinned evidence.
+No software/HW readback deviation has been identified from source alone.
+
+An explicitly approved `--control` manifest enables a separate fresh-process,
+private normal-roguelike boot control before story. The manifest and ROM/map/
+provenance bytes must be part of the same sealed artifact set, with the exact
+core hash. Both control and story use identical frontend/software/Expansion
+Pak/Pak/controller options; control neither installs a story checkpoint nor
+touches historical normal saves/output. The control runs1500 frames only,
+records video/boot witnesses and then unloads; this is renderer/boot diagnosis,
+not a new gameplay validation. Title/menu by its endpoint is PASS; otherwise
+FAIL, and the story attempt proceeds for comparison. Proposed allocation is
+1500 control +5500 win +2000 reload +5000 loss/reload +4000 Transform=18000;
+caps do not transfer and180s includes the control. Without `--control`, the
+previous7000/2000/5000/4000 policy remains. Either partition requires its own
+explicit user grant, never reuse a consumed run.
 
 The worker verifies the external seal/core pins and all sealed source/artifact
 hashes before loading a core. It converts only that fresh core's formatted
