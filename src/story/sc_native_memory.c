@@ -18,6 +18,13 @@ static unsigned controls(void) {
     return (sizeof(ScNativeCampaignStorage) + 63U) & ~63U;
 }
 
+/* Mapped extent: controls, both framebuffers, then the BATL loader DATA spans. */
+static unsigned extent(void) {
+    return controls() + 2U * SC_NATIVE_FRAMEBUFFER_BYTES + SC_NATIVE_BATL_LOADER_BYTES;
+}
+
+int sc_batl_loader_live(void);
+
 static void tuple(ScNativeMemory *memory, ScNativeCampaignBacking *backing) {
     ScNativeCampaignStorage *storage = memory->storage;
     RlU8 *pixels = (RlU8 *)storage + controls();
@@ -35,6 +42,7 @@ static void tuple(ScNativeMemory *memory, ScNativeCampaignBacking *backing) {
     backing->framebuffer[1].pixels = pixels + SC_NATIVE_FRAMEBUFFER_BYTES;
     backing->framebuffer[0].bytes = backing->framebuffer[1].bytes =
         SC_NATIVE_FRAMEBUFFER_BYTES;
+    backing->batl_loader = pixels + 2U * SC_NATIVE_FRAMEBUFFER_BYTES;
 }
 
 int sc_native_memory_acquire(ScNativeMemory *memory, ScMaArena *arena,
@@ -55,7 +63,7 @@ int sc_native_memory_acquire(ScNativeMemory *memory, ScMaArena *arena,
         return SC_UNAVAILABLE;
 #endif
     memory->arena = arena;
-    memory->bytes = controls() + 2U * SC_NATIVE_FRAMEBUFFER_BYTES + 64U;
+    memory->bytes = extent() + 64U;
     if (!sc_ma_alloc(arena, memory->bytes, &memory->allocation))
         return SC_FULL;
     if (!sc_ma_data(arena, memory->allocation, &memory->lease)) {
@@ -67,11 +75,11 @@ int sc_native_memory_acquire(ScNativeMemory *memory, ScMaArena *arena,
     address = sc_ma_address(arena, memory->allocation);
     aligned = (address + 63U) & ~63U;
     if (address < 0x80400000U || aligned < address ||
-        aligned > 0x807da7e0U - controls() - 2U * SC_NATIVE_FRAMEBUFFER_BYTES)
+        aligned > 0x807da7e0U - extent())
         return error(memory, "Story memory: admitted physical extent invalid");
     memory->offset = aligned - address;
-    mapped = sc_ma_map(arena, &memory->lease, memory->offset,
-        controls() + 2U * SC_NATIVE_FRAMEBUFFER_BYTES, SC_MA_READ | SC_MA_WRITE);
+    mapped = sc_ma_map(arena, &memory->lease, memory->offset, extent(),
+        SC_MA_READ | SC_MA_WRITE);
     if (!mapped) return error(memory, "Story memory: exclusive backing map refused");
 #ifndef SC_NATIVE_MEMORY_HOST
     if ((RlU32)mapped != aligned)
@@ -103,11 +111,11 @@ int sc_native_memory_validate(ScNativeMemory *memory,
         memory->lease.kind != 3 || !memory->lease.ticket ||
         memory->allocation.slot != memory->lease.handle.slot ||
         memory->allocation.generation != memory->lease.handle.generation ||
-        memory->bytes != controls() + 2U * SC_NATIVE_FRAMEBUFFER_BYTES + 64U ||
+        memory->bytes != extent() + 64U ||
         memory->offset > 63U)
         return SC_INVALID;
-    mapped = sc_ma_map(memory->arena, &memory->lease, memory->offset,
-        controls() + 2U * SC_NATIVE_FRAMEBUFFER_BYTES, SC_MA_READ | SC_MA_WRITE);
+    mapped = sc_ma_map(memory->arena, &memory->lease, memory->offset, extent(),
+        SC_MA_READ | SC_MA_WRITE);
     if (mapped != (RlU8 *)memory->storage ||
         memory->arena->end != 0x7da7e0U ||
         memory->arena->backing_bytes != SC_MEMORY_BACKING_BYTES)
@@ -125,7 +133,8 @@ int sc_native_memory_validate(ScNativeMemory *memory,
         backing->pak != expected.pak || backing->event != expected.event ||
         backing->catalog != expected.catalog || backing->arena != expected.arena ||
         backing->seed != expected.seed ||
-        backing->lease_id != expected.lease_id)
+        backing->lease_id != expected.lease_id ||
+        backing->batl_loader != expected.batl_loader)
         return SC_INVALID;
     for (i = 0; i < 2; i++)
         if (backing->framebuffer[i].pixels != expected.framebuffer[i].pixels ||
@@ -147,7 +156,8 @@ int sc_native_memory_release(ScNativeMemory *memory,
         memory->loop->resources_acquired || memory->loop->pak_bound ||
         memory->display->acquired ||
         storage->driver.bound || storage->native_ui.acquired ||
-        storage->native_ui.prepared || storage->pak.bound || storage->pak.session)
+        storage->native_ui.prepared || storage->pak.bound || storage->pak.session ||
+        sc_batl_loader_live())
         return SC_PENDING;
     status = retired(context, backing);
     if (status != SC_OK) return status;

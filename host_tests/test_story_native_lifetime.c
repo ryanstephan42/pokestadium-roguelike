@@ -31,6 +31,7 @@ static int release_data(ScMaArena *arena, ScMaHandle handle) {
 #undef UnkStruct80083CA0_2
 #include "../src/story/sc_native_loop.c"
 
+int sc_batl_loader_live(void) { return 0; }
 int sc_native_ui_release(ScNativeUi *ui, const ScUiDriver *driver, int fenced) {
     (void)ui; (void)driver; (void)fenced;
     assert(!"Resource cleanup must not replay after lower retirement");

@@ -14,7 +14,7 @@ PY
 baseline="${2:-.local/rltest/story-two-phase-consumer-v3/selector}"
 flags=(-std=gnu89 -m32 -fwrapv -funsigned-char -fno-builtin
     -ffunction-sections -fdata-sections -DCC_CHECK -DNON_MATCHING -DAVOID_UB
-    -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 -DSTORY_SERVICE_CANDIDATE
+    -D_LANGUAGE_C -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 -DSTORY_SERVICE_CANDIDATE -DSC_SERVICE_HOST
     -Iinclude -Isrc -I. -Ibuild -Iassets/us "-I$baseline" "-I$out"
     -Ilib/ultralib/include -Ilib/ultralib/include/PR -Ilib/ultralib/include/ido
     -include "$baseline/host-stats-views.h" -include "$baseline/host-native-views.h")

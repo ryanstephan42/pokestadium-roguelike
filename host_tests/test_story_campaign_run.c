@@ -76,9 +76,27 @@ int sc_story_publish_live(const ScState *state, const RlU8 map[6], RlBattleSide 
     return SC_OK;
 }
 
+static RlU8 loader_span[64] __attribute__((aligned(64)));
+static int loader_bound, loader_refuse_bind, loader_pinned;
+static unsigned loader_binds, loader_unbinds;
 static void bind_backing(void) {
     ScNativeCampaignBacking *b = &ctl()->lifetime.loop.backing;
     b->ui = &ui; b->driver = &driver; b->request = &request;
+    b->batl_loader = loader_span;
+}
+int sc_batl_loader_bind(void *base, u32 bytes) {
+    assert(base == loader_span && bytes == SC_NATIVE_BATL_LOADER_BYTES && !gScCampaignBattle);
+    ++loader_binds;
+    if (loader_refuse_bind || loader_bound) return 0;
+    loader_bound = 1;
+    return 1;
+}
+int sc_batl_loader_unbind(void) {
+    assert(!gScCampaignBattle);
+    ++loader_unbinds;
+    if (!loader_bound || loader_pinned) return 0;
+    loader_bound = 0;
+    return 1;
 }
 
 /* ---- scripted loop: drives the real owner callbacks ---- */
@@ -174,7 +192,7 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
     unsigned i, guard;
     (void)unused;
     ++battles;
-    assert(gScCampaignBattle && return_state == STATE_STORY_CAMPAIGN);
+    assert(gScCampaignBattle && return_state == STATE_STORY_CAMPAIGN && loader_bound);
     assert(party == request.party && enemy == request.enemy);
     assert(party_n == request.party_count && enemy_n == request.enemy_count);
     assert(rules->use_state == 1 && rules->stadium == 3 && !rules->player_cpu && !rules->relics);
@@ -225,6 +243,8 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
 /* ---- connected scenarios ---- */
 static void start(void) {
     reset();
+    loader_bound = loader_refuse_bind = loader_pinned = 0;
+    loader_binds = loader_unbinds = 0;
     on_submit = scripted_submit; on_poll = scripted_poll;
     on_resume = scripted_resume; on_observe = scripted_observe;
     during_step = loop_script;
@@ -341,7 +361,8 @@ static void full_cycle(void) {
         state();                              /* loop submits: hook installed */
         assert(ctl()->installed && ctl()->operation.operation == i + 1 && battles == i);
         state();                              /* launcher */
-        assert(battles == i + 1 && gScCampaignRun.launched == i + 1 && !gScCampaignBattle);
+        assert(battles == i + 1 && gScCampaignRun.launched == i + 1 && !gScCampaignBattle &&
+               loader_binds == i + 1 && loader_unbinds == i + 1 && !loader_bound);
         assert(gScCampaignRun.last_outcome == 1 && ctl()->binding.drained);
         state();                              /* settle: uninstall, finish, save */
         assert(!ctl()->installed && !gScNativeLaunchHook && saves == i + 1 && !driver.launched);
@@ -410,6 +431,28 @@ static void prearm_refusal(void) {
     assert(mapped && sc_persist_holds_fragment() && sc_campaign_close() == SC_INVALID);
     state();
     assert(battles == 1 && gCurrentGameState == STATE_STORY_CAMPAIGN);
+}
+
+static void loader_bind_refusal(void) {
+    start();
+    state();
+    want_launch = 1; state();
+    loader_refuse_bind = 1;
+    state();
+    assert(loader_binds == 1 && !loader_unbinds && battles == 0 && !loader_bound);
+    assert(gScCampaignRun.stage == SC_RUN_FAILED && sc_campaign_phase() == SC_CAMPAIGN_FAILED);
+    assert(mapped && sc_persist_holds_fragment() && sc_campaign_close() == SC_INVALID);
+}
+
+static void loader_pinned_refusal(void) {
+    start();
+    state();
+    want_launch = 1; state();
+    loader_pinned = 1;
+    state();
+    assert(loader_binds == 1 && loader_unbinds == 1 && battles == 1 && loader_bound);
+    assert(gScCampaignRun.stage == SC_RUN_FAILED && sc_campaign_phase() == SC_CAMPAIGN_FAILED);
+    assert(mapped && sc_persist_holds_fragment() && sc_campaign_close() == SC_INVALID);
 }
 
 static void mapping_refusal(void) {
@@ -505,6 +548,8 @@ int main(void) {
     run(pending_drain, "PENDING drain: retained retry, held close, release PENDING/quiescence teardown");
     run(prearm_refusal, "pre-arm refusal: fail-stop, nothing armed, retention");
     run(mapping_refusal, "mapping refusal: pre-arm fail-stop");
+    run(loader_bind_refusal, "BATL loader span refused: fail-stop before battle, retained");
+    run(loader_pinned_refusal, "BATL loader span still pinned after battle: fail-stop, retained");
     run(init_abort, "init abort after arm: settles by poll, fail-stop retains hook/mapping");
     run(refused_drain_run, "refused drain after arm: fail-stop retains hook/mapping");
     run(bad_frame, "invalid frame: tick fail-stops and pauses the battle; inert outside launch");

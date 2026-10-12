@@ -15,6 +15,13 @@ static unk_D_86002F58_004_000_010 workers[2], alternate_worker;
 static sp18_func_800198E4 jobs[2][2];
 static unsigned ready[2][2], freed;
 void Util_Free(void *p) { assert(p); ++freed; }
+static unsigned lower_calls;
+static u32 lower_sizes[8];
+void *main_pool_alloc(u32 size, s32 side) {
+    assert(side == 1 && lower_calls < 8);
+    lower_sizes[lower_calls++] = size;
+    return calloc(1, size);
+}
 #include "worker-consumer.inc"
 
 s32 osRecvMesg(OSMesgQueue *q, OSMesg *message, s32 flags) {
@@ -34,10 +41,90 @@ const f32 *sc_batl_clock_source(void) {
     return changed_clock ? &alternate_clock : &original_clock;
 }
 void osSyncPrintf(const char *format, ...) { (void)format; }
+static unsigned gfx_polls, gfx_busy;
+s32 func_80001C90(void) { ++gfx_polls; if (gfx_busy) { --gfx_busy; return 0; } return 1; }
 void osStopThread(OSThread *thread) {
     (void)thread;
     if (expected_stop) longjmp(stop_return, 1);
     assert(0);
+}
+
+static void loader_test(uintptr_t base) {
+    u8 *upper = aligned_alloc(64, SC_BATL_LOADER_BYTES);
+    void *m0, *m1;
+    unsigned calls;
+    assert(upper && SC_BATL_LOADER_BYTES == 0x58000U);
+    /* Unarmed: exact vanilla lower request. */
+    calls = lower_calls;
+    m0 = sc_batl_loader_alloc(SC_BATL_LOADER_MODEL);
+    assert(m0 && lower_calls == calls + 1 && lower_sizes[calls] == 0x3C000U);
+    free(m0);
+    assert(!sc_batl_loader_arm());
+    assert(!sc_batl_loader_bind(NULL, SC_BATL_LOADER_BYTES));
+    assert(!sc_batl_loader_bind(upper + 16, SC_BATL_LOADER_BYTES));
+    assert(!sc_batl_loader_bind(upper, SC_BATL_LOADER_BYTES + 0x50000U));
+    assert(sc_batl_loader_bind(upper, SC_BATL_LOADER_BYTES));
+    assert(!sc_batl_loader_bind(upper, SC_BATL_LOADER_BYTES));
+    assert(sc_batl_loader_live() && sc_batl_loader_unbind());
+    assert(!sc_batl_loader_live() && !sc_batl_loader_unbind());
+    assert(sc_batl_loader_bind(upper, SC_BATL_LOADER_BYTES));
+    assert(sc_batl_loader_arm() && !sc_batl_loader_arm());
+    assert(!sc_batl_loader_unbind());
+    calls = lower_calls;
+    m0 = sc_batl_loader_alloc(0x3C000U);
+    assert(lower_calls == calls + 1 && m0);
+    assert(sc_batl_loader_alloc(0x18000U) == upper);
+    assert(!sc_batl_loader_disarm(&workers[0], &workers[1]));
+    m1 = sc_batl_loader_alloc(0x3C000U);
+    assert(lower_calls == calls + 2 && m1 && m1 != m0);
+    assert(sc_batl_loader_alloc(0x18000U) == upper + 0x18000U);
+    assert(sc_batl_loader_alloc(0x28000U) == upper + 0x30000U);
+    assert(lower_calls == calls + 2);
+    assert(!sc_batl_loader_disarm(&workers[0], &workers[0]));
+    assert(!sc_batl_loader_disarm(&workers[0], NULL));
+    assert(sc_batl_loader_disarm(&workers[0], &workers[1]));
+    assert(sc_batl_loader_live() && !sc_batl_loader_arm());
+    /* Outside the window allocation is vanilla again. */
+    free(sc_batl_loader_alloc(0x18000U));
+    assert(lower_calls == calls + 3);
+    /* Spans stay bound until a scope capturing the same workers drains. */
+    assert(!sc_batl_loader_unbind());
+    Memmap_SetFragmentMap(0x33, base, sizeof(original_clock));
+    D_84390010[1]->unk_720->unk_10 = &alternate_worker;
+    assert(!sc_batl_scope_open());
+    D_84390010[1]->unk_720->unk_10 = &workers[1];
+    assert(sc_batl_scope_open());
+    assert(!sc_batl_loader_unbind());
+    workers[0].unk_01 = 1;
+    assert(!sc_batl_scope_close() && !sc_batl_loader_unbind());
+    workers[0].unk_01 = 0;
+    assert(sc_batl_scope_close());
+    gfx_polls = 0; gfx_busy = 3;
+    assert(sc_batl_loader_unbind() && !sc_batl_loader_live());
+    assert(gfx_polls == 4 && !gfx_busy);
+    /* A second install must not reuse the first scope's drain. */
+    assert(sc_batl_loader_bind(upper, SC_BATL_LOADER_BYTES) && sc_batl_loader_arm());
+    free(sc_batl_loader_alloc(0x3C000U));
+    /* Out-of-order request: fail-stop, spans retained forever. */
+    expected_stop = 1;
+    if (!setjmp(stop_return)) {
+        sc_batl_loader_alloc(0x28000U);
+        assert(0);
+    }
+    expected_stop = 0;
+    assert(sc_batl_loader_live() && !sc_batl_loader_unbind() && !sc_batl_loader_arm());
+    assert(!sc_batl_scope_open());
+    /* The retained failure also pins the BATL map. */
+    expected_stop = 1;
+    if (!setjmp(stop_return)) {
+        Memmap_ClearFragmentMemmap(0x33);
+        assert(0);
+    }
+    expected_stop = 0;
+    free(m0);
+    free(m1);
+    free(upper);
+    puts("BATL LOADER SOURCE PASSED: A,A,S upper DATA order/drain/retention; M stays lower");
 }
 
 int main(int argc, char **argv) {
@@ -139,6 +226,7 @@ int main(int argc, char **argv) {
         assert(sc_batl_scope_close());
         Memmap_ClearFragmentMemmap(0x33);
     }
+    if (!failed) loader_test(base);
     puts("BATL SCOPE SOURCE PASSED: real map generations; HOST roots/clock, not native reachability");
     return 0;
 }

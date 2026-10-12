@@ -6,6 +6,8 @@
 
 static unsigned checks, retire_calls;
 static int retirement = SC_PENDING;
+static int loader_live;
+int sc_batl_loader_live(void) { return loader_live; }
 static ScNativeMemory *tamper_memory;
 static ScMaHandle tamper_allocation;
 #define CHECK(c) do { ++checks; if (!(c)) { \
@@ -53,6 +55,17 @@ int main(void) {
         CHECK(((RlU8 *)memory.storage)[i] == 0);
     CHECK(backing.framebuffer[0].pixels[0] == 0xa5);
     CHECK(backing.framebuffer[1].pixels[SC_NATIVE_FRAMEBUFFER_BYTES - 1] == 0xa5);
+    CHECK(backing.batl_loader == backing.framebuffer[1].pixels + SC_NATIVE_FRAMEBUFFER_BYTES);
+    CHECK(((unsigned long)backing.batl_loader - (unsigned long)memory.storage) % 64 == 0);
+    CHECK(sc_ma_map(&arena, &memory.lease,
+        memory.offset + (unsigned)(backing.batl_loader - (RlU8 *)memory.storage),
+        SC_NATIVE_BATL_LOADER_BYTES, SC_MA_READ | SC_MA_WRITE) == backing.batl_loader);
+    CHECK(!sc_ma_map(&arena, &memory.lease,
+        memory.offset + (unsigned)(backing.batl_loader - (RlU8 *)memory.storage),
+        SC_NATIVE_BATL_LOADER_BYTES, SC_MA_READ | SC_MA_EXEC));
+    backing.batl_loader[SC_NATIVE_BATL_LOADER_BYTES - 1] = 0x5a;
+    wrong = backing; wrong.batl_loader += 64;
+    CHECK(sc_native_memory_validate(&memory, &wrong) == SC_INVALID);
     wrong = backing; ++wrong.seed;
     CHECK(sc_native_memory_validate(&memory, &wrong) == SC_INVALID);
     wrong = backing; ++wrong.lease_id;
@@ -89,6 +102,11 @@ int main(void) {
     CHECK(sc_native_memory_release(&memory, &backing, retired, &retirement) == SC_PENDING);
     loop.exited = 1;
     retirement = SC_OK;
+    loader_live = 1;
+    tickets = retire_calls;
+    CHECK(sc_native_memory_release(&memory, &backing, retired, &retirement) == SC_PENDING);
+    CHECK(retire_calls == tickets && memory.live && memory.lease.ticket);
+    loader_live = 0;
     tamper_memory = &memory;
     tamper_allocation = service;
     CHECK(sc_native_memory_release(&memory, &backing, retired, &retirement) == SC_INVALID);

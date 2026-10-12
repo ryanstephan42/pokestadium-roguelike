@@ -9,6 +9,7 @@
 #include "sc_native_loop.h"
 #include "sc_runtime_probe.h"
 #include "sc_battle_service.h"
+#include "sc_batl_loader.h"
 #include "src/roguelike/rl_battle.h"
 #include "src/controller.h"
 #include "src/29BA0.h"
@@ -174,11 +175,25 @@ static void launch(const ScCampaignControl *c, const ScNativeCampaignBacking *b)
     last_active = 255;
     observed_any = 0;
     tick_failed = deferred_frame = deferred_result = 0;
+    /* BATL A,A,S loader spans live in the campaign backing for exactly this
+       battle; a refused bind or a span still pinned afterwards fail-stops. */
+    if (!sc_batl_loader_bind(b->batl_loader, SC_NATIVE_BATL_LOADER_BYTES)) {
+        osSyncPrintf("story campaign: BATL loader span refused\n");
+        sc_campaign_fail_stop();
+        gScCampaignRun.stage = SC_RUN_FAILED;
+        return;
+    }
     gScCampaignBattle = 1;
     status = rl_start_battle(request->party, request->party_count, request->enemy,
                              request->enemy_count, &rules, STATE_STORY_CAMPAIGN, 0);
     gScCampaignBattle = 0;
     gScCampaignRun.last_outcome = status;
+    if (!sc_batl_loader_unbind()) {
+        osSyncPrintf("story campaign: BATL loader span still pinned; retained\n");
+        sc_campaign_fail_stop();
+        gScCampaignRun.stage = SC_RUN_FAILED;
+        return;
+    }
     /* A refusal before arming leaves no armed authority and no event will
        ever settle this operation: fail-stop and retain everything. An armed
        battle (drained or aborted) settles through the owner poll. */

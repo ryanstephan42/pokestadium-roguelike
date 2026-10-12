@@ -25,6 +25,7 @@ int sc_persist_native_load(unsigned char *image, const ScPersistLayout *l, ScMaU
     (void)l; ++loads; memset(image, 0, n); mapped = 1; return 1;
 }
 int sc_persist_native_quiescent(void) { return 1; }
+int sc_batl_loader_live(void) { return 0; }
 int sc_persist_native_pool_clear(const unsigned char *image, ScMaU32 n) {
     (void)image; (void)n; return 1;
 }

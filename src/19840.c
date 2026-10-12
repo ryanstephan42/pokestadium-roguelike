@@ -1,6 +1,9 @@
 #include "19840.h"
 #ifdef STORY_SERVICE_CANDIDATE
 #include "src/story/sc_batl_scope.h"
+#define LOADER_ALLOC(size) sc_batl_loader_alloc(size)
+#else
+#define LOADER_ALLOC(size) main_pool_alloc(size, 1)
 #endif
 #include "src/geo_layout.h"
 #include "src/dma.h"
@@ -317,18 +320,18 @@ unk_D_86002F58_004_000_010* func_80019760(u32 arg0) {
     temp_v0->unk_2C.raw = 0;
 
     if (arg0 & 1) {
-        temp_v0->unk_04[0] = main_pool_alloc(0x3C000, 1);
+        temp_v0->unk_04[0] = LOADER_ALLOC(0x3C000);
         if (arg0 & 4) {
-            temp_v0->unk_04[1] = main_pool_alloc(0x3C000, 1);
+            temp_v0->unk_04[1] = LOADER_ALLOC(0x3C000);
         } else if (arg0 & 8) {
             for (i = 1; i < 5; i++) {
-                temp_v0->unk_04[i] = main_pool_alloc(0x3C000, 1);
+                temp_v0->unk_04[i] = LOADER_ALLOC(0x3C000);
             }
         }
     }
 
     if (arg0 & 2) {
-        temp_v0->unk_18 = main_pool_alloc(0x18000, 1);
+        temp_v0->unk_18 = LOADER_ALLOC(0x18000);
     }
 
     osCreateMesgQueue(&temp_v0->unk_30, &temp_v0->unk_48, 2);
@@ -339,7 +342,7 @@ unk_D_86002F58_004_000_010* func_80019760(u32 arg0) {
 void func_8001987C(void) {
     D_800ABE10.unk_A04.unk_00 = func_800044F4(0x920000, NULL, 1, 1);
     D_800ABE10.unk_A04.unk_04 = func_800044F4(0x8CC000, NULL, 1, 1);
-    D_800ABE10.unk_A04.unk_08 = main_pool_alloc(0x28000, 1);
+    D_800ABE10.unk_A04.unk_08 = LOADER_ALLOC(0x28000);
 }
 
 s32 func_800198E4(unk_D_86002F58_004_000_010* arg0, u16 arg1, arg1_func_80010CA8 arg2) {

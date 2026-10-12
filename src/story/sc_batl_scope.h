@@ -2,6 +2,7 @@
 #define SC_BATL_SCOPE_H
 
 #include "src/fragments/62/fragment62.h"
+#include "sc_batl_loader.h"
 
 typedef struct { u32 generation, ticket; } ScBatPermit;
 typedef struct {
@@ -29,5 +30,6 @@ int sc_batl_scope_map_change(void);
 int sc_batl_worker_admit(unk_D_86002F58_004_000_010 *);
 int sc_batl_scope_drain(const ScBatPermit *);
 u32 Memmap_GetStoryBattleMapGeneration(void);
+
 
 #endif

@@ -11,6 +11,8 @@ enum ScNativeEventKind {
     SC_NATIVE_EVENT_DRAINED, SC_NATIVE_EVENT_FAILED
 };
 #define SC_NATIVE_FRAMEBUFFER_BYTES (640U * 480U * 2U)
+/* Equals SC_BATL_LOADER_BYTES: two 0x18000 animation pools + 0x28000 staging. */
+#define SC_NATIVE_BATL_LOADER_BYTES 0x58000U
 typedef struct ScNativeFramebufferSpan {
     RlU8 *pixels;
     RlU32 bytes;
@@ -38,6 +40,9 @@ typedef struct ScNativeCampaignBacking {
     ScMaArena *arena;
     RlU32 seed, lease_id;
     ScNativeFramebufferSpan framebuffer[2];
+    /* Campaign BATL animation/staging DATA spans (SC_NATIVE_BATL_LOADER_BYTES,
+       64-byte aligned, read/write, never executed); docs/story/BATL-LOADER-RIGHTS.md. */
+    RlU8 *batl_loader;
 } ScNativeCampaignBacking;
 
 /* Framebuffer spans are private native backing, never campaign values.

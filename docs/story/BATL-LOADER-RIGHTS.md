@@ -13,8 +13,8 @@ Inputs:
 
 | Buf | Size | Count | Allocation | Filled by | Executed? |
 |-----|------|-------|------------|-----------|-----------|
-| M (model pool) | 0x3C000 | 2 | `unk_04[0]` | worker `func_80019484` | **yes**: 8-insn entry stub |
-| A (animation pool) | 0x18000 | 2 | `unk_18` | worker `func_80019514` | no |
+| M (model pool) | 0x3C000 | 2 | `unk_04[0]` | worker `func_80019484` | **yes**: 8-insn entry stub, worker and main thread |
+| A (animation pool) | 0x18000 | 2 | `unk_18` | worker `func_80019514` | no (CPU and RSP/RDP read it; see below) |
 | S (staging) | 0x28000 | 1 | `unk_A04.unk_08` | worker DMA via `func_80003B30` | no |
 
 Archive facts, checked over all entries:
@@ -27,7 +27,57 @@ Archive facts, checked over all entries:
 - **Animation archive** (0x8CC000):
   - 63 FRAGMENTs; the only text relocation is R_MIPS_26 at +0x00.
   - The entry jumps to +0x20, which holds data (for example `0x03000030`). Executing it would be invalid.
-  - The only consumer, `func_80019514`, uses `frag+0x20` as a data table and never calls the entry. A is therefore data that is relocated but never executed.
+  - The loader, `func_80019514`, uses `frag+0x20` as a data table and never
+    calls the entry. The table reaches controller `unk_28` and then actor
+    `unk_024` (1C720.c:229/237).
+
+### A is not CPU-only (validator trace, exact 4bbe01c)
+
+- The RCP reads A: `D_843920C0` feeds texture and display-list commands
+  (e.g. fragment62_315D50.c:4831/4910, fragment62_31AA30.c:40/50).
+- A's geo layouts carry 72 command-8 callback sites. `func_80017B60` passes
+  each to `func_80010FDC` (11BA0.c:20-31), which converts the address with
+  `Util_ConvertAddrToVirtAddr`, stores it in the node and **calls it at once**;
+  later graph traversal may call it again. A's own entry is still never called.
+- The 72 targets are encoded 0x81000028..0x81000160. Fragment id is
+  `((addr & 0x0FF00000) >> 20) - 0x10` = 0 (memmap.c:216-229), so they resolve
+  through `gFragments[0]`, not through A.
+
+### Fragment-0 provenance and lifetime
+
+- `gFragments[0]` is fragment31 (yaml vram 0x81000000). Campaign BATL loads it
+  at fragment62_2EA8E0.c:621 (`FRAGMENT_LOAD(fragment31)`), directly after the
+  loader allocations and before any geo layout is processed.
+- Path: `func_80004454(0, …)` → `func_800043BC` (3FB0.c:519-547) →
+  `Memmap_RelocateFragment(0, …)` → `Memmap_SetFragmentMap(0, frag, size)`
+  (memmap.c:127). The block is a lower `main_pool` block inside the BATL state.
+  Its destructor `func_80004364` (3FB0.c:504-517) clears the map only when the
+  BATL state pops. No story code sets or clears id 0.
+- 0x81000020..0x810001FF is `fragment31_unk_table`, a raw textbin of
+  `j target; nop` thunks with retail R_MIPS_26 relocations. 0x28..0x160 are the
+  callback thunks. 32 of them jump into **fragment62** (id 0x33) at retail
+  offsets, e.g. 0x81000028 → `func_84343D24`; the rest stay inside fragment31.
+- **Open defect (pre-existing, RL/candidate builds only):** RL builds
+  regenerate fragment62 (`RL_REGEN_FRAGMENTS ?= 62`) and remap only its own
+  relocations. The fragment31 thunks are not remapped. In the candidate map
+  `func_84343D24` is at 0x84344894 (+0xB70), and 0x84343D24 is 4 bytes into
+  `func_843431B0`; plain `build_rl` is shifted by +0x160. All 32 cross-fragment
+  thunks are affected. This is a static finding with no native witness; it is
+  not caused by the loader shim and is reported for a decision.
+
+### Graphics retirement of A and S
+
+- Overwrite on each load keeps vanilla ordering, which does not depend on the
+  buffer address. Model loads wait for `func_80001C90` (dp_intro.c:396; graphics
+  idle) before `func_800198E4` (1C720.c:190-192, 1AB70.c:312/321/370). The
+  animation reload `func_8001C248` → `func_80019A7C` (1C720.c:222-232) has no
+  vanilla fence; that is unchanged, not added or claimed.
+- Release is new, so it gets a fence: `sc_batl_loader_unbind` waits on the
+  same `func_80001C90` idle predicate after the drained scope close and BATL
+  pop, before the span can return to the campaign lease.
+- Crash retention, per-chunk PI completion (worker waits per chunk; the PI
+  consumers use `osVirtualToPhysical`, no lower-only mask) and cache handling
+  are unchanged.
 
 ## Per-load phases of one M buffer (worker thread, priority 10)
 
@@ -37,17 +87,24 @@ Archive facts, checked over all entries:
 4. **Relocate.** `func_80019128`:
    - RL import patch, then `osWritebackDCache(frag, relocOffset)`.
    - `Memmap_RelocateFragment`: `osInvalICache` and `osInvalDCache` over `sizeInRam`, CPU relocation writes (including text +0x00/+0x2C/+0x30), `bzero` of the reloc tail, then `osWritebackDCache`.
-5. **Execute.** `func_80019328` calls `frag(0,0)` once, in the worker thread. It returns a header pointer.
+5. **Execute (worker).** `func_80019328` calls `frag(0,0)` in the worker
+   thread. It returns a header pointer, then sets node 0xE `unk_28 = frag`.
 6. **Data phase.** Still in the worker:
    - `process_geo_layout` allocates nodes in the same pool.
    - `func_80018C40` recolours textures (writes after execution, at addresses ≥ frag+0x40).
    - Then the main thread and RSP consume geo, DL and texture data.
-   - Text is never fetched again: `unk_14` and node `unk_28` store the fragment pointer, but no call through them exists in the audited source.
+   - **Correction (validator, exact 4bbe01c):** the stub is fetched again for
+     the whole residency. `unk_28` is a typed function in the 0xE node
+     (global.h:447-456). It is called by `func_8001BD04` and `func_8001BD9C`
+     (1C720.c:71-89, `unk_28(0,0)`) and by `func_8001BE90` (1C720.c:111-124),
+     reached from BATL at fragment62_2EC3C0.c:661/664 and 2F23A0.c:472/510.
+     The earlier claim that it runs once, only in the worker, is withdrawn.
 7. **Retire.** The next load into the same buffer repeats from step 1.
    - The stub's stale ICache lines are invalidated at step 4 before the next execution.
    - Every model fragment uses archive id 0xEF, so `Memmap_SetFragmentMap(0xEF)` is overwritten on each load, as in vanilla.
 
-So each M buffer cycles mutable → execute → mutable many times per battle. The
+So each M buffer cycles through mutable → executable for the whole residency,
+with main-thread fetches → mutable on the next load, many times per battle. The
 existing executable-image authority (sc_ma staging → `sc_ma_seal` W^X spans →
 `sc_ma_module`) is publish-once. It has no rewrite cycle, and using it from
 the worker thread would mean per-load arena allocation, sealing and release.
@@ -61,7 +118,7 @@ rights.
 DATA lease. Leave both M buffers in the lower pool, exactly as in vanilla.**
 
 - The upper DATA lease grows by 0x58000 = 360,448 bytes, not 851,968.
-- It is mapped READ|WRITE only and never EXEC. The CPU writes and reads it; RSP
+- It is mapped READ|WRITE only and never EXEC. The CPU writes and reads it; RSP/RDP
   and PI reach it through `osVirtualToPhysical` or `addr & 0x1FFFFFFF`, as the
   audit established.
 - Lower relief is 360,496 bytes charged (raw + 16 per block, three blocks).
@@ -75,11 +132,16 @@ DATA lease. Leave both M buffers in the lower pool, exactly as in vanilla.**
     `func_8001987C` in campaign BATL (`gScCampaignBattle`). Probe and ordinary
     RL never arm it.
 - Lifetime is unchanged from the frozen audit:
-  - Bind is done in `launch()` before `rl_start_battle`.
+  - Bind is done in `launch()` before `rl_start_battle`; unbind right after it.
   - Release returns `SC_PENDING` while the span is live. The span becomes free
     only after `sc_batl_scope_close` sees both workers drained (`unk_01 & 3 == 0`)
     and the BATL pop.
-  - Unbind fail-stops if refused.
+  - Disarm records both controllers and the next scope generation. The next
+    `sc_batl_scope_open` must capture exactly those workers in that
+    generation, otherwise it refuses. Only that scope's drained close marks the
+    spans drained. Unbind refuses unless they are drained and there is no
+    active, ticketed or failed scope, then waits for graphics idle.
+    `launch()` fail-stops if bind or unbind is refused.
   - The lower destructor never sees upper spans, because upper blocks are not
     `main_pool` blocks.
 
@@ -103,12 +165,9 @@ DATA lease. Leave both M buffers in the lower pool, exactly as in vanilla.**
 
 ### Fallback if the margin later proves insufficient (not proposed now)
 
-M could be split per load into RW data plus a 32-byte-aligned RX window that
-covers only the stub:
-- choose base ≡ 0x10 (mod 32), so `frag` is 32-aligned and the text window is [frag, frag+0x40);
-- the pool header sits in the previous line;
-- the window is executable only between step 4's writeback/invalidate and the
-  stub's return, with no CPU or DMA writes to it in that window.
-
-This would need a new, reviewed rights-transition primitive. It is deferred
-until the A/S-only result is measured.
+Any executable-M design would have to keep the stub lines
+[frag, frag+0x40) RX from step 4's writeback/invalidate until every
+main-thread holder of node `unk_28` has retired and the next load has been
+fenced. That is the whole residency, not a worker-only window. It would need a
+new, reviewed rights-transition primitive. It is not proposed, and per the
+coordinator it must not be implemented.

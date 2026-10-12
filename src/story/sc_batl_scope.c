@@ -2,12 +2,24 @@
 #include "sc_batl_scope.h"
 #include "src/memmap.h"
 #include "src/19840.h"
+#include "src/memory.h"
+#include "src/dp_intro.h"
 
 static struct {
     ScBatImports imports;
     u32 next_generation, next_ticket, ticket, active, failed, stopping;
     OSMesg retained_message;
 } scope;
+
+static const u32 loader_order[5] = {
+    SC_BATL_LOADER_MODEL, SC_BATL_LOADER_ANIMATION,
+    SC_BATL_LOADER_MODEL, SC_BATL_LOADER_ANIMATION, SC_BATL_LOADER_STAGING
+};
+static struct {
+    u8 *base;
+    const void *workers[2];
+    u32 bound, armed, taken, offset, live, generation, drained;
+} loader;
 
 static int roots_match(int capture) {
     unsigned i;
@@ -62,6 +74,10 @@ int sc_batl_scope_open(void) {
     if ((encoded & 0xfff00000U) != 0x84300000U || !base || !bytes ||
         !map_generation || bytes < sizeof(f32) || clock < base ||
         clock - base > bytes - sizeof(f32) || !roots_match(1)) return 0;
+    if (loader.live && !loader.drained &&
+        (scope.next_generation + 1 != loader.generation ||
+         scope.imports.workers[0] != loader.workers[0] ||
+         scope.imports.workers[1] != loader.workers[1])) return 0;
     scope.imports.generation = ++scope.next_generation;
     scope.imports.map_generation = map_generation;
     scope.imports.native_base = base;
@@ -140,6 +156,7 @@ int sc_batl_scope_close(void) {
     if (!live() || scope.ticket) return 0;
     for (i = 0; i < 2; ++i)
         if (scope.imports.workers[i]->unk_01 & 3) return 0;
+    if (loader.live && scope.imports.generation == loader.generation) loader.drained = 1;
     scope.active = 0;
     scope.imports.clock = 0;
     scope.imports.roots[0] = scope.imports.roots[1] = 0;
@@ -155,6 +172,88 @@ void sc_batl_scope_require(int result) {
     scope.failed = 1;
     osSyncPrintf("story BATL scope ownership failure\n");
     for (;;) osStopThread(NULL);
+}
+
+/* Loader install record. Requests are checked against the exact vanilla
+   order of func_84301430 (func_80019760(3) twice, then func_8001987C). Model
+   pools stay lower (they execute); animation and staging take fixed upper
+   DATA offsets. Any other request inside the window stops before a job can
+   reference a span. Unbinding requires a BATL scope that captured the same
+   two workers to have opened after install and closed fully drained. */
+
+/* Spans already handed out stay retained: live and never drained. */
+static void loader_fail(void) {
+    loader.armed = 0;
+    loader.live = 1;
+    loader.drained = 0;
+    sc_batl_scope_require(0);
+}
+
+int sc_batl_loader_bind(void *base, u32 bytes) {
+    if (loader.bound || loader.armed || loader.live || !base ||
+        bytes != SC_BATL_LOADER_BYTES || ((uintptr_t)base & 63U)) return 0;
+#ifndef SC_SERVICE_HOST
+    if ((uintptr_t)base < 0x80400000U || (uintptr_t)base > 0x807da7e0U - bytes) return 0;
+#endif
+    loader.base = base;
+    loader.bound = 1;
+    return 1;
+}
+
+int sc_batl_loader_unbind(void) {
+    if (!loader.bound || loader.armed) return 0;
+    if (loader.live && (!loader.drained || scope.active || scope.ticket || scope.failed))
+        return 0;
+    /* Same graphics-idle fence vanilla uses before overwriting loader buffers:
+     * no queued RSP/RDP task may still read A/S when the span is released. */
+    while (func_80001C90() == 0) {}
+    loader.live = loader.drained = loader.generation = 0;
+    loader.workers[0] = loader.workers[1] = 0;
+    loader.bound = 0;
+    loader.base = 0;
+    return 1;
+}
+
+int sc_batl_loader_arm(void) {
+    if (!loader.bound || loader.armed || loader.live || scope.active ||
+        scope.ticket || scope.failed) return 0;
+    loader.armed = 1;
+    loader.taken = loader.offset = 0;
+    return 1;
+}
+
+int sc_batl_loader_disarm(const void *worker0, const void *worker1) {
+    if (!loader.armed || loader.taken != 5 || loader.offset != SC_BATL_LOADER_BYTES ||
+        !worker0 || !worker1 || worker0 == worker1 ||
+        scope.next_generation == 0xffffffffU) return 0;
+    loader.armed = 0;
+    loader.workers[0] = worker0;
+    loader.workers[1] = worker1;
+    loader.generation = scope.next_generation + 1;
+    loader.drained = 0;
+    loader.live = 1;
+    return 1;
+}
+
+int sc_batl_loader_live(void) { return loader.bound || loader.armed || loader.live; }
+
+void *sc_batl_loader_alloc(u32 size) {
+    u8 *span;
+    u32 want;
+    if (!loader.armed) return main_pool_alloc(size, 1);
+    if (loader.taken >= 5 || loader_order[loader.taken] != size) {
+        loader_fail();
+        return 0;
+    }
+    want = loader_order[loader.taken++];
+    if (want == SC_BATL_LOADER_MODEL) return main_pool_alloc(size, 1);
+    if (loader.offset > SC_BATL_LOADER_BYTES - size) {
+        loader_fail();
+        return 0;
+    }
+    span = loader.base + loader.offset;
+    loader.offset += size;
+    return span;
 }
 
 int sc_batl_scope_map_change(void) {

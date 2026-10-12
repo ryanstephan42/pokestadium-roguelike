@@ -596,9 +596,16 @@ void func_84301430(unk_func_80007444* arg0) {
         func_8001E94C(3, 0);
     }
 
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (gScCampaignBattle) sc_batl_scope_require(sc_batl_loader_arm());
+#endif
     D_8438E798[0].unk_10 = func_80019760(3);
     D_8438E798[1].unk_10 = func_80019760(3);
     func_8001987C();
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (gScCampaignBattle)
+        sc_batl_scope_require(sc_batl_loader_disarm(D_8438E798[0].unk_10, D_8438E798[1].unk_10));
+#endif
 
     sp2C = main_pool_alloc(0x10, 0);
     func_800062E4(sp2C, 0, 2, 0x4C, 0x4C, arg0->unk_18[0]->depth_p->img_p);
