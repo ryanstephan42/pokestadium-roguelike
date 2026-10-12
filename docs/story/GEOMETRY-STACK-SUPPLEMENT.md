@@ -286,6 +286,63 @@ All other targets are ≤ 248.
 - *Battle reachability.* Which models are battle-reachable is not established.
 - *Caller prefix and IRQ chain.* Not bounded.
 
+## v5 renderer weight, caller prefix and stack remedy (static)
+
+**Renderer weight** (`tools/cmd8weight.py`). This is the worst weighted layout cost (W) over every parsed model
+layout, with renderer recursion following the layout's nesting and each cmd8 callback charged at its v4 depth.
+- Maximum is 5208 at archive `0x920000` entry 22. It is identical in vanilla.
+- Archive 0x920000 is indexed by species − 1 (`19840.c:501`). So entry 22 is Ekans, entry 23 Arbok (3864) and
+  entry 70 Victreebel (4056). Ekans appears in Red/Blue story battles, so the bound is battle-reachable.
+- The scene chain from the entry of `func_80015094` down to the model instance costs 632.
+- Stage layouts are small.
+- The IRQ charge on the Game-thread stack is 0, because the handlers run on their own stacks.
+
+**Caller prefix** (`tools/prefixdepth.py`, `tools/revclosure.py`, `tools/framediff.py`). The callable
+Game-thread stack is 6352: `D_80080000[0x18E0]` is 6368 nominal.
+- Fragment62's main `func_84301A2C` is the only battle root of `func_80015094` (`outputs/revclosure-80015094-N.txt`).
+  The other roots are called only from other fragments.
+- The only nested `func_800078D4` loop reachable from battle is fragment32, the transfer-pak fatal screen.
+  Its `while (1)` never returns.
+- **Original N (`0b4eae42`), story path:**
+
+  | Segment | Bytes |
+  |---|---:|
+  | Game_Thread | 32 |
+  | `sc_campaign_state` → `launch` → `rl_start_battle` | 280 |
+  | `func_80029008` | 32 |
+  | fragment62 prefix | 280 |
+  | scene chain | 632 |
+  | Ekans layout | 5208 |
+  | **Total** | **6464** |
+
+  This is **112 over callable**. The vanilla equivalent is 6224, a margin of 128.
+  Frame growth against vanilla is in `outputs/framediff-N-vanilla.txt`; for example, `func_800078D4` is 88
+  against vanilla's 48.
+
+**Remedy** (commit `c5f4bb0`).
+- `sc_campaign_state` is split into `sc_campaign_state_poll` and `sc_campaign_state_launch`. The state machine
+  now launches after the poll frame has returned.
+- `rl_start_battle` moves native-mon conversion (`rl_add_native`) and side preparation (`rl_prepare_sides`)
+  into helpers. Both return before fragment62 runs. Its frame drops from 192 to 56.
+- The `func_800078D4` story frame bookkeeping moves into helpers with no loop locals, dropping its frame from
+  88 to 56. On exit it resets to idle rather than restoring an outer state. The only nested loop never returns
+  (fragment32). If a nested loop did return, a later outer consume would be refused and the native frame shown,
+  so the change fails safe.
+- **New N2 (`40b61d83`), story path:** 32 + 120 + 32 + 248 + 632 + 5208 = **6272**, a margin of 80 against
+  callable (`outputs/prefix-*-N2.txt`, `outputs/framediff-N-N2-text.txt`).
+
+**Pre-existing, out of scope.** The Game_Thread prefix to `func_80029008` reaches its maximum of 1048 through
+the master roguelike pending-battle path (`anon_80069ad0`, frame 928). With an Ekans-class layout that path
+exceeds the stack. It is reported only and not changed here.
+
+**Still open after v5.**
+- Resolution lists were derived on N and keyed by symbol. The `main_pool_free` destructor addresses are N-specific,
+  but they are not on the measured paths.
+- 25 INDIRECT and 146 TAILJR sites in the fragment62 prefix are not qualified.
+- The upstream prefix is maximal only along the identified roots.
+- N2 is a new ELF. The same-N evidence (SC closure, arena ledger, cmd8/geometry seals) must be re-derived or
+  qualified for it.
+
 ## Not claimed
 
 - After v3, BD04 is bounded as a 0-byte leaf.
@@ -295,4 +352,5 @@ All other targets are ≤ 248.
   and the unparsed layout sources are not bounded.
 - Thread-stack budgets, interrupt/exception frames and concurrent-thread interleavings are not assessed.
 - Data-indexed tables assume well-formed indices.
-- No fit, contiguity, stack, native or gate claim.
+- The v5 stack totals are static arithmetic over the stated paths, not a runtime high-water measurement.
+- No fit, contiguity, native or gate claim.
