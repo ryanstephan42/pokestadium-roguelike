@@ -798,7 +798,7 @@ All changes are behind `ROGUELIKE`. Vanilla `make` still reports `build/pokestad
 **Corrections to v9/v10 (N5–N7).**
 - **fragment-31 bindings were stale.** From `ae9115b` onward the fragment-31 layout changed but its relocation table, header and raw `j` thunk table were still the vanilla ones:
   - The 60-entry thunk table at offset `0x20–0x200` kept vanilla targets. 21 admitted local `0x810` thunks pointed at old offsets inside other functions (e.g. `81000180` → `81002f38`, but `func_81002F38` was at `81003090`).
-  - `rl_relocate_archive_imports` repairs only `[0x84300000, 0x84400000)` targets. That correctly repaired the 30 admitted `0x843` imports and nothing else. `Memmap_RelocateFragment` rebases without changing offsets.
+  - `rl_relocate_archive_imports` repairs only `[0x84300000, 0x84400000)` targets. Given a correct relocation table it would map the 30 admitted `0x843` imports and nothing else; on N5–N7 the stale header meant no such table was read (see v12). `Memmap_RelocateFragment` rebases without changing offsets.
   - The header still held vanilla `relocOffset/sizeInRom/sizeInRam` = `0x47e0/0x5480/0x4be0` against an actual layout of `0x4a70/0x5710/0x4e70`. Both loaders read `relocOffset`, so N5–N7 would read a relocation count from code bytes.
   - The direct-function HOST and IDO acceptance in v9/v10 (CI helper, getter, phase/counter) therefore did **not** certify the installed callback-table path on N5–N7.
 - **Wmax 5208 for N6/N7 was stale.** `cmd8weight.py` used a 10⁶ placeholder for an unbound callback, so the N7 output was 1002776, an unknown depth, and `cmd8domain.py` printed 21 `NO-FUNC-SYMBOL-AT-ADDR` lines. Verification passed only because the stage compared output identity.
@@ -873,6 +873,66 @@ Remaps and stage runs:
 - cmdA/cmd17 payloads and the remaining callback argument schemas.
 - Effect whole-turn history; Stadium 144 / BD9C 592; the two fragment43 sites.
 - Lower keys 2–6; co-occurrence, fit/contiguity and native/gate.
+
+## v12 fragment-31 entry gate, 14D70 segment-1 admission; N9 refresh (static)
+
+All changes are behind `ROGUELIKE`. Vanilla `make` still reports `build/pokestadium-us.z64: OK`.
+
+**Correction to v11 (N7 history).** The 30 admitted `0x843` imports were mapped correctly only *conditionally on a
+correct relocation table*. On N5–N7 the stale header made the loader read relocations from offset `0x47e0`, so the
+installed entry dispatched to `81001b78` (validator). The import-map trace is therefore not N7 runtime success.
+
+N8 installed repair was accepted independently (validator `n8-installed-review.txt` SHA
+`ec92885012831f045ef20af36df7e1cd1c8c9c288573e23a0876b84b91e0745e`). This is a bounded binding component, not a stack, fit or native claim.
+
+| Commit | Change |
+|---|---|
+| `d597b42` | `check_installed_thunks.py` also gates the entry path. The header bytes `0..0x14` must equal vanilla: `j BASE+0x20`, nop, `FRAGMENT`. The loader R26 entry at offset 0 must be present iff vanilla has one. The stub at `0x20` must be a checked binding. N9: `entry j 81000020 -> stub -> func_810002DC PASS`. Five header/stub mutants are rejected. |
+| `16aad3b` | `func_80014D70` admits the shadow node only with a non-NULL `func_80005F5C(16)` DL, `Memmap_GetSegmentBaseVaddr(1) != 0` and `Memmap_GetSegmentSize(1) >= 0x2590`; refusal follows the vanilla flag-off path. `0x2590` covers both shadow DLs (`0x2480`/`0x2508`, `0x88` each), textures `0x2000–0x2400` and vertices `0x2400–0x2440`. The genuine install is `0x3f20`. Sizes `0x2508–0x258F` would be refused for branch 0 where vanilla accepts; this is a documented conservative difference. Segment-1 identity is not proven, because some non-constant installers remain unresolved; this is an extent check only. |
+
+HOST evidence (`host_tests/test_shadow_seg1.py`, extracted `func_80014D70` + memmap, `-m32` ASan/UBSan):
+- The installed, exact-`0x2590` and flag-off traces are identical to vanilla.
+- Unmapped, `0x258F`, cleared, NULL-base and NULL-alloc are refused with the flag-off trace; vanilla faults on them.
+- Mutants removing the NULL, base or bound check are rejected.
+
+IDO evidence on N9:
+- `rl_shadow_node_ok` @ `80015a20` checks `sltu a0`, then `Memmap_GetSegmentBaseVaddr(1)`, then `Memmap_GetSegmentSize(1)` (`lw gSegments+4`) with `sltiu 0x2590`.
+- In `func_80014D70` the call sits after `andi 0x40` and before the `10A0` increment, and `beqz` goes to the epilogue at `80015d88`.
+
+**N9 candidate:** fixed point v106 = v107.
+
+| Artifact | SHA256 |
+|---|---|
+| ELF | `3c62f5d3cb2b61da6de7241ef8bc0b67012ce2c8e2df0509a12db4813de68ba4` |
+| ROM | `621e97a193841a397d1a9119bcbae770f7761770d051e938c902ee7b8cdd8a9b` |
+| Map | `e9a89606324b6cdd3b6edba9c22e1ecbe134169e0d9b9d5c71a850c411965536` |
+
+`.text` after `12D80.o` moved +0x70. Handler table `0x8008b894`, stadium archive `0x595fa0`, geo size table `0x80098720`, gPool `0x8012e200`.
+
+Remaps and stage runs:
+- The N8→N9 remaps of the v3, prefix, SC and 20-site lists report no SHIFT or MISMATCH.
+- `remapres2.py` now applies the decimal-immediate mask before the 5-digit hex mask. Previously `addiu …,10080` became `X`, giving a false MISMATCH.
+- GEN and a fresh-scratch run both end with VERIFY PASSED (108 OK).
+
+| Artifact | Result on N9 |
+|---|---|
+| Installed thunks | 60 bindings PASS, all 56 validator operands, entry PASS. N7 is rejected. |
+| `cmd8domain.py` / `cmd8weight.py` | 0 unresolved; Wmax **5208**; stadium 648. |
+| `renderrec` / `cmd8depth` / SC | CBmax 1144; `func_81000420` 1024; `sc_cold_entry` 2832 (594 functions). Normalised output is identical to N8. |
+| `cmd8scan-v2.py` | 622618 candidates, **2 hits** (N8: 0). Both are the phase-2 data word `00016001` in `.pokemon_models` (ELF `+73c2c6`, ROM `+105c2c6`). Its phys resolution `0x80016001` now falls inside the range of `func_80015220`, which shifted by +0x68. A derived check requires zero 4-aligned hits and zero entry hits. It passes, and both mutants are rejected. Exclusion of `func_80015220` now additionally rests on the premise that a misaligned `jalr` target faults before executing any instruction in the range. |
+| `cmd8super` | Superset heuristic: 1192 candidates (N8: 1184) from shifted coincidental words. |
+
+**Lower-pool static key 1:**
+- The pool is `[0x8012e210, 0x803ffff0)`, capacity **2956768** (−112 versus N8).
+- fragment62 charges 815648.
+- Arithmetic-only remainder: **547440**. This is not a fit claim.
+
+**Still open after v12:**
+- CI texture ownership (the initialized window only).
+- Deferred A, C and E.
+- cmdA/cmd17: per-producer arena epoch versus live child attachments, or checked handler admission (validator `n8-cmda17-review.txt`).
+- Effect whole-turn history; Stadium 144 / BD9C 592; the two fragment43 sites.
+- Keys 2–6 phase placement and contiguity; native/gate.
 
 ## Not claimed
 
