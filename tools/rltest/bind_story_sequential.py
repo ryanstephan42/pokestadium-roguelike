@@ -194,8 +194,17 @@ def main():
 
 def bind_boot_symbols(elf):
     addresses = {name: elf.symbol(name)[1] for name in
-                 ("osMemSize", "gCurrentGameState", "gScCampaignRun",
+                 ("gCurrentGameState", "gScCampaignRun",
                   "gScCampaignMenuReady", "gFragments")}
+    memory = []
+    for index, table in elf.tables.items():
+        strings = elf.sections[elf.sections[index][6]]
+        for symbol in table:
+            if (symbol[3] >> 4 in (1, 2) and symbol[5] == 0xFFF1 and
+                    elf.string(strings, symbol[0]) == "osMemSize"):
+                memory.append(symbol[1])
+    require(len(memory) == 1, "Missing/ambiguous ELF absolute boot memory parameter")
+    addresses["osMemSize"] = memory[0]
     require(addresses["osMemSize"] == 0x80000318, "Unexpected ELF boot memory parameter")
     require(all(0x80000000 <= address < 0x80400000 for address in addresses.values()),
             "Boot witness outside resident lower RAM")

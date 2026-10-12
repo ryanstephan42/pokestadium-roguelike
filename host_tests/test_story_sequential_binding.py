@@ -51,6 +51,12 @@ class SequentialBindingTests(unittest.TestCase):
     def test_boot_memory_symbol_comes_from_exact_elf(self):
         class Symbols:
             memory = 0x80000318
+            sections = [(0, 2, 0, 0, 0, 0, 1), (0,)]
+            @property
+            def tables(self):
+                return {0: [(0, self.memory, 0, 0x10, 0, 0xFFF1)]}
+            def string(self, section, offset):
+                return "osMemSize"
             def symbol(self, name):
                 return (0, self.memory if name == "osMemSize" else 0x80001000, 0)
         elf = Symbols()
