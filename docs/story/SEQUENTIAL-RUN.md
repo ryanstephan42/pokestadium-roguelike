@@ -389,3 +389,9 @@ exception or OS signal. The stripped core return site at offset `0x2de692`
 follows its `Compile at bogus memory address: %x` fatal branch. The next
 diagnostic also retains mappings and 256 bytes of that caller's stack so
 the rejected guest address can be resolved rather than inferred.
+Run9 retained guest PC `0x8430d480`, exactly the linked
+`sc_batl_clock_source` symbol. Resident scope code called that overlay symbol
+directly, bypassing the loader's virtual-to-loaded-address conversion. The
+scope now resolves and bounds-checks both the clock callback and the battle
+root array through the current fragment map. Its lifetime/generation checks
+remain unchanged; the opened clock is retained instead of calling twice.

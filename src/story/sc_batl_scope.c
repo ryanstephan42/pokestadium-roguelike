@@ -25,10 +25,30 @@ static ScFxTable fx;
 static ScJobTicket model_tickets[2];
 static u32 fatal_code;
 
+static uintptr_t battle_import(void *symbol, size_t bytes) {
+    uintptr_t encoded = (uintptr_t)symbol;
+    size_t size;
+    if ((encoded & 0xfff00000U) == 0x84300000U) {
+        size = Memmap_GetFragmentSize(0x33);
+        if (!Memmap_GetFragmentBaseVaddr(0x33) || size < bytes ||
+            (encoded & 0xfffffU) > size - bytes) return 0;
+    }
+    return Memmap_GetFragmentVaddr(symbol);
+}
+
+static const f32 *battle_clock(void) {
+    uintptr_t address = battle_import((void *)sc_batl_clock_source, sizeof(u32));
+    if (!address) return NULL;
+    return ((const f32 *(*)(void))address)();
+}
+
 static int roots_match(int capture) {
     unsigned i;
+    unk_D_84390010 **roots =
+        (unk_D_84390010 **)battle_import(D_84390010, 2 * sizeof(*roots));
+    if (!roots) return 0;
     for (i = 0; i < 2; ++i) {
-        unk_D_84390010 *root = D_84390010[i];
+        unk_D_84390010 *root = roots[i];
         unk_D_800AE540_0004 *group;
         if (!root || !root->unk_720 || root->unk_720->unk_01 != 1 ||
             !root->unk_720->unk_10) return 0;
@@ -56,7 +76,7 @@ static int roots_match(int capture) {
 static int live(void) {
     uintptr_t encoded;
     if (!scope.active || scope.failed || !scope.imports.generation ||
-        scope.imports.clock != sc_batl_clock_source() || !roots_match(0) ||
+        scope.imports.clock != battle_clock() || !roots_match(0) ||
         scope.imports.map_generation != Memmap_GetStoryBattleMapGeneration()) return 0;
     encoded = Memmap_GetLoadedFragmentVaddr((uintptr_t)scope.imports.clock);
     return (encoded & 0xfff00000U) == 0x84300000U &&
@@ -70,7 +90,7 @@ int sc_batl_scope_open(void) {
     u32 map_generation;
     if (scope.active || scope.ticket || scope.failed ||
         scope.next_generation == 0xffffffffU) return 0;
-    clock = (uintptr_t)sc_batl_clock_source();
+    clock = (uintptr_t)battle_clock();
     encoded = Memmap_GetLoadedFragmentVaddr(clock);
     base = Memmap_GetFragmentVaddr((void *)0x84300000U);
     bytes = Memmap_GetFragmentSize(0x33);
@@ -86,7 +106,7 @@ int sc_batl_scope_open(void) {
     scope.imports.map_generation = map_generation;
     scope.imports.native_base = base;
     scope.imports.native_size = bytes;
-    scope.imports.clock = sc_batl_clock_source();
+    scope.imports.clock = (const f32 *)clock;
     scope.active = 1;
     scope.stopping = 0;
     return 1;
