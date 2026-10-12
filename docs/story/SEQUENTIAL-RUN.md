@@ -118,6 +118,12 @@ work/tasks/queue completions, VI on the resident fallback, crash framebuffer
 outside retired UI spans, freed UI storage/display scope and an unmapped story
 image. Missing/stale proof aborts. These are observed retained scheduler facts,
 not a proof of every allocator epoch, overall heap fit or GPU correctness.
+The actual result remains in resident value storage after the shell consumes
+it. If the short REOPEN stage falls between frontend frames, capture may read
+that retained result in ACTIVE only when request operation equals the actual
+launched operation, `sequential_active` and `result_ready` are both clear, and
+the ledger binding is unchanged. This observes a completed/consumed result;
+it does not predict one from HP or UI progression.
 Move/party inputs require actual unlocked native menus, live HP/PP/disable
 guards and observed mode3/slot acknowledgement, including transient ACKs
 during the held frame. Native-to-story mapping comes from the actual launcher,

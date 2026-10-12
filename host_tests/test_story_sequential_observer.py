@@ -67,6 +67,80 @@ class SequentialObserverTests(unittest.TestCase):
         with self.assertRaisesRegex(HarnessError, "revived"):
             observer.accept(row)
 
+    def test_consumed_resident_result_survives_unobserved_reopen_frame(self):
+        observer = self.observer()
+        row = self.row(BATTLE)
+        row["ledger"]["events"] = [dict(enemy=1, participants=1, recipients=1),
+                                   dict(enemy=0, participants=1, recipients=0)]
+        row["ledger"]["count"] = 2
+        observer.accept(row)
+        row.update(stage=ACTIVE, result_ready=0, result_consumed=True, outcome=1,
+                   party=observer.expected(2), ui=dict(ledger=dict(bound=0)))
+        row["party"][0].update(hp=0, fainted=1, status=3)
+        carry = copy.deepcopy(self.party[0])
+        carry.update(hp=0, fainted=1, status=3)
+        row["carry"] = [(0, carry)]
+        observer.accept(row)
+        self.assertEqual(observer.result, 1)
+        self.assertEqual(observer.applied, 2)
+        wrong = copy.deepcopy(row)
+        wrong["result_ready"] = 1
+        with self.assertRaises(HarnessError):
+            observer.accept(wrong)
+
+    def test_consumed_capture_requires_launched_operation_and_inactive_transaction(self):
+        control = bytearray(300)
+        ui_address = 0x80404000
+        control[:4] = ui_address.to_bytes(4, "big")
+        control[4:8] = (77).to_bytes(4, "big")
+        control[25] = 1
+        control[150] = 1
+        control[151] = 1
+        control[162] = 4
+        control[288:292] = (1).to_bytes(4, "big")
+        run = bytearray(ACTIVE.to_bytes(4, "big") + bytes(4) + (77).to_bytes(4, "big"))
+        state = bytearray(80)
+        state[1] = 1
+        state[12] = 4
+        abi = dict(pointer_size=4, mon_size=68, event_size=3,
+                   control=dict(size=300, ui_pointer=0, sequential_request=4,
+                                sequential_state=24, sequential_ledger=104,
+                                sequential_result=150, sequential_result_ready=284,
+                                sequential_outcome=288, sequential_active=292),
+                   state=dict(size=80, party=12, party_count=1, phase=2),
+                   ui=dict(state=0, postbattle_ledger=80, screen=124, pending_save=128),
+                   request=dict(size=20, operation_id=0, encounter=4, variant=6,
+                                party_count=7, enemy_count=8),
+                   result=dict(size=80, player_count=1, player_index=3, player=12, outcome=0),
+                   ledger=dict(size=44, events=0, operation_id=20, encounter=24,
+                               variant=26, party_ids=27, count=39, next=40,
+                               enemy_count=41, party_count=42, bound=43),
+                   run=dict(size=12, stage=0, error=4, launched=8))
+        class Emu:
+            frame = 5
+            def read_u32(self, symbol):
+                return 0x80001000
+            def read(self, address, size):
+                if address == "gScCampaignRun":
+                    return run
+                if address == 0x80001000:
+                    return control
+                if address == ui_address:
+                    return state
+                return bytes(size)
+        row = capture(Emu(), abi, lambda raw: dict(species=raw[0]))
+        self.assertTrue(row["result_consumed"])
+        self.assertEqual(row["carry"], [(0, dict(species=4))])
+        for mutation in ("operation", "active"):
+            if mutation == "operation":
+                run[8:12] = (78).to_bytes(4, "big")
+            else:
+                run[8:12] = (77).to_bytes(4, "big")
+                control[292:296] = (1).to_bytes(4, "big")
+            row = capture(Emu(), abi, lambda raw: dict(species=raw[0]))
+            self.assertFalse(row["result_consumed"])
+            self.assertNotIn("carry", row)
+
     def test_rejects_coherent_retarget_and_changed_party(self):
         for key in ("operation", "encounter", "variant", "party_count", "enemy_count"):
             observer = self.observer()

@@ -109,7 +109,11 @@ def capture(emu, abi, decode_mon):
                result_ready=field(control, abi["control"], "sequential_result_ready", 4),
                outcome=field(control, abi["control"], "sequential_outcome", 4),
                ui=None)
-    if stage == REOPEN:
+    consumed = (stage == ACTIVE and row["request"]["operation"] > 0 and
+                field(run, abi["run"], "launched", 4) == row["request"]["operation"] and
+                field(control, abi["control"], "sequential_active", 4) == 0)
+    row["result_consumed"] = consumed
+    if stage == REOPEN or consumed:
         result = control[abi["control"]["sequential_result"]:
                          abi["control"]["sequential_result"] + abi["result"]["size"]]
         count = field(result, abi["result"], "player_count")
@@ -207,8 +211,12 @@ class SequentialLedger:
                     and len(row["party"]) == len(self.before),
                     "Sequential progression mutated while shell absent/battle active")
             require(ledger["next"] == 0, "Sequential ledger replayed during battle")
-        if row["stage"] == REOPEN:
-            require(row["result_ready"] == 1 and row["outcome"] in (0, 1, 2),
+        if row["stage"] == REOPEN or row.get("result_consumed", False):
+            require(self.binding is not None and row["request"] == self.binding,
+                    "Sequential result lacks bound operation")
+            require((row["result_ready"] == 1 if row["stage"] == REOPEN else
+                     row["stage"] == ACTIVE and row["result_ready"] == 0) and
+                    row["outcome"] in (0, 1, 2),
                     "Sequential reopen lacks completed result")
             require(self.result is None or self.result == row["outcome"],
                     "Sequential completed result changed")
