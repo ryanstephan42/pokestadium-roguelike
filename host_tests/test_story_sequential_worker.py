@@ -22,6 +22,32 @@ from tools.rltest import story_sequential_worker as worker
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
+class ChildExitTests(unittest.TestCase):
+    def test_native_exit_is_retained_and_debug_output_is_redirected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory) / "run"
+            args = types.SimpleNamespace(out=out, debug_exit=True)
+            with patch.object(worker.subprocess, "run",
+                              return_value=types.SimpleNamespace(returncode=1)) as run:
+                with self.assertRaisesRegex(HarnessError, "returncode=1"):
+                    worker.run_children(args, command_factory=lambda _: ["fake-worker"])
+            command = run.call_args.args[0]
+            self.assertEqual(command[0], "gdb")
+            self.assertIn("set logging redirect on", command)
+            self.assertIn("set debuginfod enabled off", command)
+            self.assertEqual(json.loads((out / "win.exit.json").read_text()),
+                             dict(returncode=1, host_debugger=True))
+
+    def test_debugger_success_without_scenario_report_is_not_a_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = types.SimpleNamespace(out=pathlib.Path(directory) / "run",
+                                         debug_exit=True)
+            with patch.object(worker.subprocess, "run",
+                              return_value=types.SimpleNamespace(returncode=0)):
+                with self.assertRaisesRegex(HarnessError, "without final report"):
+                    worker.run_children(args, command_factory=lambda _: ["fake-worker"])
+
+
 class BootThreadTests(unittest.TestCase):
     def test_saved_thread_register_offsets_and_bounded_stack(self):
         data = bytearray(0x130)
