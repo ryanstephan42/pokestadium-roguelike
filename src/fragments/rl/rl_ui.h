@@ -9,6 +9,8 @@
 /* Call after creating the scene's display-list workspace, inside its pool scope. */
 s32 rl_ui_init(void);
 #ifdef STORY_NATIVE_UI
+#include "src/story/sc_module_arena.h"
+int rl_ui_story_init(ScMaArena *arena);
 int rl_ui_story_icon_cached(unsigned species);
 int rl_ui_story_icon_prefetch(unsigned species);
 #endif

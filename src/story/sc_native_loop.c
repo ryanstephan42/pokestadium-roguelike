@@ -57,7 +57,7 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
     status = validate(loop);
     if (status != SC_OK) return status;
     if (!b->lease_id || !b->ui || !b->request || !b->driver || !b->native_ui || !b->pak ||
-        !b->event || !b->catalog)
+        !b->event || !b->catalog || !b->arena)
         return fail(NULL, SC_INVALID, "Story loop: incomplete admitted backing tuple");
     if (b->driver->bound || b->native_ui->acquired || b->native_ui->prepared || b->pak->bound)
         return fail(NULL, SC_INVALID, "Story loop: backing already owns another lifetime");
@@ -67,7 +67,7 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
     status = sc_native_pak_bind(b->pak, 0);
     if (status != SC_SAVE_OK) return fail(loop, SC_UNAVAILABLE, "Story loop: Pak binding failed");
     loop->pak_bound = 1;
-    status = sc_native_ui_acquire(b->native_ui, b->pak);
+    status = sc_native_ui_acquire(b->native_ui, b->pak, b->arena);
     if (status != SC_OK) return status;
     loop->resources_acquired = 1;
     status = sc_native_ui_prepare(b->native_ui, b->ui, b->catalog, b->seed);

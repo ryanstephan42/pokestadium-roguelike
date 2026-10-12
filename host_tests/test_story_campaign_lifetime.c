@@ -40,7 +40,7 @@ int sc_persist_native_enter(unsigned char *image, int arg0, unsigned arg1) {
 /* ---- HOST seams never reached once display acquisition is refused ---- */
 #define UNREACHED(what) assert(!what " reached after refused display acquisition")
 int sc_native_pak_bind(ScNativePak *p, unsigned c) { (void)p; (void)c; UNREACHED("Pak bind"); return SC_SAVE_IO; }
-int sc_native_ui_acquire(ScNativeUi *u, ScNativePak *p) { (void)u; (void)p; UNREACHED("UI acquire"); return SC_INVALID; }
+int sc_native_ui_acquire(ScNativeUi *u, ScNativePak *p, ScMaArena *a) { (void)u; (void)p; (void)a; UNREACHED("UI acquire"); return SC_INVALID; }
 int sc_native_ui_prepare(ScNativeUi *u, ScUi *ui, const ScCatalog *c, RlU32 s) {
     (void)u; (void)ui; (void)c; (void)s; UNREACHED("UI prepare"); return SC_INVALID;
 }

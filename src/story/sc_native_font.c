@@ -29,6 +29,26 @@ static void release_glyph(MainPoolBlock *block, u32 arg) {
     func_8001E7D4(0, arg);
 }
 
+int sc_native_font_install(unk_D_800AC870 *font, BinArchive *archive,
+                           ret_func_8000484C *glyphs[3]) {
+    static const s16 widths[3] = {0x10, 0x18, 0x18};
+    static const s16 heights[3] = {0x10, 0x14, 0x18};
+    unsigned i;
+    if (!font || !archive || !glyphs) return 0;
+    for (i = 0; i < 3; ++i) if (!glyphs[i]) return 0;
+    bzero(font, sizeof(*font));
+    font->unk_48 = archive;
+    for (i = 0; i < 3; ++i) {
+        font->unk_00[i + 2].unk_00 = widths[i];
+        font->unk_00[i + 2].unk_02 = heights[i];
+        font->unk_00[i + 2].unk_04 = (u8 *)glyphs[i];
+        font->unk_00[i + 2].unk_08 = (u8 *)&glyphs[i]->unk_90;
+    }
+    font->unk_50 = 4;
+    D_800AC870 = font;
+    return 1;
+}
+
 int sc_native_font_acquire(void) {
     static const s16 widths[6] = {0x10, 0x10, 0x10, 0x18, 0x18, 0x20};
     static const s16 heights[6] = {0xA, 0xC, 0x10, 0x14, 0x18, 0x20};

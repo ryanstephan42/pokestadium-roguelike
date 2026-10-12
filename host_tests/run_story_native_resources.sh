@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+arena_dir=${SC_MA_SOURCE_DIR:-src/story}
 output=build/story/native-ui-review-v1
 mkdir -p "$output"
 python3 tools/story_data.py --out "$output/data.json" --c-out "$output/sc_data.c"
 sources=(
     host_tests/test_story_native_resources.c src/story/sc_native_pak.c src/story/sc_native_ui.c
     src/story/sc_pak_probe.c
-    src/story/sc_native_font.c src/story/sc_native_resources.c
+    src/story/sc_native_font.c
     src/story/sc_native_icons.c
+    src/story/sc_resource_arena.c "$arena_dir/sc_module_arena.c"
     src/story/sc_native_loop.c src/story/sc_native_operation.c src/story/sc_native_terminal.c
     src/story/sc_ui_driver.c src/story/sc_ui.c src/story/sc_core.c src/story/sc_combat.c
     src/story/sc_make.c src/story/sc_graph.c src/story/sc_progression.c src/story/sc_save.c
@@ -16,21 +18,28 @@ sources=(
     src/roguelike/rl_ui_model.c src/roguelike/rl_pak.c "$output/sc_data.c"
 )
 flags=(-DSTORY_NATIVE_UI -DSTORY_NATIVE_PROBE -DSTORY_SERVICE_CANDIDATE -DROGUELIKE -std=gnu89 -Wall -Wextra -Werror
-       -Wno-endif-labels -I. -iquote include -include host_tests/story_native_operation_stubs.h)
+       -Wno-endif-labels -I. -iquote include -I"$arena_dir" -I"$arena_dir/../.."
+       -include host_tests/story_native_operation_stubs.h -Wl,--wrap=sc_native_resources_retire)
 # Untouched native formatting uses 32-bit pointer arithmetic and decomp artifacts.
 text_flags=(-Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-int-conversion
     -Wno-pointer-sign -Wno-format -Wno-unused-but-set-variable -Wno-uninitialized)
 "${CC:-gcc}" "${flags[@]}" "${text_flags[@]}" -O2 -c src/2E110.c -o "$output/text-host.o"
-"${CC:-gcc}" "${flags[@]}" -O2 "${sources[@]}" "$output/text-host.o" -o "$output/test"
+# The legacy 64-bit fixture does not run the upper loader; its separate runner
+# uses exact 32-bit layouts. Keep pointer-width exceptions local to this unit.
+pointer_flags=(-Wno-pointer-to-int-cast -Wno-int-conversion)
+"${CC:-gcc}" "${flags[@]}" "${pointer_flags[@]}" -O2 -c src/story/sc_native_resources.c -o "$output/resources-host.o"
+"${CC:-gcc}" "${flags[@]}" -O2 "${sources[@]}" "$output/text-host.o" "$output/resources-host.o" -o "$output/test"
 "$output/test"
 "${CC:-gcc}" "${flags[@]}" "${text_flags[@]}" -O1 -g -fsanitize=address,undefined \
     -fno-omit-frame-pointer -c src/2E110.c -o "$output/text-san.o"
+"${CC:-gcc}" "${flags[@]}" "${pointer_flags[@]}" -O1 -g -fsanitize=address,undefined \
+    -fno-omit-frame-pointer -c src/story/sc_native_resources.c -o "$output/resources-san.o"
 "${CC:-gcc}" "${flags[@]}" -O1 -g -fsanitize=address,undefined \
-    -fno-omit-frame-pointer "${sources[@]}" "$output/text-san.o" -o "$output/test-san"
+    -fno-omit-frame-pointer "${sources[@]}" "$output/text-san.o" "$output/resources-san.o" -o "$output/test-san"
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 "$output/test-san"
 target_flags=(-c -G 0 -non_shared -Xcpluscomm -nostdinc -Wab,-r4300_mul
     -DVERSION_US=1 -DSTORY_NATIVE_UI -DSTORY_NATIVE_PROBE -DSTORY_SERVICE_CANDIDATE -DROGUELIKE
-    -Iinclude -Isrc -Isrc/libnaudio -Iassets/us -I. -Ibuild
+    -Iinclude -Isrc -Isrc/libnaudio -Iassets/us -I. -Ibuild -I"$arena_dir" -I"$arena_dir/../.."
     -Ilib/ultralib/include -Ilib/ultralib/include/PR -Ilib/ultralib/include/ido
     -fullwarn -woff 624,649,838,712,516,513,596,564,594
     -mips2 -EB -D_MIPS_SZLONG=32 -DNDEBUG -D_FINALROM -DN_MICRO -DF3DEX_GBI_2

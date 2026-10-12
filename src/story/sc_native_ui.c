@@ -4,6 +4,7 @@
 #include "src/controller.h"
 #include "sc_rl_ui.h"
 #include "src/stage_loader.h"
+#include "sc_native_resources.h"
 
 static ScNativeUi *sResources;
 
@@ -40,9 +41,9 @@ static int icons_ready(const ScUi *ui, int prefetch) {
     return 1;
 }
 
-int sc_native_ui_acquire(ScNativeUi *native, ScNativePak *bound_pak) {
+int sc_native_ui_acquire(ScNativeUi *native, ScNativePak *bound_pak, ScMaArena *arena) {
     MainPoolState *before;
-    if (!native || sResources || native->acquired || native->resource_scope || !bound_pak ||
+    if (!arena || !native || sResources || native->acquired || native->resource_scope || !bound_pak ||
         !bound_pak->bound || bound_pak->session)
         return report(NULL, SC_INVALID, "Story native UI: invalid resource acquisition");
     before = main_pool_get_pool()->mainState;
@@ -52,7 +53,7 @@ int sc_native_ui_acquire(ScNativeUi *native, ScNativePak *bound_pak) {
         native->resource_scope = NULL;
         return report(NULL, SC_UNAVAILABLE, "Story native UI: resource scope unavailable");
     }
-    if (rl_ui_init() != RL_UI_NONE) {
+    if (rl_ui_story_init(arena) != RL_UI_NONE) {
         main_pool_pop_state(0);
         native->resource_scope = NULL;
         return report(NULL, SC_UNAVAILABLE, "Story native UI: font/icon/name acquisition failed");
@@ -149,6 +150,8 @@ int sc_native_ui_release(ScNativeUi *native, const ScUiDriver *driver, int tasks
         driver->launched || driver->launch_pending ||
         driver->ui->request_ready || driver->ui->pending_save)))
         return report(NULL, SC_PENDING, "Story native UI: campaign/tasks/transactions have not retired");
+    if (!sc_native_resources_retire(tasks_retired))
+        return report(NULL, SC_INVALID, "Story native UI: upper resource retirement failed");
     main_pool_pop_state(0);
     native->resource_scope = NULL;
     native->pak = NULL;

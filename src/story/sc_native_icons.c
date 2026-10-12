@@ -11,13 +11,13 @@ static BinArchiveFile *icon_file(BinArchive *archive, unsigned species) {
 
 int sc_native_icon_cached(BinArchive *archive, unsigned species) {
     BinArchiveFile *file = icon_file(archive, species);
-    return file && file->unk_08 != NULL;
+    return file && file->unk_08 != 0;
 }
 
 int sc_native_icon_prefetch(BinArchive *archive, unsigned species) {
     if (!icon_file(archive, species)) return 0;
-    if (!sc_native_icon_cached(archive, species) && !func_8000484C(archive, species - 1))
-        return 0;
+    if (!sc_native_icon_cached(archive, species) && !(archive->unk_00 & SC_NATIVE_ICON_UPPER_CACHE) &&
+        !func_8000484C(archive, species - 1)) return 0;
     return sc_native_icon_cached(archive, species);
 }
 #endif

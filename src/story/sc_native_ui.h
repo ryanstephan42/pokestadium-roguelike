@@ -5,6 +5,7 @@
 #include "sc_native_pak.h"
 #include "sc_ui_driver.h"
 #include "src/memory.h"
+#include "sc_module_arena.h"
 
 typedef struct ScNativeUi {
     MainPoolState *resource_scope;
@@ -16,7 +17,7 @@ typedef struct ScNativeUi {
 } ScNativeUi;
 
 /* Resource scope only: never allocates campaign/controller/request backing. */
-int sc_native_ui_acquire(ScNativeUi *native, ScNativePak *bound_pak);
+int sc_native_ui_acquire(ScNativeUi *native, ScNativePak *bound_pak, ScMaArena *arena);
 int sc_native_ui_prepare(ScNativeUi *native, ScUi *backing, const ScCatalog *catalog, RlU32 seed);
 int sc_native_ui_draw(ScNativeUi *native, const ScUi *ui);
 int sc_native_ui_input(ScNativeUi *native, ScUiDriver *driver);

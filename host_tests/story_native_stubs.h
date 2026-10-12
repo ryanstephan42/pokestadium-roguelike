@@ -30,8 +30,13 @@ typedef struct MainPoolState { struct MainPoolState *prev; } MainPoolState;
 typedef struct MainPool { MainPoolState *mainState; } MainPool;
 typedef struct MainPoolBlock { int unused; } MainPoolBlock;
 typedef void (*AllocateFunc)(MainPoolBlock *, u32);
-typedef struct BinArchive { u16 num_files; unsigned kind, unk_00, alignment; } BinArchive;
+typedef struct BinArchive { u16 num_files; unsigned kind, unk_00, alignment, unk_04, total_size; } BinArchive;
 typedef struct BinArchiveFile { unsigned offset, size; void *unk_08; } BinArchiveFile;
+typedef struct PERSSZP {
+    char magic[8];
+    u32 header_size, decompressed_size1, decompressed_size2, unk_14;
+} PERSSZP;
+typedef struct Yay0 { char magic[4]; u32 decompressed_size, link_table_offset, byte_chunk_offset; } Yay0;
 typedef struct ret_func_8000484C { u8 bytes[0x90]; s32 unk_90; } ret_func_8000484C;
 typedef struct unk_D_800AC870_sub { s16 unk_00, unk_02; u8 *unk_04, *unk_08; } unk_D_800AC870_sub;
 typedef struct unk_D_800AC870 {
@@ -42,6 +47,9 @@ typedef struct unk_D_800AC870 {
 } unk_D_800AC870;
 extern unk_D_800AC870 *D_800AC870;
 extern u8 fonts_ROM_START[], fonts_ROM_END[], textdata_ROM_START[];
+extern u8 textdata_ROM_END[];
+int osRecvMesg(OSMesgQueue *, OSMesg *, int);
+void func_80003890(u8 *, u8 *);
 #define ASSET_LOAD2(asset, mode, side) func_800044F4(asset##_ROM_START, asset##_ROM_END, mode, side)
 BinArchive *func_800044F4(u8 *, u8 *, s32, s32);
 void *func_8000484C(BinArchive *, s32);

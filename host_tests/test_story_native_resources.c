@@ -17,6 +17,7 @@ int sc_pak_probe_store(unsigned, const ScCatalog *, const ScSnapshot *, int);
 
 static ScNativePak pak, other;
 static ScNativeUi native;
+static ScMaArena fixture_arena;
 static ScUi ui;
 static ScUiDriver driver;
 static ScUi unrelated_ui;
@@ -37,7 +38,8 @@ static int launch_status = SC_UNAVAILABLE;
 static BinArchive *icons;
 static char **moves, **species;
 unk_D_800AC870 *D_800AC870;
-u8 fonts_ROM_START[1], fonts_ROM_END[1], textdata_ROM_START[1];
+u8 fonts_ROM_START[1], fonts_ROM_END[1], textdata_ROM_START[1], textdata_ROM_END[1];
+OSMesgQueue D_800A62C0;
 u8 pokemon_icons_ROM_START[1], pokemon_icons_ROM_END[1];
 OSMesgQueue gSIEventMesgQueue;
 u8 __osPfsInodeCacheBank;
@@ -189,6 +191,20 @@ void *func_8000484C(BinArchive *archive, s32 file) {
 s32 rl_ui_init(void) {
     return ui_error || !sc_native_resources_acquire(&icons, &moves, &species) ? RL_UI_INVALID : RL_UI_NONE;
 }
+/* Existing lifecycle fixtures retain their lower-pool acquisition model.
+   The upper-resource runner separately exercises the actual upper loader. */
+int rl_ui_story_init(ScMaArena *arena) {
+    assert(arena == &fixture_arena);
+    return rl_ui_init();
+}
+int __wrap_sc_native_resources_retire(int retired) { return retired != 0; }
+s32 func_80000E80(s32 a, void *b, s32 c, s32 d, s32 e, s32 f) {
+    (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; assert(0); return 1;
+}
+int osRecvMesg(OSMesgQueue *queue, OSMesg *message, int block) {
+    (void)queue; (void)message; (void)block; assert(0); return -1;
+}
+void func_80003890(u8 *a, u8 *b) { (void)a; (void)b; assert(0); }
 void sc_scene_draw(const ScUi *controller_ui) { assert(controller_ui == &ui); frames++; }
 int rl_ui_story_icon_cached(unsigned mon) { return sc_native_icon_cached(icons, mon); }
 int rl_ui_story_icon_prefetch(unsigned mon) { return sc_native_icon_prefetch(icons, mon); }
@@ -324,29 +340,29 @@ static void graphics_failures(void) {
     fixture(); reset_binding();
     missing_file = -1;
     allocation_calls = 0;
-    assert(sc_native_ui_acquire(&native, &pak) == SC_OK);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_OK);
     total = allocation_calls;
     assert(total == 13);
     assert(sc_native_ui_release(&native, NULL, 1) == SC_OK);
     assert(!D_800AC870 && !icons && !moves && !species && !allocation_count);
     for (i = 1; i <= total; i++) {
         allocation_calls = 0; fail_allocation = (int)i;
-        assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE);
+        assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_UNAVAILABLE);
         assert(!depth && !allocation_count && !D_800AC870 && !icons && !moves && !species);
     }
     fail_allocation = 0;
     for (i = 1; i <= 3; i++) {
         missing_archive = (int)i;
-        assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE);
+        assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_UNAVAILABLE);
         missing_archive = 0; short_archive = (int)i;
-        assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE);
+        assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_UNAVAILABLE);
         short_archive = 0;
         assert(!D_800AC870 && !icons && !moves && !species && !allocation_count);
     }
     for (i = 0; i < 5; i++) {
         static const int files[5] = {2, 3, 4, 0x25, 0x24};
         missing_file = files[i];
-        assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE);
+        assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_UNAVAILABLE);
         assert(!D_800AC870 && !icons && !moves && !species && !allocation_count);
     }
     printf("Checked native resources: %u allocation failures, 6 archive failures, 5 file failures; OK\n", total);
@@ -355,13 +371,13 @@ static void graphics_failures(void) {
     font_archive.num_files = 6; font_archive.kind = 1; font_archive.unk_00 = 4;
     borrowed.unk_48 = &font_archive; borrowed.unk_50 = 1;
     before = borrowed; D_800AC870 = &borrowed;
-    assert(sc_native_ui_acquire(&native, &pak) == SC_OK);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_OK);
     assert(sc_native_ui_release(&native, NULL, 1) == SC_OK);
     assert(D_800AC870 == &borrowed && !memcmp(&borrowed, &before, sizeof(before)));
     D_800AC870 = NULL;
     font_archive.unk_00 = 1;
     D_800AC870 = &borrowed;
-    assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_UNAVAILABLE);
     assert(D_800AC870 == &borrowed && !memcmp(&borrowed, &before, sizeof(before)));
     D_800AC870 = NULL;
 }
@@ -388,7 +404,7 @@ static void child_learning(void) {
     MainPoolState unrelated_scope, *child;
     fixture();
     assert(sc_native_pak_bind(&pak, 0) == SC_SAVE_OK);
-    assert(sc_native_ui_acquire(&native, &pak) == SC_OK);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_OK);
     assert(sc_native_ui_prepare(&native, &ui, &sc_catalog, 123) == SC_OK);
     memset(&driver, 0, sizeof(driver));
     calls.context = &native; calls.launch = launch; calls.draw = draw; calls.leave = leave;
@@ -507,6 +523,7 @@ static int acquire_backing(void *p, ScNativeCampaignBacking *b) {
     memset(&ui, 0, sizeof(ui)); memset(&driver, 0, sizeof(driver));
     b->ui = &ui; b->driver = &driver; b->request = &request; b->native_ui = &native;
     b->pak = &pak; b->event = &loop_event; b->catalog = &sc_catalog; b->seed = 123; b->lease_id = 1;
+    b->arena = &fixture_arena;
     b->framebuffer[0].pixels = (RlU8 *)0x80400000U;
     b->framebuffer[1].pixels = (RlU8 *)0x80500000U;
     b->framebuffer[0].bytes = b->framebuffer[1].bytes = SC_NATIVE_FRAMEBUFFER_BYTES;
@@ -870,15 +887,15 @@ int main(void) {
     graphics_failures();
     fixture(); reset_binding();
     scope_error = 1;
-    assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE && !depth);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_UNAVAILABLE && !depth);
     scope_error = 0; ui_error = 1;
-    assert(sc_native_ui_acquire(&native, &pak) == SC_UNAVAILABLE && !depth);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_UNAVAILABLE && !depth);
     ui_error = 0;
     assert(!sc_native_resources_outstanding());
-    assert(sc_native_ui_acquire(&native, &pak) == SC_OK && depth == 1);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_OK && depth == 1);
     /* a live restore record pins the caller-slot owner's mapping */
     assert(sc_native_resources_outstanding() == 1);
-    assert(sc_native_ui_acquire(&native, &pak) == SC_INVALID);
+    assert(sc_native_ui_acquire(&native, &pak, &fixture_arena) == SC_INVALID);
     assert(sc_native_ui_prepare(&native, &ui, &sc_catalog, 123) == SC_OK);
     assert(sc_native_ui_prepare(&native, &ui, &sc_catalog, 999) == SC_UNAVAILABLE);
     calls.context = &native; calls.launch = launch; calls.draw = draw; calls.leave = leave;

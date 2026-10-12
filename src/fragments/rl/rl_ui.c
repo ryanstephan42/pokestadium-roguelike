@@ -53,6 +53,14 @@ s32 rl_ui_init(void) {
 }
 
 #ifdef STORY_NATIVE_UI
+int rl_ui_story_init(ScMaArena *arena) {
+    if (!sc_native_resources_acquire_upper(arena, &sIconArchive, &sMoveNames, &sSpeciesNames)) {
+        HAL_Printf(8, 8, "Story UI: upper resource acquisition failed");
+        return RL_UI_INVALID;
+    }
+    return RL_UI_NONE;
+}
+
 int rl_ui_story_icon_cached(unsigned species) {
     return sc_native_icon_cached(sIconArchive, species);
 }
