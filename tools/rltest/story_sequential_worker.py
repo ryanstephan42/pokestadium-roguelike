@@ -76,6 +76,25 @@ def boot_thread(emu):
     return row
 
 
+def native_observation(emu):
+    def pointer(value, size):
+        require(0x80000000 <= value <= 0x80800000 - size,
+                "Native observation pointer outside 8 MiB RDRAM")
+        return value
+    roots = emu.read("D_84390010", 8)
+    rows = []
+    for offset in (0, 4):
+        side = pointer(int.from_bytes(roots[offset:offset + 4], "big"), 0x950)
+        team = pointer(emu.read_u32(side + 0x724), 0x21C)
+        count = emu.read_u8(team + 2)
+        require(1 <= count <= 6, "Native observation team count invalid")
+        rows.append(dict(side=side, team=team, count=count,
+                         controls=emu.read(side + 0x654, 0x20).hex(),
+                         live=emu.read(side + 0x68C, 0x7C).hex(),
+                         party=emu.read(team + 0x1C, count * 0x54).hex()))
+    return rows
+
+
 class Progress:
     def __init__(self, directory):
         self.directory = directory
@@ -118,11 +137,16 @@ class Progress:
                     except HarnessError as exc:
                         self.boot_witness["game_thread"] = {"error": str(exc)}
                     for symbol, size in (("sMemPool", 0x34), ("gScPoolFailure", 40),
-                                         ("gScPoolZero", 40)):
+                                         ("gScPoolZero", 40), ("gScCampaignRun", 40)):
                         try:
                             self.boot_witness[symbol] = emu.read(symbol, size).hex()
                         except HarnessError as exc:
                             self.boot_witness[symbol] = {"error": str(exc)}
+                    if self.boot_witness["runner_stage"] == BATTLE:
+                        try:
+                            self.boot_witness["native_observation"] = native_observation(emu)
+                        except HarnessError as exc:
+                            self.boot_witness["native_observation"] = {"error": str(exc)}
             except HarnessError as exc:
                 error = str(exc)
         changed = self.boundary not in self.snapshot_boundaries

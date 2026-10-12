@@ -51,6 +51,26 @@ class ChildExitTests(unittest.TestCase):
 
 
 class BootThreadTests(unittest.TestCase):
+    def test_native_observation_is_read_only_and_bounded(self):
+        reads = []
+        def read(symbol, size):
+            reads.append(size)
+            if symbol == "D_84390010":
+                return bytes.fromhex("8001000080011000")
+            return bytes(size)
+        emu = types.SimpleNamespace(read=read, read_u32=lambda _: 0x80020000,
+                                    read_u8=lambda _: 2)
+        rows = worker.native_observation(emu)
+        self.assertEqual([row["count"] for row in rows], [2, 2])
+        self.assertEqual(len(rows[0]["party"]), 2 * 0x54 * 2)
+        self.assertLessEqual(max(reads), 6 * 0x54)
+        emu.read_u8 = lambda _: 7
+        with self.assertRaisesRegex(HarnessError, "count invalid"):
+            worker.native_observation(emu)
+        emu.read_u32 = lambda _: 0x84300000
+        with self.assertRaisesRegex(HarnessError, "outside 8 MiB"):
+            worker.native_observation(emu)
+
     def test_saved_thread_register_offsets_and_bounded_stack(self):
         data = bytearray(0x130)
         data[0x10:0x12] = (8).to_bytes(2, "big")

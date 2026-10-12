@@ -395,3 +395,8 @@ directly, bypassing the loader's virtual-to-loaded-address conversion. The
 scope now resolves and bounds-checks both the clock callback and the battle
 root array through the current fragment map. Its lifetime/generation checks
 remain unchanged; the opened clock is retained instead of calling twice.
+Run10 passed the former fatal jump but stopped on a native-observation
+admission error at frame931. Per-frame diagnostics now retain the raw
+40-byte runner record and both sides' controls/live mon/selected-party
+records, bounded to six records and 8 MiB RDRAM. This is read-only evidence
+to identify the rejected invariant without weakening the fail-closed gate.
