@@ -8,6 +8,12 @@ enum ScNativeEventKind {
     SC_NATIVE_EVENT_NONE, SC_NATIVE_EVENT_OBSERVE, SC_NATIVE_EVENT_LEARNING,
     SC_NATIVE_EVENT_DRAINED, SC_NATIVE_EVENT_FAILED
 };
+#define SC_NATIVE_FRAMEBUFFER_BYTES (640U * 480U * 2U)
+typedef struct ScNativeFramebufferSpan {
+    RlU8 *pixels;
+    RlU32 bytes;
+} ScNativeFramebufferSpan;
+
 typedef struct ScNativeCampaignEvent {
     ScBattleSnapshot party[6];
     /* generation is the nonzero, strictly increasing event serial within this
@@ -27,7 +33,30 @@ typedef struct ScNativeCampaignBacking {
     ScNativeCampaignEvent *event;
     const ScCatalog *catalog;
     RlU32 seed, lease_id;
+    ScNativeFramebufferSpan framebuffer[2];
 } ScNativeCampaignBacking;
+
+/* Framebuffer spans are private native backing, never campaign values.
+   acquire admits exactly two SC_NATIVE_FRAMEBUFFER_BYTES spans only on an
+   actual 8 MiB machine. pixels is a 64-byte-aligned cached KSEG0 CPU address;
+   physical = CPU - 0x80000000, wholly within [0x400000,0x7da7e0).
+   Both spans are mutually disjoint and disjoint from every other live arena
+   allocation, with exclusive read/write, non-executable leases. The owner
+   validates exact pointers/sizes, CPU/physical mapping, extents and lifetime;
+   address shape alone is not allocator authority. No second arena, lower-pool
+   fallback, global pool enlargement or crash-tail allocation is permitted.
+   UI initializes descriptors for these spans but does not allocate, free or
+   rebind their pixels. The owner pins both spans and external display/control
+   storage (including embedded descriptors/projection/viewport) throughout
+   poll/hold/resume/BATL and release PENDING. CPU cache maintenance and RSP/RDP
+   addressing must use the admitted mapping and its actual cache/alignment
+   rules, never a silently substituted buffer.
+   Successful task completion/worker drain alone does not retire scanout.
+   After fenced display closure and borrowed-stage restoration, release SC_OK
+   additionally requires no queued scheduler descriptor/work references to the
+   lease and actual VI current/next buffers outside both physical spans.
+   Until then retain pixels, descriptors and controls unchanged; no successor
+   acquisition, reuse or unwinding their backing storage is permitted. */
 
 /* All callbacks validate the exact live lease/backing tuple and return SC_OK,
    SC_PENDING or an explicit ScStatus refusal, never a Boolean.
