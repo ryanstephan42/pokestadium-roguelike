@@ -33,7 +33,9 @@ class ChildExitTests(unittest.TestCase):
                     worker.run_children(args, command_factory=lambda _: ["fake-worker"])
             command = run.call_args.args[0]
             self.assertEqual(command[0], "gdb")
-            self.assertIn("set logging redirect on", command)
+            self.assertIn("--protocol-fd", command)
+            self.assertNotEqual(run.call_args.kwargs["stdout"], sys.stdout)
+            self.assertIn("--nx", command)
             self.assertIn("set debuginfod enabled off", command)
             self.assertEqual(json.loads((out / "win.exit.json").read_text()),
                              dict(returncode=1, host_debugger=True))

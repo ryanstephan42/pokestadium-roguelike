@@ -931,16 +931,26 @@ def run_children(args, command_factory=None):
         else:
             command = command_factory(args)
         child = command + ["--scenario", name]
-        if getattr(args, "debug_exit", False) and name == "win":
-            child = ["gdb", "--quiet", "--batch",
-                     "-ex", "set debuginfod enabled off",
-                     "-ex", f"set logging file {args.out.resolve() / 'win-host-exit.txt'}",
-                     "-ex", "set logging redirect on", "-ex", "set logging enabled on",
-                     "-ex", "catch syscall exit_group", "-ex", "run",
-                     "-ex", "info registers", "-ex", "thread apply all bt",
-                     "-ex", "continue", "--args"] + child
-        result = subprocess.run(child, stdin=sys.stdin,
-                                stdout=sys.stdout, stderr=sys.stderr, cwd=ROOT)
+        debug = getattr(args, "debug_exit", False) and name == "win"
+        if debug:
+            protocol_fd = os.dup(sys.stdout.fileno())
+            try:
+                child = ["gdb", "--nx", "--nh", "--quiet", "--batch",
+                         "-ex", "set debuginfod enabled off",
+                         "-ex", "set startup-with-shell off",
+                         "-ex", "catch syscall exit_group", "-ex", "run",
+                         "-ex", "info registers", "-ex", "thread apply all bt",
+                         "-ex", "continue", "--args"] + child + [
+                             "--protocol-fd", str(protocol_fd)]
+                with (args.out / "win-host-exit.txt").open("x") as debug_log:
+                    result = subprocess.run(
+                        child, stdin=sys.stdin, stdout=debug_log, stderr=sys.stderr,
+                        cwd=ROOT, pass_fds=(protocol_fd,))
+            finally:
+                os.close(protocol_fd)
+        else:
+            result = subprocess.run(child, stdin=sys.stdin, stdout=sys.stdout,
+                                    stderr=sys.stderr, cwd=ROOT)
         write_json(args.out / (name + ".exit.json"),
                    dict(returncode=result.returncode, host_debugger=child[0] == "gdb"))
         require(result.returncode == 0,
@@ -966,12 +976,16 @@ def main():
     parser.add_argument("--terminal-reload", action="store_true")
     parser.add_argument("--control", type=pathlib.Path)
     parser.add_argument("--debug-exit", action="store_true")
+    parser.add_argument("--protocol-fd", type=int)
     args = parser.parse_args()
     if args.scenario:
         require(not args.terminal_reload or args.scenario == "loss-terminal-reload",
                 "Terminal reload only belongs to the loss scenario")
         # Core C stdout must not share the supervisor's JSON protocol.
-        protocol = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1)
+        require(args.protocol_fd is None or args.protocol_fd > 2,
+                "Dedicated protocol descriptor must not alias standard streams")
+        protocol = os.fdopen(os.dup(sys.stdout.fileno() if args.protocol_fd is None
+                                   else args.protocol_fd), "w", buffering=1)
         os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
         if args.scenario == "control":
             execute_control(args, stream_out=protocol)

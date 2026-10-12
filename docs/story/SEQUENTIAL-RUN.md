@@ -379,3 +379,8 @@ wraps only that scenario in a process-local GDB syscall-exit catch, retaining
 host registers/thread backtraces in private output. It neither writes game
 RAM nor changes core options; debugger overhead remains in the same watchdog,
 and a missing native report still fails. No external debug-symbol download.
+Run7 stopped on GDB startup output before a story frame; the supervisor
+correctly rejected non-JSON on its protocol. Debug mode now inherits a
+dedicated counted-step descriptor, captures all GDB stdout privately, and
+disables user GDB init files. The protocol is never shared with debugger
+output, including startup messages.
