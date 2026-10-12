@@ -107,9 +107,78 @@ functions:
 - `restore_upper` is 792 standalone (832 through `main_pool_free`), not 856.
 - Its "47 unresolved" were `_Printf` prout sites, now resolved to 3 targets.
 
+## v3 residual closure on candidate N (static)
+
+Candidate N is the scratch-remedy ELF, `0b4eae42…c142b`.
+
+**N against C.** `.fragment31`, `.fragment34` and `.fragment62` are byte-identical between N and C. `.text` is
+the same size. Only 15 `.text` words differ, and every one is the low half of a `lui`/`ori`/`addiu` immediate
+(SC size words). Every function address is unchanged.
+
+Running the v2 tool on N with `resolve-C-v2.txt` reproduces `geom-C-v2.txt` and `effdepth-C-v2.txt` byte for
+byte.
+
+**BD04 asset entry (`func_8001BD04#0`): resolved as a 0-byte leaf for every model.**
+
+- *Where the pointer comes from.* The `unk_28` call sites are 1C720.c:73, :87 and :121. The only `unk_28`
+  writer for a model node is `func_80019328` (19840.c:212). It runs only for type-0xE roots, and every caller
+  passes a `Fragment` taken from `D_800ABE10.unk_A04.unk_00`. That field is set once to the 0x920000 archive
+  (19840.c:343), and every use of it reads that same archive (19840.c:239/501/518/534).
+- *What every entry function looks like.*
+  - `archive_audit.py` decompresses all 215 entries of the archive inside the N ROM. The archive bytes are
+    identical in the N and vanilla ROMs.
+  - Every entry is a FRAGMENT whose entry is at +0x20. Every header's `unk_14` is that entry.
+  - Every entry function has the same instruction pattern once its `lui`/`addiu` immediates are masked
+    (pattern `ec0bcab3…`, 215 of 215).
+  - That pattern is a 7-instruction non-calling leaf. It has no `sp` adjust. It stores `a1` to `4(sp)`, which
+    is inside the caller's o32 argument area; `func_8001BD04` has a 24-byte frame. It returns the header or 0.
+- *Graft 0x9A specifically.* The graft child is `record->unk_18`. Its only typed writer is
+  `func_843013E4` (fragment62_2EA8E0.c:561), which stores the layout-0 root of `func_80019D18(0x9A)`.
+  - That root is built by command 0x17, the first constructor in the layout, so it is a type-0xE node and its
+    `unk_28` is entry 0x99.
+  - Model 0x9A has no cmd8 and a maximum open depth of 5.
+- *Tool change.* `stackdepth-v3.py` adds one token, `LEAF0:`, reported as `ASSETLEAF0`, which contributes 0
+  bytes. Every root depth is unchanged (BD04 is 72, set by `func_800173DC`). The UNRESOLVED count drops
+  from 3 to 1, and the effect-member maximum stays 312 with 0 UNRESOLVED.
+
+**`func_80015220` (`unk_10` and recursion): no caller found in N or vanilla.**
+
+`refscan.py` searches for three kinds of reference:
+- the function's address as a data word;
+- a `jal` encoding of it;
+- a `lui`+`addiu`/`ori`/`lw`/`addi` pair building it (low half within 32 words).
+
+It searches every PROGBITS section of the ELF, the raw ROM, and every decompressed entry of both runtime
+archives (0x920000, 215 entries, and 0x8CC000, 63 entries). The only hit in each ELF is the function's own
+recursive `jal`: N 80015f7c inside 80015eb0..80015fcc, and vanilla 800152ec inside 80015220..8001533c.
+
+It is also absent from the renderer handler table `D_8006F0A4` (12D80.c:32-37). It appears in no reached set
+of any geometry root, effect member, or SC closure output. It stays listed as a root only to show its
+self-contained 64-per-level figure.
+
+**Graft `unk_10` domain is empty.**
+- The graft node is set up by `func_80011938`, which calls `func_80010FA0` and so leaves `unk_10` NULL
+  (11BA0.c:15).
+- The only non-NULL writer of `unk_10` is cmd8, through `func_80010FDC` (geo_layout.c:150), and model 0x9A
+  has no cmd8.
+
+**Still open after v3.**
+- *Other models' callbacks.* Archive-wide, models do install cmd8 callbacks: 26 distinct targets in the
+  `.fragment31` jump thunks `0x810000b8..0x810001f8`. Most land in fragment31. Three cross-fragment thunks
+  land in fragment3 (`0x8790xxxx`, used by entries 161 and 170), and `0x810001d0` lands in
+  `func_81407874` in fragment34 (entries 164–170). The archive-wide maximum open depth is 28. These belong to
+  vanilla model rendering and are not part of the 0x9A graft.
+- *Renderer recursion.* `func_80013330` / `func_800133D8` / `D_8006F0A4` handlers, and the `unk_10(2|5)`
+  sites over the whole battle scene graph, are not roots here. The graft adds its subtree (open depth 5)
+  under a scene node.
+- *Prefix and IRQ.* The caller prefix and IRQ accounting are not qualified.
+
+Seal: `build/story/geometry-residuals-<commit>-v1/`.
+
 ## Not claimed
 
-- The two UNRESOLVED residuals are not bounded.
+- After v3, BD04 is bounded as a 0-byte leaf. `func_80015220` remains UNRESOLVED in the tool output but has no
+  found caller. Renderer recursion and the cmd8 callback domains of other models are not bounded.
 - Thread-stack budgets, interrupt/exception frames and concurrent-thread interleavings are not assessed.
 - Data-indexed tables assume well-formed indices.
 - No fit, contiguity, stack, native or gate claim.
