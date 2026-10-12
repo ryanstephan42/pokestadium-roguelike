@@ -165,6 +165,26 @@ Arena/backing/async launch/pause/observe/drain scheduling still
 belong to the parent. No dispatcher/build/KO changes, emulator run, full gate
 or visible-campaign acceptance are included.
 
+## Reproducible current image authority
+
+For a current linked candidate, generate authority with
+`python host_tests/generate_story_ai_authority.py OUTPUT BUILD/pokestadium-rl.elf --native`.
+This path reads the supplied ELF and the adjacent source-controlled
+`host_tests/story_ai_imports.json` policy, not an ignored historical build.
+The policy contains the existing 40 audited import names only; addresses,
+addends, image bytes and relocation order still come from that exact ELF.
+`authority.json` binds the ELF, generator, policy and generated outputs by
+SHA256. It is an image-authority manifest, not a complete candidate seal.
+`python host_tests/audit_story_packed_authority.py OUTPUT` independently checks
+every packed record and malformed refusal.
+
+Run `SC_AUTHORITY_TEST_ELF=BUILD/pokestadium-rl.elf python -m unittest
+host_tests.test_story_ai_authority_generator` to check repeated generation in
+an empty working directory and changed/duplicate import-policy refusal.
+Historical/default and isolated-corrected paths keep their frozen historical
+ELF/import checks. Generated image/header/manifests stay in ignored evidence
+directories; regenerate and relink to a header fixed point after layout changes.
+
 ## Coordinated presentation loop and checked display
 
 `sc_native_loop.[ch]` consumes the owner ABI imported from exact `08766a8` and
