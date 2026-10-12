@@ -37,6 +37,11 @@ int sc_native_ui_release(ScNativeUi *ui, const ScUiDriver *driver, int fenced) {
     assert(!"Resource cleanup must not replay after lower retirement");
     return SC_INVALID;
 }
+int sc_ui_driver_retire(ScUiDriver *driver, const ScUi *ui, const ScUiBattleRequest *request) {
+    (void)driver; (void)ui; (void)request;
+    assert(!"An unprepared lifetime fixture never binds a UI driver");
+    return SC_INVALID;
+}
 int sc_native_pak_release(ScNativePak *pak) {
     (void)pak;
     assert(!"Pak cleanup must not replay after lower retirement");

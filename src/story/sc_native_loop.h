@@ -11,7 +11,7 @@ typedef struct ScNativeLoop {
     RlU32 drained_operation;
     unsigned drained_outcome;
     int acquired, prepared, exited, queued, held_presented, frame_status;
-    int display_acquired, pak_bound, resources_acquired;
+    int display_acquired, pak_bound, resources_acquired, driver_bound;
     /* Sticky per lifetime: framebuffers were published to a display. */
     int display_used;
 } ScNativeLoop;

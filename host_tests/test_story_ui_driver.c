@@ -136,6 +136,28 @@ int main(void) {
     assert(choose(2) == SC_OK && leaves == 1 && driver.exit_requested);
     assert(sc_ui_driver_step(&driver, 0) == SC_UNAVAILABLE && leaves == 1);
     assert(draws);
+    {
+        /* Normal-exit retirement: identity checked, transactions drained,
+           then the driver may be bound again for a repeated campaign. */
+        ScUi other;
+        assert(sc_ui_driver_retire(NULL, &ui, &backing) == SC_INVALID);
+        assert(sc_ui_driver_retire(&driver, &other, &backing) == SC_INVALID && driver.bound);
+        assert(sc_ui_driver_retire(&driver, &ui, NULL) == SC_INVALID && driver.bound);
+        ui.pending_save = 1;
+        assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_PENDING && driver.bound);
+        ui.pending_save = 0; ui.request_ready = 1;
+        assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_PENDING && driver.bound);
+        ui.request_ready = 0; driver.launch_pending = 1;
+        assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_PENDING && driver.bound);
+        driver.launch_pending = 0; driver.launched = 1;
+        assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_PENDING && driver.bound);
+        driver.launched = 0;
+        assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_OK);
+        assert(!driver.bound && !driver.ui && !driver.request && !driver.exit_requested &&
+               !driver.calls.draw && !driver.operation_id);
+        assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_INVALID);
+        assert(sc_ui_driver_bind(&driver, &ui, &backing, &calls) == SC_OK && driver.bound);
+    }
     puts("Typed story UI driver: refusal/retry, two sequential operations, save/continue, stale completion and terminal; OK");
     return 0;
 }

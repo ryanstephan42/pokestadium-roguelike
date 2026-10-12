@@ -575,7 +575,9 @@ static int submit_request(void *p, const ScNativeCampaignBacking *b, const ScUiB
     return submit_status;
 }
 static int release_backing(void *p, const ScNativeCampaignBacking *b) {
-    (void)p; assert(!native.acquired && !display.acquired && b->lease_id == 1); return release_status;
+    /* sc_native_memory_release refuses a still-bound driver. */
+    (void)p; assert(!native.acquired && !display.acquired && !driver.bound && b->lease_id == 1);
+    return release_status;
 }
 static int retire_display(void *p, const ScNativeCampaignBacking *b, const unk_D_80068BB0 *images) {
     (void)p;
@@ -621,6 +623,7 @@ static void presentation_loop(void) {
     assert(sc_native_pak_end(&pak) == SC_SAVE_OK);
     release_status = SC_PENDING;
     assert(sc_native_loop_close(&loop) == SC_PENDING && loop.acquired && !native.acquired);
+    assert(!driver.bound && !driver.ui && !driver.exit_requested);
     validate_status = SC_UNAVAILABLE;
     assert(sc_native_loop_close(&loop) == SC_UNAVAILABLE && loop.acquired);
     assert(sc_native_loop_open(NULL, &display, &calls) == SC_INVALID);

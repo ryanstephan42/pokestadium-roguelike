@@ -30,6 +30,23 @@ int sc_ui_driver_bind(ScUiDriver *driver, ScUi *prepared_ui,
     return SC_OK;
 }
 
+int sc_ui_driver_retire(ScUiDriver *driver, const ScUi *ui, const ScUiBattleRequest *request) {
+    if (!driver || !driver->bound || !ui || driver->ui != ui || driver->request != request)
+        return SC_INVALID;
+    if (!driver->exit_requested || driver->launched || driver->launch_pending ||
+        ui->request_ready || ui->pending_save)
+        return SC_PENDING;
+    driver->bound = driver->launch_pending = driver->launched = driver->exit_requested = 0;
+    driver->operation_id = 0;
+    driver->ui = 0;
+    driver->request = 0;
+    driver->calls.context = 0;
+    driver->calls.launch = 0;
+    driver->calls.draw = 0;
+    driver->calls.leave = 0;
+    return SC_OK;
+}
+
 static int launch(ScUiDriver *driver) {
     int status;
     if (!driver->ui->request_ready || driver->ui->state.phase != SC_BATTLE)

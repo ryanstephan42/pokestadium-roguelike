@@ -47,6 +47,7 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
     loop->held_operation = loop->held_generation = loop->event_operation = loop->event_serial = 0;
     loop->drained_operation = loop->drained_outcome = 0;
     loop->display_acquired = loop->pak_bound = loop->resources_acquired = 0;
+    loop->driver_bound = 0;
     loop->display_used = 0;
     loop->frame_status = SC_OK;
     loop->owner = *owner; loop->display = display;
@@ -74,7 +75,7 @@ int sc_native_loop_open(ScNativeLoop *loop, ScNativeDisplay *display,
     if (status != SC_OK) return status;
     bridge.context = loop; bridge.launch = queue; bridge.draw = draw; bridge.leave = leave;
     status = sc_ui_driver_bind(b->driver, b->ui, b->request, &bridge);
-    if (status == SC_OK) loop->prepared = 1;
+    if (status == SC_OK) loop->prepared = loop->driver_bound = 1;
     return status;
 }
 
@@ -221,6 +222,13 @@ int sc_native_loop_close(ScNativeLoop *loop) {
         status = sc_native_ui_release(b->native_ui, loop->prepared ? b->driver : NULL, 1);
         if (status != SC_OK) return status;
         loop->resources_acquired = 0;
+    }
+    /* After sc_native_ui_release's bound-identity check, before backing
+       release; the loop flag avoids touching backing on a release retry. */
+    if (loop->driver_bound) {
+        status = sc_ui_driver_retire(b->driver, b->ui, b->request);
+        if (status != SC_OK) return status;
+        loop->driver_bound = 0;
     }
     if (loop->pak_bound) {
         status = sc_native_pak_release(b->pak); if (status != SC_SAVE_OK) return SC_INVALID;
