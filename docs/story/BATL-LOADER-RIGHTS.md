@@ -132,13 +132,14 @@ Safety after close rests instead on the producer exclusion below.
      - the hook `drain` and `abort` sites, pinned to `.fragmentSC`;
      - the 52-entry `__rla_199` jump table;
      - nine `_Printf` `prout` sites, resolved to the four sinks that the seven `_Printf` call sites pass as literals.
-   - Result: 9,165 instructions in `.text`, `.fragment62` and `.fragmentSC`. There are no producer hits, no unresolved indirect site, and no producer entry is reached.
+   - Disassembly uses `objdump -z`. Without `-z`, objdump elides zero-word runs and the earlier 9,165-instruction result silently dropped 12 successors (validator finding). Every successor and delay slot must now be present (`MISSING` list), a branch target in no section is reported as missing, and a non-instruction line reached as code is reported (`DATA` list).
+   - Result: 9,555 instructions in `.text`, `.fragment62` and `.fragmentSC`. There are no producer hits, no unresolved indirect site, no missing successor, no data line and no delay-slot transfer, and no producer entry is reached.
 
    The reverse closure of the producers has two non-fragment roots:
    - `func_8001AD90` has no caller in source or the ELF.
    - `func_80031390` is called directly at 30640.c:694. Its only "data" word is an asset byte pattern in `.late_assets_6`.
 
-   Neither changes the forward result. An auxiliary scan from the resident thread entries also found no producer, but 28 of its indirect sites (audio, RSP, scheduler, model stub) are unresolved, so it is not exhaustive.
+   Neither changes the forward result. The other threads are classified separately below; that classification is bounded, not exhaustive.
 4. *Re-entry.*
    - The next `bind`/`arm` requires `!live`.
    - The next producer can only use the controllers created at 2EA8E0.c:602-603.
@@ -148,9 +149,46 @@ Safety after close rests instead on the producer exclusion below.
 Between close and the RLBT pop, the stale fragment62 BSS pointers therefore have no reader. The stale main-BSS words have no consumer until the next armed window rewrites them. `unbind` waits for graphics idle (`func_80001C90`) before release.
 
 Bounds:
-- This is a static, conservative control-flow graph of the main-thread story launch path from close to unbind. Concurrent threads are bounded only by the non-exhaustive auxiliary scan.
+- This is a static, conservative control-flow graph of the main-thread story launch path from close to unbind. It is not an exhaustive alias closure: concurrent threads are bounded only by the classification below, which keeps residual edges open.
 - It does not cover controllers created by other game states that survive into the battle.
 - There is no VI or native witness.
+
+### Other threads during close→unbind (bounded classification, not exhaustive)
+
+Thread roots come from every `jal osCreateThread` in the candidate ELF (`osct-sites.txt`, 22 sites).
+
+- **Resident roots (14)**: crash, `func_8000183C`, `func_80005194`, audio `func_8000D3A8`, GBEM `func_8000D5C0`/`func_8000D678`, worker `func_80019600`, idle, soft reset, `thread20_rsp`, `__osDevMgrMain`, `viMgrMain`, `leomain` and `leointerrupt`. `Game_Thread` is the main thread and is covered above. The Leo threads are included because `LeoCJCreateLeoManager` is called at boot (rsp.c:30).
+- These roots were scanned with the same conservative tool and the resolutions in `res-aux.txt`: 46,392 instructions in `.text` and `.fragment32`. There are no producer hits, no missing successor, no data line and no delay-slot transfer.
+- Indirect sites resolved from source and binary references (`classified.txt`):
+  - DSP helpers `jalr t3` (49190.s:279-313);
+  - synth bus pulls (n_synthesizer.c:85,87);
+  - `n_alAudioFrame` → `__MusIntMain` (player.c:560);
+  - DMA callbacks (3D140.c:328,574-583);
+  - `func_80045780` (45720.c:43,211,287);
+  - two fragment32 callbacks;
+  - geo-layout table (39 entries);
+  - music command (49 entries) and API (13 entries) tables;
+  - 83 IDO switch tables (`jtables.txt`).
+  - `__osDevMgrMain` `dm->dma`/`dm->edma` (devmgr.c:78-90) resolve to `osPiRawStartDma`/`osEPiRawStartDma`. The only thread creator is `osCreatePiManager`, which passes `__osPiDevMgr` and is the only code that sets those fields (pimgr.c:72-73). Binary `qrefs`: only `osCreatePiManager` materializes `__osDevMgrMain` and both DMA functions, and `osEPiStartDma` only reads `.active`.
+  - `leomain` dispatch (leocmdex.c:173) resolves to the 16-word `D_80079520` table (15 handlers, one NULL).
+- **Unresolved, gated (kept, not dropped)**: five sites remain unresolved.
+  - `func_80010FDC+0x48` and `func_80019328+0x38` are reachable only through the worker job handlers `func_80019484`/`func_80019514`.
+    - Jobs enter only through the worker queue. Binary `qrefs` and 19840.c:380,420 show the producers are the only senders.
+    - With the job handlers as stops (`jobstops.txt`), these sites disappear (42,532 instructions).
+    - So they are producer-gated: close requires no outstanding jobs, and no producer is reachable on the main path.
+  - `func_8000D5C0+0x74`, `func_8000D678+0x64` and `+0x98` are GBEM threads.
+    - They are created only by `func_8000D738` and destroyed by `func_8000D8DC`, straight-line in `func_8002A728` (29BA0.c:1098-1102), which is not on the story path.
+    - Without the GBEM roots and job handlers the scan has no unresolved site (42,396 instructions).
+- **Fragment-created threads**:
+  - Fragments 22, 23 and 24 (six creators, including fragment23's table entry `D_88217FC8[arg1]`) create, start and `osDestroyThread` their thread inside the same creator function. Examples: fragment22.c:3114-3124 and fragment23_1AE680.c:2707-2716. None of those fragments is in the main-path sections, so their threads cannot exist during close→unbind.
+- **Residual, open: fragment1 `func_81200AA8`.**
+  - It is created inside the GB Tower session (fragment1_7F9A0.c:1435, called through a GBEM callback). It self-destroys only on a NULL message (:521-524), but the only senders (`func_8120572C`) send a non-NULL emulator pointer. So after a GB Tower visit it can stay blocked on `D_8122C4C0`, which lives in released fragment1 BSS.
+  - Only fragment1 code materializes that queue address (binary `qrefs`), so the main path cannot wake it.
+  - Waking through corruption of reused memory is not excluded. This is vanilla behaviour, not introduced by the story.
+- Caveats:
+  - Data-indexed tables assume well-formed asset and command indices.
+  - Controllers created by other game states and the timing interleavings of real concurrency are not modelled.
+  - There is no native or VI witness.
 
 ## Per-load phases of one M buffer (worker thread, priority 10)
 
