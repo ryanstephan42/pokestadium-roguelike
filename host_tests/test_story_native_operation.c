@@ -75,6 +75,56 @@ static void consume(void) {
     assert(!memcmp(&storage.ui.state, &storage.settled, sizeof(storage.settled)));
 }
 
+static void request_mutations(void) {
+    ScNativeCampaignBacking *b = &lifetime.loop.backing;
+    ScNativeCampaignStorage previous;
+    ScNativeOperation control;
+    ScBattleSnapshot party[6];
+    unsigned path, byte, slot;
+    int status;
+    for (path = 0; path < 4; ++path) {
+        for (byte = 0; byte < sizeof(storage.request); ++byte) {
+            initialize();
+            assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+            snapshots(party);
+            if (path == 2)
+                assert(sc_native_operation_observe(&operation, b, party, 0, 0, 1) == SC_OK);
+            if (path == 3) {
+                assert(sc_native_operation_observe(&operation, b, party, 0, 0, 0) == SC_OK);
+                assert(operation.phase == SC_NATIVE_OPERATION_HELD);
+                consume();
+                lifetime.loop.held_operation = operation.operation;
+                lifetime.loop.held_generation = operation.held_serial;
+                lifetime.loop.held_presented = 1;
+                while (storage.ui.state.learn_mask)
+                    for (slot = 0; slot < 6; ++slot)
+                        if (storage.ui.state.learn_mask & (1U << slot))
+                            assert(sc_learn_pp(&storage.ui.state, storage.request.progression.pp,
+                                slot, 0, 0) == SC_OK);
+            }
+            ((unsigned char *)&storage.request)[byte] ^= 1;
+            previous = storage;
+            control = operation;
+            if (path == 0)
+                status = sc_native_operation_submit(&operation, b, b->request);
+            else if (path == 1)
+                status = sc_native_operation_observe(&operation, b, party, 0, 0, 1);
+            else if (path == 2)
+                status = sc_native_operation_poll(&operation, b, b->event);
+            else
+                status = sc_native_operation_resume(&operation, b, operation.operation,
+                    operation.held_serial, &storage.ui.state, &storage.request.progression);
+            assert(status == SC_INVALID);
+            assert(lifetime.memory.failed);
+            assert(!memcmp(&storage, &previous, sizeof(storage)));
+            control.phase = SC_NATIVE_OPERATION_FAILED;
+            assert(!memcmp(&operation, &control, sizeof(control)));
+            ((unsigned char *)&storage.request)[byte] ^= 1;
+            assert(sc_native_operation_poll(&operation, b, b->event) == SC_UNAVAILABLE);
+        }
+    }
+}
+
 int main(void) {
     ScNativeCampaignBacking *b = &lifetime.loop.backing;
     ScNativeCampaignStorage previous;
@@ -192,7 +242,8 @@ int main(void) {
     assert(sc_native_operation_resume(&operation, b, 7, operation.serial,
         &storage.ui.state, &storage.request.progression) == SC_INVALID);
     assert(operation.phase == SC_NATIVE_OPERATION_FAILED && operation.held_serial);
+    request_mutations();
     assert(notices);
-    puts("NATIVE OPERATION HOST PASSED: canonical copies, held-before-delivery, exact learning replay, monotonic/refusal policy; lifetime validation injected, no native launch/drain");
+    puts("NATIVE OPERATION HOST PASSED: canonical copies, all-byte accepted-request mutation refusals at submit/observe/poll/resume, held-before-delivery, exact learning replay, monotonic/refusal policy; lifetime validation injected, no native launch/drain");
     return 0;
 }

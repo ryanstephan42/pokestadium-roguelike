@@ -180,7 +180,11 @@ production rights or fit accounting.
 `sc_native_operation.[ch]` is the cold-code operation producer, using the
 retained external lifetime control and its admitted DATA value storage.
 Submission compares the entire request to a freshly derived canonical UI
-request before accepting copied values. Observations project the same pure
+request before accepting copied values. Every subsequent submit, observe,
+poll and resume revalidates the complete live request against that accepted
+copy after lifetime validation and before processing events or settlements.
+Any changed byte fails the transaction and retains backing; restoring the
+request cannot recover that failed operation. Observations project the same pure
 combat transition the UI consumes, retain a private full-event copy, and
 establish the learning hold before delivery or presentation. Serial exhaustion,
 altered queued events, invalid progression, and altered settlements retain an
@@ -195,6 +199,8 @@ on the first KO. The direct KO award API still rejects duplicate awards.
 
 The focused runner `bash host_tests/run_story_native_operation.sh OUT` checks
 actual producer/pure UI and combat code with injected lifetime validation.
+It flips every accepted request byte at all four callback boundaries and checks
+refusal without modifying stored progression, queued events or held settlements.
 Its lifetime view is explicitly not a target ABI fixture; actual IDO compilation
 uses the production lifetime header. This unit does not launch native combat,
 publish DRAINED, or authorize release. Actual callback/dispatcher wiring,

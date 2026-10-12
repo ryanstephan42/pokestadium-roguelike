@@ -20,6 +20,12 @@ static int refusal(int status, const char *message) {
     return status;
 }
 
+static int fail(ScNativeOperation *operation, const char *message) {
+    operation->phase = SC_NATIVE_OPERATION_FAILED;
+    operation->lifetime->memory.failed = 1;
+    return refusal(SC_INVALID, message);
+}
+
 static int live(ScNativeOperation *operation, const ScNativeCampaignBacking *backing) {
     ScNativeLifetime *owner;
     int status;
@@ -31,13 +37,12 @@ static int live(ScNativeOperation *operation, const ScNativeCampaignBacking *bac
         return refusal(SC_UNAVAILABLE, "Story operation: DATA storage retired");
     if (operation->phase == SC_NATIVE_OPERATION_FAILED)
         return refusal(SC_UNAVAILABLE, "Story operation: failed transaction retained");
+    if (operation->phase != SC_NATIVE_OPERATION_IDLE &&
+        (!backing->request ||
+         !equal(backing->request, &owner->memory.storage->submitted,
+                sizeof(owner->memory.storage->submitted))))
+        return fail(operation, "Story operation: accepted request changed");
     return SC_OK;
-}
-
-static int fail(ScNativeOperation *operation, const char *message) {
-    operation->phase = SC_NATIVE_OPERATION_FAILED;
-    operation->lifetime->memory.failed = 1;
-    return refusal(SC_INVALID, message);
 }
 
 int sc_native_operation_bind(ScNativeOperation *operation, ScNativeLifetime *owner) {
