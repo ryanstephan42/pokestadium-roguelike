@@ -105,7 +105,7 @@ span to the campaign lease:
 
 Safety after close rests instead on the producer exclusion below.
 
-**Producer exclusion: close → BATL pop → RLBT pop → unbind → re-entry.** This is a static trace over the linked candidate ELF `3b01dccb…aafa6`, using `.local/rltest/seal-tools/producers.py` and `postclose.py`.
+**Producer exclusion: close → BATL pop → RLBT pop → unbind → re-entry.** This is a static trace over the linked candidate ELF `3b01dccb…aafa6`, using `.local/rltest/seal-tools/cfgreach.py` (conservative) and `producers.py` (reverse closure, informational).
 
 1. *Nothing is outstanding at close.*
    - `func_800198E4` and `func_80019A7C` set the worker's `unk_01` bit 1 or 2 on the main thread when they enqueue.
@@ -122,15 +122,23 @@ Safety after close rests instead on the producer exclusion below.
    2. `rl_start_battle` then runs `sc_runtime_probe_terminal` and the RLBT pop. In the canonical path (`!gScProbeActive`) the pop comes first, before the hook `drain` (`hook_drain` → `sc_native_terminal_drain`), `rl_from_native` and `sc_native_return_identity`. In the probe-active branch the RLBT pop is deferred. Both orders run the same callees.
    3. `sc_campaign_run.c:191` calls `sc_batl_loader_unbind`.
 
-   The forward closures show none of them reaches a producer:
-   - The forward jal closure of each of these calls contains no `func_800198E4`, `func_80019A1C` or `func_80019A7C`. This includes the 13 registered pool destructors invoked from `main_pool_free` and `main_pool_pop_state`.
-   - The only other indirect calls are:
-     - the `_Printf` output callbacks;
-     - the enumerated pool destructors;
-     - the launch hooks;
-     - `func_80029008`, the fragment entry, which is not called again after fragment62 returns.
-   - The reverse closure of the producers is 104 functions. Its only roots are fragment entry points, the fragment62 frame callback `func_843010EC` and the setup function `func_843013E4` (2EA8E0.c:702, before open).
-   - The frame callback runs only inside `func_800078D4`, which returns before close. No thread entry point is in the set.
+   Conservative check (`cfgreach.py`, validator review of the earlier jal-only graph). The traversal works per instruction, keyed by (section, address), so `.fragmentSC` and `.fragmentAI` at 0x8F900000 are never conflated:
+   - Every conditional or branch-likely edge follows both the target and the fallthrough. Calls continue at the return address.
+   - `jr ra` ends a path. Delay slots are checked, and no control transfer sits in one on this path.
+   - A target outside the caller's section resolves to every code section containing it.
+   - Roots: `.fragment62:0x843020F4` (the close call), `.text:0x80067D24` (the `rl_start_battle` return from fragment62, covering both the probe and canonical orders) and `.text:0x80078964`. Traversal stops at `.text:0x80078978`, after the `sc_batl_loader_unbind` call and its delay slot.
+   - Every indirect site on the path is resolved explicitly (`resolved.txt`):
+     - the four destructor `jalr` sites, resolved to the 13 registered destructors;
+     - the hook `drain` and `abort` sites, pinned to `.fragmentSC`;
+     - the 52-entry `__rla_199` jump table;
+     - nine `_Printf` `prout` sites, resolved to the four sinks that the seven `_Printf` call sites pass as literals.
+   - Result: 9,165 instructions in `.text`, `.fragment62` and `.fragmentSC`. There are no producer hits, no unresolved indirect site, and no producer entry is reached.
+
+   The reverse closure of the producers has two non-fragment roots:
+   - `func_8001AD90` has no caller in source or the ELF.
+   - `func_80031390` is called directly at 30640.c:694. Its only "data" word is an asset byte pattern in `.late_assets_6`.
+
+   Neither changes the forward result. An auxiliary scan from the resident thread entries also found no producer, but 28 of its indirect sites (audio, RSP, scheduler, model stub) are unresolved, so it is not exhaustive.
 4. *Re-entry.*
    - The next `bind`/`arm` requires `!live`.
    - The next producer can only use the controllers created at 2EA8E0.c:602-603.
@@ -140,7 +148,7 @@ Safety after close rests instead on the producer exclusion below.
 Between close and the RLBT pop, the stale fragment62 BSS pointers therefore have no reader. The stale main-BSS words have no consumer until the next armed window rewrites them. `unbind` waits for graphics idle (`func_80001C90`) before release.
 
 Bounds:
-- This is a static call graph of the story launch path: jal edges plus the enumerated indirect calls.
+- This is a static, conservative control-flow graph of the main-thread story launch path from close to unbind. Concurrent threads are bounded only by the non-exhaustive auxiliary scan.
 - It does not cover controllers created by other game states that survive into the battle.
 - There is no VI or native witness.
 
