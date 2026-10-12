@@ -647,8 +647,15 @@ static void test_ko_bridge_checkpoint_pause(void) {
     assert(memcmp(&state, &before, sizeof(state)) == 0);
     assert(sc_learn(&state, &sc_catalog, 0, 3, 0) == SC_OK);
     assert(!sc_bridge_paused(&state));
+    for (i = 0; i < state.party_count; i++) {
+        party[i].hp = state.party[i].cur_hp;
+        party[i].status = state.party[i].status;
+        for (j = 0; j < 4; j++) party[i].pp[j] = state.party[i].pp[j];
+    }
     before = state;
-    assert(sc_bridge_observe(&state, &bridge, &sc_catalog, party, 0, 0, 0) == SC_DUPLICATE);
+    assert(sc_bridge_observe(&state, &bridge, &sc_catalog, party, 0, 0, 0) == SC_OK);
+    assert(memcmp(&state, &before, sizeof(state)) == 0);
+    assert(sc_on_ko(&state, &sc_catalog, 0, 1, 2) == SC_DUPLICATE);
     assert(memcmp(&state, &before, sizeof(state)) == 0);
     before = state;
     fail_write = 1; writes = 0;
@@ -713,10 +720,19 @@ static void test_hot_combat_values(void) {
                         assert(a == b && a == SC_OK);
                     }
                 }
+                for (i = 0; i < 6; i++) {
+                    party[i].hp = full.party[i].cur_hp;
+                    party[i].status = full.party[i].status;
+                    for (j = 0; j < 4; j++) party[i].pp[j] = full.party[i].pp[j];
+                }
                 saved_state = live; saved_bridge = hot_bridge;
-                assert(sc_combat_observe(&live, &hot_bridge, &hot, party, 0, slot, 0) == SC_DUPLICATE);
+                assert(sc_combat_observe(&live, &hot_bridge, &hot, party, 0, slot, 0) == SC_OK);
+                assert(sc_bridge_observe(&full, &full_bridge, &sc_catalog, party, 0, slot, 0) == SC_OK);
+                assert(memcmp(&live, &full, sizeof(full)) == 0);
                 assert(memcmp(&live, &saved_state, sizeof(live)) == 0);
                 assert(memcmp(&hot_bridge, &saved_bridge, sizeof(hot_bridge)) == 0);
+                assert(sc_ko_values(&live, hot.party_species, hot.enemy_species, &hot.team,
+                    hot.kind, slot, 1) == SC_DUPLICATE);
             }
             assert(memcmp(&hot, &copied, sizeof(hot)) == 0);
             hot.ready = 0;

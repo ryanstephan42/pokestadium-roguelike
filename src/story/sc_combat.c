@@ -93,7 +93,7 @@ int sc_observe_values(ScState *state, ScBridge *bridge, const ScSpecies party_sp
         for (j = 0; j < 4; j++) next.party[i].pp[j] = party[i].pp[j];
     }
     participants = bridge->participants[enemy_slot] | (RlU8)(1U << active_slot);
-    if (!enemy_hp) {
+    if (!enemy_hp && !(state->defeated_mask & (1U << enemy_slot))) {
         status = sc_ko_values(&next, party_species, enemy_species, team, kind,
                               enemy_slot, participants);
         if (status != SC_OK) return status;

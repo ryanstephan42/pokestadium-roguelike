@@ -68,8 +68,10 @@ int main(void) {
     assert(sc_learn(&state, &sc_catalog, 1, 3, 1) == SC_OK);
     assert(sc_native_publish(&state, &native, 1, mapping) == SC_OK);
     assert(native.unk_09[3] == state.party[1].moves[3]);
+    before = state;
     assert(sc_native_observe(&state, &bridge, &sc_catalog, &native, 1,
-                              mapping, 0, 0, 0) == SC_DUPLICATE);
+                              mapping, 0, 0, 0) == SC_OK);
+    assert(memcmp(&state, &before, sizeof(state)) == 0);
     mapping[0] = 0;
     assert(sc_native_publish(&state, &native, 1, mapping) == SC_INVALID);
     puts("Story native record stat/DV and state-copy feasibility: OK (not runtime proof)");

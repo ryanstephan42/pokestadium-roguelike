@@ -103,7 +103,7 @@ int main(void) {
             assert(sc_native_publish(&state, native, 6, actual) == SC_OK);
             before = state; prior_bridge = bridge;
             assert(sc_native_observe_combat(&state, &bridge, &combat, native, 6,
-                                            actual, active, enemy, 0) == SC_DUPLICATE);
+                                            actual, active, enemy, 0) == SC_OK);
             assert(!memcmp(&state, &before, sizeof(state)) &&
                    !memcmp(&bridge, &prior_bridge, sizeof(bridge)));
         }
