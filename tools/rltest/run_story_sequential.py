@@ -9,7 +9,7 @@ import pathlib
 import sys
 
 from tools.rltest.frontend import HarnessError
-from tools.rltest.story_sequential_supervisor import CAPS, CONTROL_CAPS, supervise
+from tools.rltest.story_sequential_supervisor import CAPS, CONTROL_CAPS, supervise, scenario_caps
 from tools.rltest.story_sequential_worker import verify_candidate, write_json, digest, control_inputs
 
 
@@ -73,7 +73,8 @@ def collect(directory, budget, elapsed, reaped):
                 scenario_frames=budget.per_scenario, seconds=elapsed,
                 started_monotonic=budget.started, deadline_monotonic=budget.deadline,
                 exact_tree_reaped=reaped, no_orphans=reaped,
-                actual_carry_sha256=scenarios["win"].get("actual_carry_sha256"),
+                actual_carry_sha256=scenarios.get(
+                    "win", scenarios.get("carry-reload", {})).get("actual_carry_sha256"),
                 artifact_sha256=hashes)
 
 
@@ -86,7 +87,15 @@ def main():
     parser.add_argument("--core-sha256", required=True)
     parser.add_argument("--control", type=pathlib.Path)
     parser.add_argument("--debug-exit", action="store_true")
+    parser.add_argument("--only-scenario", choices=tuple(CAPS))
+    parser.add_argument("--producer-run", type=pathlib.Path)
+    parser.add_argument("--producer-report-sha256")
     args = parser.parse_args()
+    if args.only_scenario == "carry-reload":
+        if args.producer_run is None or args.producer_report_sha256 is None:
+            raise HarnessError("Separate carry reload requires pinned producer inputs")
+    elif args.producer_run is not None or args.producer_report_sha256 is not None:
+        raise HarnessError("Producer inputs belong only to separate carry reload")
     seal, _, _ = verify_candidate(args.seal, args.package, args.binding, args.seal_sha256)
     if args.control:
         control_inputs(seal, args.control, args.core)
@@ -104,12 +113,26 @@ def main():
         command += ["--control", str(args.control.resolve())]
     if args.debug_exit:
         command += ["--debug-exit"]
+    for key in ("only_scenario", "producer_run", "producer_report_sha256"):
+        if getattr(args, key) is not None:
+            command += ["--" + key.replace("_", "-"), str(getattr(args, key))]
 
     def report(budget, elapsed, reaped):
-        write_json(args.out.with_suffix(".report.json"), collect(args.out, budget, elapsed, reaped))
+        row = collect(args.out, budget, elapsed, reaped)
+        row["candidate_seal_sha256"] = args.seal_sha256
+        row["candidate_rom_sha256"] = digest(
+            (pathlib.Path(__file__).resolve().parents[2] / seal["configuration"]["ROM"]).read_bytes())
+        row["core_sha256"] = args.core_sha256
+        row["producer_report_sha256"] = args.producer_report_sha256
+        row["proposal_sha256"] = digest(
+            (pathlib.Path(__file__).resolve().parents[2] / "docs/story/SEQUENTIAL-PROPOSAL.md").read_bytes())
+        row["procedure"] = "separate-scenario-480s" if args.only_scenario else "legacy-aggregate-180s"
+        write_json(args.out.with_suffix(".report.json"), row)
 
     with args.out.with_suffix(".stderr.log").open("x") as log:
-        supervise(command, log, on_exit=report, caps=CONTROL_CAPS if args.control else CAPS)
+        caps = (scenario_caps(args.only_scenario, bool(args.control)) if args.only_scenario else
+                CONTROL_CAPS if args.control else CAPS)
+        supervise(command, log, on_exit=report, caps=caps, seconds=480 if args.only_scenario else 180)
 
 
 if __name__ == "__main__":

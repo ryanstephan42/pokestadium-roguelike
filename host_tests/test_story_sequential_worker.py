@@ -23,6 +23,53 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class ChildExitTests(unittest.TestCase):
+    def test_separate_run_starts_only_selected_scenario_and_terminal_reload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory) / "run"
+            args = types.SimpleNamespace(out=out, only_scenario="loss-terminal-reload")
+            calls = []
+            def run(command, **kwargs):
+                calls.append(command)
+                path = out / "loss-terminal-reload"
+                path.mkdir(exist_ok=True)
+                (path / "report.json").write_text("{}")
+                return types.SimpleNamespace(returncode=0)
+            with patch.object(worker.subprocess, "run", side_effect=run), \
+                    patch.object(worker.sys, "stdin", io.StringIO("OK\n")), \
+                    patch.object(worker.sys, "stdout", io.StringIO()):
+                worker.run_children(args, command_factory=lambda _: ["fake-worker"])
+            self.assertEqual(calls, [
+                ["fake-worker", "--scenario", "loss-terminal-reload"],
+                ["fake-worker", "--scenario", "loss-terminal-reload", "--terminal-reload"]])
+
+    def test_producer_report_and_every_persisted_input_are_pinned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            producer = root / "build/story/producer"
+            (producer / "win").mkdir(parents=True)
+            names = ("save-ram.bin", "committed-state.json", "calibration.json", "report.json")
+            for name in names:
+                (producer / "win" / name).write_bytes(b"game-written")
+            report = dict(exact_tree_reaped=True, no_orphans=True,
+                          core_sha256="core", candidate_rom_sha256="rom",
+                          scenarios={"win": {"status": "pass"}},
+                          artifact_sha256={"win/" + name: worker.digest(b"game-written")
+                                           for name in names})
+            report_path = producer.with_suffix(".report.json")
+            report_path.write_text(json.dumps(report))
+            args = types.SimpleNamespace(producer_run=producer, core_sha256="core",
+                                         producer_report_sha256=worker.digest(report_path.read_bytes()))
+            with patch.object(worker, "ROOT", root):
+                self.assertEqual(worker.producer_inputs(args, "rom"), producer)
+                (producer / "win/save-ram.bin").write_bytes(b"substituted")
+                with self.assertRaisesRegex(HarnessError, "Producer artifact changed"):
+                    worker.producer_inputs(args, "rom")
+                with self.assertRaisesRegex(HarnessError, "ROM/core differs"):
+                    worker.producer_inputs(args, "different-rom")
+                args.producer_report_sha256 = "wrong-pin"
+                with self.assertRaisesRegex(HarnessError, "report pin mismatch"):
+                    worker.producer_inputs(args, "rom")
+
     def test_native_exit_is_retained_and_debug_output_is_redirected(self):
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory) / "run"
@@ -609,7 +656,7 @@ print(json.dumps(collect(Path(sys.argv[1]), budget, 0, True)))
         scenario.emu = object()
         scenario.acknowledgements = []
         menu = dict(action=2, mode=2, locked=False, active=2, count=3,
-                    hp=[5, 5, 5], moves=[10, 45, 0, 52], pp=[30, 40, 0, 25],
+                    hp=[5, 5, 5], moves=[33, 39, 145, 0], pp=[35, 40, 30, 0],
                     disabled=-1)
         presses = []
         def press(button):
@@ -626,12 +673,12 @@ print(json.dumps(collect(Path(sys.argv[1]), budget, 0, True)))
         menu.update(action=1, mode=1, active=1)
         with patch.object(worker, "read_menu", return_value=menu):
             scenario.battle_action()
-        self.assertEqual(presses[-1], "C_LEFT")  # actual Ember slot3.
+        self.assertEqual(presses[-1], "C_DOWN")  # Packed Bubble slot2.
         self.assertEqual(scenario.acknowledgements[-1]["frame"], 17)
         scenario.scenario = "loss-terminal-reload"
         with patch.object(worker, "read_menu", return_value=menu):
             scenario.battle_action()
-        self.assertEqual(presses[-1], "C_RIGHT")  # Growl, not Ember.
+        self.assertEqual(presses[-1], "C_RIGHT")  # Tail Whip, not Bubble.
 
     def test_retained_dp_snapshot_and_joined_cleanup_required_before_battle(self):
         from tools.rltest.bind_story_sequential import bind_lifecycle_words

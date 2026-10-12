@@ -704,7 +704,7 @@ class Scenario:
                 self.wait(lambda: read_menu(self.emu, self.abi["native_run_address"])["mode"] == 0,
                           "native action menu reopened")
                 return
-            preferred = {"win": 52, "loss-terminal-reload": 45, "transform": 144}[self.scenario]
+            preferred = {"win": 145, "loss-terminal-reload": 39, "transform": 144}[self.scenario]
             legal = [i for i in range(4) if menu["moves"][i] and
                      menu["pp"][i] & 63 and menu["disabled"] != i]
             require(legal, "No legal move under reviewed direct-input policy")
@@ -764,6 +764,30 @@ class Scenario:
             require(self.transform is not None, "Actual Transform not observed")
 
 
+def producer_inputs(args, rom_sha):
+    producer = getattr(args, "producer_run", None)
+    pin = getattr(args, "producer_report_sha256", None)
+    require(producer is not None and pin is not None,
+            "Separate carry reload requires pinned producer report")
+    producer = producer.resolve()
+    require(producer.is_relative_to(ROOT / "build" / "story"),
+            "Producer must be workspace-local story evidence")
+    report_path = producer.with_suffix(".report.json")
+    require(digest(report_path.read_bytes()) == pin, "Producer report pin mismatch")
+    report = json.loads(report_path.read_text())
+    require(report.get("exact_tree_reaped") is True and report.get("no_orphans") is True,
+            "Producer reservation was not safely reaped")
+    require(report.get("core_sha256") == args.core_sha256 and
+            report.get("candidate_rom_sha256") == rom_sha,
+            "Producer ROM/core differs from reload candidate")
+    require(report["scenarios"]["win"]["status"] == "pass", "Producer win did not pass")
+    for name in ("save-ram.bin", "committed-state.json", "calibration.json", "report.json"):
+        relative = "win/" + name
+        require(report["artifact_sha256"].get(relative) ==
+                digest((producer / relative).read_bytes()), "Producer artifact changed: " + relative)
+    return producer
+
+
 def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_out=None):
     stream_in = sys.stdin if stream_in is None else stream_in
     stream_out = sys.stdout if stream_out is None else stream_out
@@ -784,9 +808,12 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
     require(digest(args.core.read_bytes()) == args.core_sha256,
             "Core differs from approved external pin")
     cold_reload = terminal_reload or name == "carry-reload"
-    expected_container = ((args.out / ("loss-terminal-reload" if terminal_reload else "win")
+    producer = args.out
+    if name == "carry-reload" and getattr(args, "only_scenario", None):
+        producer = producer_inputs(args, digest((ROOT / config["ROM"]).read_bytes()))
+    expected_container = ((producer / ("loss-terminal-reload" if terminal_reload else "win")
                            / "save-ram.bin").read_bytes() if cold_reload else None)
-    game_written_sha = (json.loads((args.out /
+    game_written_sha = (json.loads((producer /
                         ("loss-terminal-reload" if terminal_reload else "win") /
                         "report.json").read_text())["game_written_save_sha256"]
                         if cold_reload else None)
@@ -807,7 +834,8 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
     emu = factory(args.core, ROOT / config["ROM"],
                   ROOT / config["BUILD_DIR"] / "pokestadium-rl.map", directory,
                   options={"mupen64plus-pak1": "memory"},
-                  timeout=180, prepare_save=prepare_save, progress=progress,
+                  timeout=480 if getattr(args, "only_scenario", None) else 180,
+                  prepare_save=prepare_save, progress=progress,
                   boot_symbols=binding.get("boot_symbols"),
                   require_expansion=True,
                   frame_lease=lambda n: reserve_frames(
@@ -823,12 +851,13 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
             evidence["game_written_save_before_reload_sha256"] = game_written_sha
             evidence["loaded_save_sha256"] = digest(restored)
             require(save_ram(emu)[1] == expected_container, "Boot changed game-written save")
-        calibration_path = args.out / "win" / "calibration.json"
-        calibration = {} if name == "win" else json.loads(calibration_path.read_text())
+        calibration_path = (producer / "win" / "calibration.json" if name == "carry-reload"
+                            else args.out / name / "calibration.json")
+        calibration = (json.loads(calibration_path.read_text()) if cold_reload else {})
         scenario = Scenario(emu, abi, manifest, directory, name, calibration)
         scenario.boot_to_title()
         require(emu.read_u32("osMemSize") == 0x800000, "Core is not using 8 MiB")
-        if name == "win":
+        if not cold_reload:
             scenario.calibration = calibrate(emu)
             write_json(calibration_path, scenario.calibration)
         if emu.read_u32("gCurrentGameState") == 2:
@@ -848,7 +877,7 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
                     "Loss wrote a separate checkpoint instead of retaining interruption")
             require(scenario.ui()["screen"] == 17, "Cold reload offers battle retry")
         elif name == "carry-reload":
-            expected = json.loads((args.out / "win" / "committed-state.json").read_text())
+            expected = json.loads((producer / "win" / "committed-state.json").read_text())
             require(loaded["state_raw"] == expected["state_raw"] and
                     loaded["party"] == expected["party"], "Cold carry reload mismatch")
             evidence["actual_carry_sha256"] = digest(story_note(restored))
@@ -945,7 +974,10 @@ def run_children(args, command_factory=None):
     require(not args.out.exists(), "Use a fresh private run directory")
     args.out.mkdir(parents=True)
     # Each child loads exactly one core; reloads are fresh OS processes.
-    names = ("control",) + SCENARIOS if getattr(args, "control", None) else SCENARIOS
+    selected = getattr(args, "only_scenario", None)
+    names = (selected,) if selected else SCENARIOS
+    if getattr(args, "control", None):
+        names = ("control",) + names
     for name in names:
         write_json(args.out / (name + ".attempted.json"), dict(scenario=name))
         if command_factory is None:
@@ -954,6 +986,9 @@ def run_children(args, command_factory=None):
                 command += ["--" + key.replace("_", "-"), str(getattr(args, key))]
             if getattr(args, "control", None):
                 command += ["--control", str(args.control)]
+            for key in ("only_scenario", "producer_run", "producer_report_sha256"):
+                if getattr(args, key, None) is not None:
+                    command += ["--" + key.replace("_", "-"), str(getattr(args, key))]
         else:
             command = command_factory(args)
         child = command + ["--scenario", name]
@@ -1005,6 +1040,9 @@ def main():
     parser.add_argument("--control", type=pathlib.Path)
     parser.add_argument("--debug-exit", action="store_true")
     parser.add_argument("--protocol-fd", type=int)
+    parser.add_argument("--only-scenario", choices=SCENARIOS)
+    parser.add_argument("--producer-run", type=pathlib.Path)
+    parser.add_argument("--producer-report-sha256")
     args = parser.parse_args()
     if args.scenario:
         require(not args.terminal_reload or args.scenario == "loss-terminal-reload",

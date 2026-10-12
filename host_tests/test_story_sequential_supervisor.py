@@ -8,12 +8,33 @@ import tempfile
 import unittest
 
 from tools.rltest.frontend import HarnessError
-from tools.rltest.story_sequential_supervisor import RunBudget, counted_step, bind_frontend_budget, CONTROL_CAPS
+from tools.rltest.story_sequential_supervisor import (
+    RunBudget, counted_step, bind_frontend_budget, CONTROL_CAPS, scenario_caps, supervise)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class ControlPartitionTests(unittest.TestCase):
+    def test_separate_scenario_cannot_reset_cap_for_fresh_reload(self):
+        for name in ("win", "carry-reload", "loss-terminal-reload", "transform"):
+            budget = RunBudget(0, 480, caps=scenario_caps(name))
+            budget.reserve(name, 17999, 1)
+            budget.reserve(name, 1, 2)
+            with self.assertRaises(HarnessError):
+                budget.reserve(name, 1, 3)
+            with self.assertRaises(HarnessError):
+                budget.reserve("control", 1, 3)
+            with self.assertRaises(HarnessError):
+                RunBudget(0, 480, caps=scenario_caps(name)).reserve(name, 1, 480)
+        budget = RunBudget(0, 480, caps=scenario_caps("win", True))
+        budget.reserve("control", 1500, 1)
+        budget.reserve("win", 16500, 2)
+        self.assertEqual(budget.frames, 18000)
+        with self.assertRaises(HarnessError):
+            supervise([], None, seconds=481, caps=scenario_caps("win"))
+        with self.assertRaises(HarnessError):
+            supervise([], None, seconds=480)
+
     def test_control_is_nontransferable_within_same_aggregate(self):
         budget = RunBudget(0, 180, caps=CONTROL_CAPS)
         budget.reserve("control", 1500, 1)
@@ -110,6 +131,26 @@ assert sys.stdin.readline() == 'OK\\n'
         result = self.invoke(worker)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "9")
+
+    def test_separate_carry_completes_without_unrelated_scenarios(self):
+        code = """
+import sys
+from tools.rltest.story_sequential_supervisor import supervise, scenario_caps
+worker = r'''
+import sys
+print('{"scenario":"carry-reload","frames":2}', flush=True)
+assert sys.stdin.readline() == 'OK\\n'
+print('{"done":true}', flush=True)
+assert sys.stdin.readline() == 'OK\\n'
+'''
+budget = supervise([sys.executable, '-c', worker], sys.stderr, seconds=1,
+                   caps=scenario_caps('carry-reload'))
+print(budget.frames)
+"""
+        result = subprocess.run([sys.executable, "-c", code], cwd=ROOT,
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "2")
 
     def test_boot_watchdog_before_any_frame_and_exact_descendant_reap(self):
         with tempfile.TemporaryDirectory() as directory:

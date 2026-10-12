@@ -23,6 +23,11 @@ CAPS = {"win": 7000, "carry-reload": 2000, "loss-terminal-reload": 5000,
 CONTROL_CAPS = {"control": 1500, "win": 5500, "carry-reload": 2000,
                 "loss-terminal-reload": 5000, "transform": 4000}
 
+def scenario_caps(scenario, control=False):
+    if scenario not in CAPS:
+        raise HarnessError("Unknown separate scenario")
+    return ({"control": 1500, scenario: 16500} if control else {scenario: 18000})
+
 
 @dataclass
 class RunBudget:
@@ -34,7 +39,9 @@ class RunBudget:
     caps: dict = field(default_factory=lambda: CAPS.copy())
 
     def __post_init__(self):
-        if self.caps == CONTROL_CAPS:
+        if self.caps == CONTROL_CAPS or any(
+                self.caps == scenario_caps(name, control)
+                for name in CAPS for control in (False, True)):
             self.per_scenario = {name: 0 for name in self.caps}
         elif self.caps != CAPS:
             raise HarnessError("Unreviewed sequential budget partition")
@@ -120,8 +127,10 @@ def stop_tree(process):
 
 
 def supervise(command, log, seconds=180, clock=time.monotonic, on_exit=None, caps=None):
-    if not 0 < seconds <= 180:
-        raise HarnessError("Watchdog cannot exceed approved 180 seconds")
+    separate = caps is not None and any(
+        caps == scenario_caps(name, control) for name in CAPS for control in (False, True))
+    if not 0 < seconds <= (480 if separate else 180):
+        raise HarnessError("Watchdog exceeds approved scenario procedure")
     enable_subreaper()
     started = clock()  # Before Popen, worker/core load, boot or fresh reload.
     budget = RunBudget(started, started + seconds, caps=CAPS.copy() if caps is None else caps)
@@ -160,7 +169,9 @@ def supervise(command, log, seconds=180, clock=time.monotonic, on_exit=None, cap
                 if completed or not isinstance(message, dict):
                     raise HarnessError("Unexpected sequential frame protocol")
                 if set(message) == {"done"} and message["done"] is True:
-                    if budget.scenario_index < list(budget.caps).index("loss-terminal-reload"):
+                    required = (len(budget.caps) - 1 if separate else
+                                list(budget.caps).index("loss-terminal-reload"))
+                    if budget.scenario_index < required:
                         raise HarnessError("Missing required win/reload/loss scenarios")
                     completed = True
                     budget.check(clock())

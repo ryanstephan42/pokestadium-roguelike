@@ -55,6 +55,7 @@ def prepare(output, catalog_c, catalog_json):
         "src/fragments/57/fragment57.c",
         "tools/rltest/prepare_story_sequential.py",
         "tools/rltest/story_sequential_inputs.json",
+        "docs/story/SEQUENTIAL-PROPOSAL.md",
         "src/story/sc_campaign.c", "src/story/sc_campaign_run.c",
         "src/story/sc_observer_layout.inc",
         "src/story/sc_native_campaign.c", "src/story/sc_native_campaign.h",

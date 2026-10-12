@@ -163,11 +163,32 @@ Pak/Pak/controller options; control neither installs a story checkpoint nor
 touches historical normal saves/output. The control runs1500 frames only,
 records video/boot witnesses and then unloads; this is renderer/boot diagnosis,
 not a new gameplay validation. Title/menu by its endpoint is PASS; otherwise
-FAIL, and the story attempt proceeds for comparison. Proposed allocation is
+FAIL, and the story attempt proceeds for comparison. Historical allocation was
 1500 control +5500 win +2000 reload +5000 loss/reload +4000 Transform=18000;
 caps do not transfer and180s includes the control. Without `--control`, the
 previous7000/2000/5000/4000 policy remains. Either partition requires its own
 explicit user grant, never reuse a consumed run.
+
+The user's subsequent test-procedure decision supersedes that aggregate
+partition: select exactly one scenario with `--only-scenario`. Each reservation
+has a maximum of 18,000 frames and a 480-second wall watchdog, including core
+load, boot, calibration and fresh reloads. Loss and terminal reload share the
+same reservation/counter. A 1,500-frame control is used only after a change to
+frontend/core setup and is included in that reservation's 18,000-frame ceiling
+(leaving 16,500 for the selected scenario). Scenarios execute sequentially,
+never concurrently. See `SEQUENTIAL-PROPOSAL.md` for the current procedure.
+Standalone carry takes `--producer-run` and `--producer-report-sha256`; the
+producer must be a safely reaped PASS win on the same ROM/core. Its aggregate
+report pins the exact save container, committed state, calibration and
+scenario report. Altering any of these inputs is refused before core load.
+
+The newly approved sequential-only normal checkpoint uses Squirtle (starter
+7, seed 42), not the shared Charmander fixture. HOST preparation replays the
+same five legal prior encounters with the correct rival branch, ordinary
+KO XP, accepted level-up learning, recruits and available location healing.
+Bubble (145) is therefore learned through the actual level-up API and is
+packed into slot 2; its PP travels with it. Brock remains the two-enemy target.
+The shared fixture, frozen c399 and Transform checkpoint are unchanged.
 
 The worker verifies the external seal/core pins and all sealed source/artifact
 hashes before loading a core. It converts only that fresh core's formatted

@@ -84,11 +84,47 @@ static void state_proof(const char *name, const ScState *state) {
     printf("]}");
 }
 
+static void sequential_checkpoint(ScState *state) {
+    static const char *route[] = {
+        "OaksLab/rival-lab",
+        "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER2",
+        "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER3",
+        "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER4",
+        "PewterGym/TEXT_PEWTERGYM_COOLTRAINER_M"
+    };
+    ScOptions options = {0, SC_STANDARD, SC_STARTER_TRIO, 7};
+    unsigned i, j, encounter, heal = SC_NO_ENCOUNTER, variant, slot, count;
+    assert(sc_new(state, &sc_catalog, &options, 42) == SC_OK);
+    for (i = 0; i < sc_catalog.graph->healing_count; i++)
+        if (!strcmp(sc_catalog.graph->healing[i].id, "heal:ViridianPokecenter")) heal = i;
+    assert(heal != SC_NO_ENCOUNTER);
+    for (i = 0; i < sizeof(route) / sizeof(route[0]); i++) {
+        encounter = SC_NO_ENCOUNTER;
+        for (j = 0; j < sc_catalog.count; j++)
+            if (!strcmp(sc_catalog.encounters[j].id, route[i])) encounter = j;
+        assert(encounter != SC_NO_ENCOUNTER);
+        variant = sc_catalog.encounters[encounter].kind == SC_RIVAL ? state->rival_branch : 0;
+        assert(sc_begin(state, &sc_catalog, encounter, variant) == SC_OK);
+        count = sc_catalog.encounters[encounter].teams[variant].count;
+        for (slot = 0; slot < count; slot++) {
+            assert(sc_on_ko(state, &sc_catalog, slot, 1, variant) == SC_OK);
+            for (j = 0; j < state->party_count; j++)
+                if (state->learn_mask & (1U << j))
+                    assert(sc_learn(state, &sc_catalog, j, 3, 1) == SC_OK);
+        }
+        assert(sc_finish(state, &sc_catalog, SC_WIN, variant) == SC_OK);
+        assert(sc_recruit(state, &sc_catalog, RL_NO_SLOT, 1) == SC_OK);
+        assert(sc_location_heal(state, &sc_catalog, heal) == SC_OK);
+    }
+    assert(state->party_count == 6 && state->party[0].species == 7);
+    assert(state->party[0].moves[2] == 145 && sc_moves_packed(&state->party[0]));
+}
+
 int main(int argc, char **argv) {
     ScState normal, transform;
     unsigned i, target = SC_NO_ENCOUNTER;
     assert(argc == 2 && sizeof(void *) == 4 && sizeof(unsigned) == 4);
-    assert(sc_six_checkpoint(&normal, &sc_catalog, NULL, NULL) == SC_OK);
+    sequential_checkpoint(&normal);
     assert(sc_six_transform_checkpoint(&transform, &sc_catalog, NULL, NULL) == SC_OK);
     for (i = 0; i < normal.party_count; i++) sc_compact_moves(&normal.party[i]);
     for (i = 0; i < transform.party_count; i++) sc_compact_moves(&transform.party[i]);
@@ -100,7 +136,7 @@ int main(int argc, char **argv) {
     assert(sc_state_valid(&normal, &sc_catalog) && sc_state_valid(&transform, &sc_catalog));
     {
         ScState gapped = normal;
-        assert(normal.party[0].moves[2] == 52 && !normal.party[0].moves[3]);
+        assert(normal.party[0].moves[2] == 145 && !normal.party[0].moves[3]);
         gapped.party[0].moves[3] = gapped.party[0].moves[2];
         gapped.party[0].pp[3] = gapped.party[0].pp[2];
         gapped.party[0].max_pp[3] = gapped.party[0].max_pp[2];
