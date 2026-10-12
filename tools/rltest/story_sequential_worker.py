@@ -940,6 +940,8 @@ def run_children(args, command_factory=None):
                          "-ex", "set startup-with-shell off",
                          "-ex", "catch syscall exit_group", "-ex", "run",
                          "-ex", "info registers", "-ex", "thread apply all bt",
+                         "-ex", "info proc mappings", "-ex", "frame 3",
+                         "-ex", "x/64wx $rsp",
                          "-ex", "continue", "--args"] + child + [
                              "--protocol-fd", str(protocol_fd)]
                 with (args.out / "win-host-exit.txt").open("x") as debug_log:

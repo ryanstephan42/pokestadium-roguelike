@@ -384,3 +384,8 @@ correctly rejected non-JSON on its protocol. Debug mode now inherits a
 dedicated counted-step descriptor, captures all GDB stdout privately, and
 disables user GDB init files. The protocol is never shared with debugger
 output, including startup messages.
+Run8 proved a deliberate `exit(1)` inside the pinned core, not a Python
+exception or OS signal. The stripped core return site at offset `0x2de692`
+follows its `Compile at bogus memory address: %x` fatal branch. The next
+diagnostic also retains mappings and 256 bytes of that caller's stack so
+the rejected guest address can be resolved rather than inferred.
