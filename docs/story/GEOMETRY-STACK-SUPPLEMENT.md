@@ -678,6 +678,119 @@ The N5→N6 remaps of the v3, prefix, SC and site lists report no SHIFT. The sta
 - **Effect history.** Whole-turn reachability and canon intent of the confusion and Substitute-break histories.
 - **Carried over from v8.** Stadium-models live 144 and BD9C conditional 592; the two fragment43 sites; lower keys 2–6; co-occurrence, fit/contiguity and native/gate.
 
+## v10 CI short-map endpoint, shadow-slot admission and CI-owned extent; N7 refresh (static)
+
+All changes are behind `ROGUELIKE`. Vanilla `make` still reports `build/pokestadium-us.z64: OK`.
+
+**Commits since N6 (`da7ac74`):**
+
+| Commit | Change |
+|---|---|
+| `ebdb924` | `rl_ci_frame` checks the residency of the **final byte** `0x862082AF` of the 4-byte index-3 load instead of its first byte `0x862082AC`. The first endpoint `0x862082A0` is kept. `Memmap_GetLoadedFragmentVaddr` accepts iff `diff < size`, so registered sizes `0x82ad/0x82ae/0x82af` passed the old check. They are now refused; `0x82b0` is accepted. These are new fixtures in `host_tests/test_ci8_strip.py`, and the 12492 earlier fixtures are kept. This completes the advertised short-map contract. It is **not** an installed crash: the installed fragment-8 size `0x82b0` contains the last word. |
+| `a116429` | Shadow-slot admission in `src/334D0.c`; see below. |
+
+**Shadow-slot admission (`a116429`).**
+
+The counter:
+- `D_800AF7B0[row]` is an s16 counter. It increments on each `func_80032F94` call with mode < 4. In modes 2/3 it increments only when `D_800AF7C0 >= 2`.
+- It is reset only by `func_80032670`, which is called from `12D80.c` when `unk_18 < 0 && unk_01A > 0`.
+- No writer bounds it below 3. It indexes `D_800AFFC8[row][3]` (`StadiumModelSlot`, 0x7D0).
+
+Where it is used:
+- the writer `func_80032BD4` (copy via `func_80033B2C`);
+- `func_80032D28` (`func_800361C4`);
+- the mode-2/3 direct path of `func_80032F94` (seg6 vertexSegment + DL);
+- case 2/3 of `func_80032F94` (`func_800366A4`).
+
+Why an unpopulated slot is a problem:
+- `modelSegment` is written only by `func_80033B2C` (`= &slot.unkSegment`). A never-populated BSS slot holds 0, which `361C4`/`366A4` would dereference.
+- `func_80005F5C` returns NULL when the arena is exhausted. Case 2/3 passed that NULL unchecked to `8003658C` and segment 14.
+
+The fix:
+- `rl_shadow_slot(row, counter, requirePopulated)` refuses `row >= 2` and `(u16)counter >= 3`.
+- With `requirePopulated` set, it also refuses `modelSegment != &unkSegment`.
+
+How each site handles a refusal:
+
+| Site | Behaviour on refusal |
+|---|---|
+| `32BD4` | Skips only the copy; the matrix calls are kept. |
+| `32D28` | Requires a populated slot before `361C4`. |
+| `32F94` mode 2/3 | Checks after the 0xA0 allocation. On refusal it increments the counter exactly as vanilla does and returns. |
+| `32F94` case 2/3 | Fails closed on `vtx == NULL` or a refusal, keeping the vanilla counter update. |
+
+Template facts:
+- Templates `D_800777A8` and `D_80077950` have type 0x0a/0x0b and 10 vertices.
+- The `mvtx` span is `0x170 + 10·0x94 = 0x738`, which is ≤ 0x7D0.
+- The DLs issue `G_VTX` 10 from seg14 offset 0 with TRI indices ≤ 9.
+
+HOST evidence (`host_tests/test_shadow_slot.py`):
+- The real helper and the three functions are extracted and compiled under ASan/UBSan, ROGUELIKE versus vanilla.
+- In-domain traces are identical (1437 lines), with 66 refusals.
+- Vanilla reproduces UBSan "index 3 out of bounds" for `[0][3]` and `[1][3]`.
+- The mutants `>= 4`, "populated check disabled" and "vtx check removed" all fail.
+
+IDO evidence on N7:
+- The helper is `__rla_58` @ `80033840`: `sltiu row<2`, `andi 0xffff` + `slti 3`, `lw 0x130` versus `+0x138`.
+- `func_80032BD4` calls it with `a2=0` before `jal 33B2C`.
+- `func_80032D28` calls it with `a2=1` before `361C4`.
+- In both `func_80032F94` paths, alloc → `__rla_58` precedes `32A7C`. In case 2/3, `beqz v0` precedes the helper and `366A4`.
+
+Reachability of counter ≥ 3 is **not** asserted. This is fail-closed admission, not a canonical crash claim.
+
+**Item D (callback 0x140 output):** the frame list emitted through `32F94` uses at most 19 Gfx = 152 of 320 bytes.
+
+**CI texture-owned extent (closed statically).**
+- `n7-ci-extent-witness.py` authenticates the N5/N7 ROMs and the N7 ELF.
+- Archive `920000` table and entry 183 bytes are identical in N5 and N7.
+- The texture-owned extent `[8ff0f9d8, 8ff32c60)` = 0x23288 has:
+  - no relocation slot and no other relocation target;
+  - no code HI/LO target;
+  - no segment-relative Gfx operand into it;
+  - the final palette as the next object.
+- `rl_ci_frame` admits travel ≤ 33954. The worst consumed end offset is 144000 ≤ 144008.
+- The disassembly contains `0x84a3`, `0x3288`, `ori 0x82a0` and `ori 0x82af`.
+- The witness ends with "CI-OWNED-EXTENT WITNESS PASSED".
+
+**N7 candidate:** fixed point v99 = v100 (v97 → v98 → v99 changed).
+
+| Artifact | SHA256 |
+|---|---|
+| ELF | `b91099843f11a1af2a7e58f9386ca1678a055e907413db31b67c7fc647c471bf` |
+| ROM | `9fb8af3aae2479bcb86c7191f5d224e4e9e811b6e5664d88c0245e3f50bca332` |
+| Map | `99032aac1566d69fa2cb826bb067a4bdd8d171b134b6c768ca03e7fb9b2e4067` |
+
+Remaps and stage runs:
+- The N6→N7 remaps of the v3, prefix, SC and 20-site lists report no SHIFT or MISMATCH.
+- `remapres2.py` now also masks an immediate already masked to `X` (`-X`). That relocated `%lo` previously caused one false MISMATCH.
+- The stage GEN run and an independent fresh-scratch run both end with VERIFY PASSED (77 OK).
+
+| Artifact | Result on N7 |
+|---|---|
+| Handler table | `0x8008b7d4`. |
+| Stadium archive | `0x595eb0`. |
+| Geo size table | `0x80098660`. |
+| Normalised outputs | Identical to N6 for frames, routes, `renderrec`, `cmd8weight`, scenechain/domain, SC 2832 and `indirect20` 5248. Stadium weights are identical modulo the archive address. |
+| `cmd8depth` | `func_81000420` stays 1024 (64 functions, including the helper). |
+| `cmd8scan-v2.py` | 622194 candidates, **0 hits**. |
+
+**Lower-pool static key 1:**
+- gPool is at `0x8012e130`.
+- The pool is `[0x8012e140, 0x803ffff0)`, capacity **2956976** (−352 versus N6).
+- fragment62 still charges 815648 at ROM `[0x310970, 0x39fe40)`.
+- Arithmetic-only remainder: 548000 − 352 = **547648**. This is not a fit claim.
+
+**Still open after v10:**
+- Deferred items:
+  - A: recursive borrowed G_DL with inherited segment state;
+  - C: alternate-image/flag-4 last-task lifetime;
+  - E: synthesised or replaced streams and writers.
+- `14D70` segment-1 shadow targets.
+- cmdA/cmd17 payloads and the remaining callback argument schemas.
+- Effect whole-turn history.
+- Stadium 144 / BD9C 592; the two fragment43 sites.
+- Lower keys 2–6; co-occurrence, fit/contiguity and native/gate.
+
 ## Not claimed
 
 - After v3, BD04 is bounded as a 0-byte leaf.
