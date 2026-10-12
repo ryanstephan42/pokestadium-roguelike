@@ -91,20 +91,58 @@ span to the campaign lease:
 
 | Alias | Storage | Written by | Read by | Ends |
 |-------|---------|------------|---------|------|
-| Controller `unk_18` (A base), `unk_28`/`unk_20` (last A table/size) | `func_80019760` block, lower `main_pool` (19840.c) | 19840.c `func_80019760`, `func_80019B48` case 2 | worker jobs from `func_80019A7C`; `func_8001C248`/`func_8001C2D8` (1C720.c:222-240) | The block is freed by the BATL pop. Its only owner, `D_8438E798[i].unk_10` (fragment62_2EA8E0.c:602-603), is fragment62 storage. |
-| `D_843924E0[]` (A table pointers) | fragment62 BSS | worker `func_80019514` through `func_80019A7C(…, D_843924C0, D_843924E0)` (`func_8432C958`) | `func_8432CA48` (fragment62_315D50.c:4908-4920) | Unmapped with fragment62 at the BATL pop. |
-| `D_843920C0[256]` (A and lower addresses) | fragment62 BSS (`fragment62.h:1036`) | `func_8432C830` from `func_80019EA0(0)` (a lower `func_8000484C` block) and from `func_8432CA48` (A) | fragment62 only: `func_8432C86C` clears it on entry; CPU/RCP users at 315D50.c:5023-5040 and 31AA30.c:11-50 | No reader outside fragment62. |
-| `D_800ABE10.unk_A04.unk_08` (S) | main BSS (19840.c:27) | `func_8001987C` | the worker (`func_80019484`/`func_80019514`) only | **Stays stale after the pop** (vanilla also leaves a freed lower pointer). Every other fragment that creates controllers (`func_80019760`) also calls `func_8001987C`, which rewrites it before any worker job. Campaign jobs are refused after scope close (`sc_batl_worker_admit`). |
+| Controller `unk_18` (A base), `unk_28`/`unk_20` (last A table/size) | `func_80019760` block, lower `main_pool` (19840.c) | 19840.c `func_80019760`, `func_80019B48` case 2 | worker jobs from `func_80019A7C`; `func_8001C248`/`func_8001C2D8` (1C720.c:222-240) | The block is freed by the BATL pop. Its only owner, `D_8438E798[i].unk_10` (fragment62_2EA8E0.c:602-603), is fragment62 BSS. That BSS stays mapped, holding a dangling pointer, until the RLBT pop; no code reads it after fragment62 returns. |
+| `D_843924E0[]` (A table pointers) | fragment62 BSS | worker `func_80019514` through `func_80019A7C(…, D_843924C0, D_843924E0)` (`func_8432C958`) | `func_8432CA48` (fragment62_315D50.c:4908-4920) | fragment62 is loaded under the RLBT state (rl_battle.c), so this BSS lives until the RLBT pop, not the BATL pop. No reader runs after fragment62 returns. |
+| `D_843920C0[256]` (A and lower addresses) | fragment62 BSS (`fragment62.h:1036`) | `func_8432C830` from `func_80019EA0(0)` (a lower `func_8000484C` block) and from `func_8432CA48` (A) | fragment62 only: `func_8432C86C` clears it on entry; CPU/RCP users at 315D50.c:5023-5040 and 31AA30.c:11-50 | No reader outside fragment62. The BSS lives until the RLBT pop. |
+| `D_800ABE10.unk_A04.unk_08` (S) | main BSS (19840.c:27) | `func_8001987C` | the worker (`func_80019484`/`func_80019514`) only | **Stays stale after the pop** (vanilla also leaves a freed lower pointer). Every other fragment that creates controllers (`func_80019760`) also calls `func_8001987C`, which rewrites it before any worker job. |
 | `D_800ABE10.unk_A04.unk_00/04` (archive handles) | main BSS; the handles are lower `main_pool` blocks (`func_800044F4`) | `func_8001987C` | `func_80019204`, `func_8000484C` users | Same stale-after-pop behaviour as vanilla. The handles never point into A or S, and opener flag 4 (`arg3 == 1`, 3FB0.c:601-603) bypasses the per-file `unk_08` cache that `func_80019204` writes. |
 | `gFragments[0xEF]` (last model or animation fragment; both archives are id 0xEF) | memmap.c:13 | `Memmap_RelocateFragment` from `func_80019128` (no destructor registered) | `Memmap_GetFragmentVaddr` for 0x8FFxxxxx and `func_80004364` (compare only) | **Stays stale after the pop**, as in vanilla (a freed lower M/A block). Every 0xEF load sets the entry before it relocates (memmap.c:127), and the shared id means deferred resolution would already be wrong in vanilla. No new reader is added. |
 | `gFragments[0]` (fragment31 thunks, the 72 callback targets) | memmap.c:13 | `func_80004454(0, …)` at fragment62_2EA8E0.c:621 | `Util_ConvertAddrToVirtAddr` from `func_80010FDC` | Lower block; destructor `func_80004364` clears id 0 at the pop (3FB0.c:504-517). It never points into A. |
 
-The only post-release references to the upper span are therefore the two stale
-main-BSS words (`unk_A04.unk_08` and, after an animation load, `gFragments[0xEF]`).
-Both have the same lifetime as vanilla's freed-lower equivalents, and both are
-overwritten before their next use. No fragment62 or controller alias outlives
-the pop, and release waits for graphics idle after that pop. Static only: no VI
-or native witness.
+**Corrections (validator, `8fdce7a`).**
+- fragment62 is loaded under the RLBT push in `rl_start_battle`, so its BSS dies at the RLBT pop, not at the BATL pop.
+- `sc_batl_worker_admit` does not refuse jobs after a successful close: with `!scope.active` it returns `!scope.failed`.
+
+Safety after close rests instead on the producer exclusion below.
+
+**Producer exclusion: close → BATL pop → RLBT pop → unbind → re-entry.** This is a static trace over the linked candidate ELF `3b01dccb…aafa6`, using `.local/rltest/seal-tools/producers.py` and `postclose.py`.
+
+1. *Nothing is outstanding at close.*
+   - `func_800198E4` and `func_80019A7C` set the worker's `unk_01` bit 1 or 2 on the main thread when they enqueue.
+   - Only `func_80019B48` clears it, also on the main thread. It runs after the worker thread has finished `func_80019484`/`func_80019514` and posted completion (19840.c:281-296).
+   - The fast path at 19840.c:378 posts directly to the worker's own queue and never reaches the worker thread.
+   - `sc_batl_scope_close` refuses unless both captured workers have `unk_01 & 3 == 0`.
+   - So every job on those workers has finished, and the worker thread is idle in `osRecvMesg`.
+2. *No other controller exists in the story battle.*
+   - The story rules have `show_intro = 0` (sc_campaign_run.c:169), so fragment63's `func_80019760(5)` controllers are never created.
+   - fragment62's only controller sites are 2EA8E0.c:602-603, inside the armed window.
+   - There is no `func_80019760` site in fragment34, `src/roguelike` or `src/story`.
+3. *No producer is reachable after close.* These are the calls that run after close, in order:
+   1. In the linked fragment62 entry (`func_84301A2C`), after `sc_batl_scope_close` at 0x843020F4: `rl_native_relics_end`, `func_800077B4(2)` (fill-rect blank frames, no frame callback), `func_800076C0`, `func_80005EAC`, then the BATL `main_pool_pop_state`.
+   2. `rl_start_battle` then runs the hook `drain` (`hook_drain` → `sc_native_terminal_drain`), `sc_runtime_probe_terminal`, `sc_native_return_identity`, `rl_from_native` and the RLBT pop.
+   3. `sc_campaign_run.c:191` calls `sc_batl_loader_unbind`.
+
+   The forward closures show none of them reaches a producer:
+   - The forward jal closure of each of these calls contains no `func_800198E4`, `func_80019A1C` or `func_80019A7C`. This includes the 13 registered pool destructors invoked from `main_pool_free` and `main_pool_pop_state`.
+   - The only other indirect calls are:
+     - the `_Printf` output callbacks;
+     - the enumerated pool destructors;
+     - the launch hooks;
+     - `func_80029008`, the fragment entry, which is not called again after fragment62 returns.
+   - The reverse closure of the producers is 104 functions. Its only roots are fragment entry points, the fragment62 frame callback `func_843010EC` and the setup function `func_843013E4` (2EA8E0.c:702, before open).
+   - The frame callback runs only inside `func_800078D4`, which returns before close. No thread entry point is in the set.
+4. *Re-entry.*
+   - The next `bind`/`arm` requires `!live`.
+   - The next producer can only use the controllers created at 2EA8E0.c:602-603.
+   - `func_8001987C` (604) rewrites `unk_A04.{00,04,08}` before the first producer runs (702).
+   - So the stale fragment62 BSS and `unk_A04` words are overwritten before anything reads them.
+
+Between close and the RLBT pop, the stale fragment62 BSS pointers therefore have no reader. The stale main-BSS words have no consumer until the next armed window rewrites them. `unbind` waits for graphics idle (`func_80001C90`) before release.
+
+Bounds:
+- This is a static call graph of the story launch path: jal edges plus the enumerated indirect calls.
+- It does not cover controllers created by other game states that survive into the battle.
+- There is no VI or native witness.
 
 ## Per-load phases of one M buffer (worker thread, priority 10)
 
