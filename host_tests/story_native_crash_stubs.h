@@ -21,8 +21,10 @@ typedef struct ScDpSnapshot {
 typedef struct CrashScreen {
     u16 *frameBuf;
     u16 width, height;
+    int queue;
 } CrashScreen;
 extern CrashScreen gCrashScreen;
+extern volatile u32 sc_crash_active;
 extern u32 osMemSize;
 u32 __osDisableInt(void);
 void __osRestoreInt(u32);

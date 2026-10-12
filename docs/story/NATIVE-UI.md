@@ -202,6 +202,13 @@ are required under one interrupt exclusion. A bounded owner callback must
 authenticate pins, fallback and native mode without blocking or allocating.
 The helper restores/readbacks crash draw info, does not submit or change VI,
 and does not authorize freeing. Actual retirement must be checked again.
+IRQ exclusion alone cannot retire local pixels captured by the fault thread.
+The guarded `sc_crash_active` latch is set in actual fault-thread entry before
+stopping the faulted thread, waiting or drawing, and is never cleared. Once
+latched, restoration permanently refuses and the owner must retain backing.
+The fixture extracts actual thread-entry and rectangle-render bodies, models
+a non-game-thread fault, checks refusal while waiting and after local capture,
+and confirms retained pixels remain available for the real draw loop.
 
 `bash host_tests/run_story_native_crash.sh OUTPUT` covers refusal, task/frame
 states, nested interrupt restoration and corrupt/readback failure, then joins
@@ -210,6 +217,25 @@ retained crash alias after real NULL transitions and restores it without an
 extra submission before the retirement check succeeds. OS/VI remain simulated;
 the runner also compiles the actual crash helper with target IDO. These are
 source/HOST/target-compilation checks, not native crash/scanout acceptance.
+
+`sc_native_lifetime` pairs the admitted memory tuple with exact external
+loop/display/retirement controls and the actual native scheduler fallback.
+It revalidates immutable fallback descriptor identity, lease/handle/pins and
+8 MiB/lower-pool policy on every live callback. Crash restoration precedes
+the successful retirement check; scope cleanup must precede finalization.
+Final latch/check/data-end/free execute under bounded interrupt exclusion;
+the pure allocator has no OS waits or submission. A fault already active
+refuses release permanently. After physical free, only external controls and
+immutable pointer values may be read; a pending DP-token release retries
+without memory validation, cleanup replay or another free.
+
+`bash host_tests/run_story_native_lifetime.sh OUTPUT` joins the actual owner,
+data allocator, retirement helper, DP slices, crash restoration and loop-close
+retry. It protects retired control pages against reads and forces post-free
+token-release pending twice before success. It also checks crash-active refusal
+and interrupt exclusion at physical release. Lower cleanup is already retired
+in this focused fixture; battle submission, learning events, dispatcher and
+full memory/stack fit are not exercised or accepted by this lifetime proof.
 
 ## Coordinated presentation loop and checked display
 

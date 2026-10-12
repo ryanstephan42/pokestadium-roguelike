@@ -30,7 +30,7 @@ int sc_native_crash_restore(ScNativeCrash *control, const ScDpToken *token,
     if (!control || !token || !validate) return SC_INVALID;
     if (osMemSize != 0x800000U) return SC_UNAVAILABLE;
     interrupts = __osDisableInt();
-    status = sc_dp_quiescent(token);
+    status = sc_crash_active ? SC_UNAVAILABLE : sc_dp_quiescent(token);
     if (status == SC_OK) status = sc_dp_snapshot(token, &control->snapshot);
     if (status == SC_OK) status = idle(&control->snapshot);
     if (status == SC_OK) status = validate(context, &control->snapshot);

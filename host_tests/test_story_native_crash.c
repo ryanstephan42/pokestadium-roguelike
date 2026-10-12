@@ -2,14 +2,61 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <setjmp.h>
 
 CrashScreen gCrashScreen;
+volatile u32 sc_crash_active;
 u32 osMemSize = 0x800000U;
 static ScDpToken admitted;
 static ScDpSnapshot snapshot;
 static ScNativeCrash control;
 static unsigned interrupts, writes, validations, reads;
 static int quiescent_status, snapshot_status, validation_status, bad_write, fail_read;
+typedef struct OSThread { int unused; } OSThread;
+typedef void *OSMesg;
+typedef int s32;
+#define UNUSED __attribute__((unused))
+#define TRUE 1
+#define OS_EVENT_CPU_BREAK 10
+#define OS_EVENT_FAULT 12
+static OSThread faulted;
+static jmp_buf draw_jump;
+static unsigned receives, stops, waits, draws;
+static u16 *captured_pixels;
+static u16 fault_pixels[320 * 240];
+static int restore(void);
+#include "crash-rect-body.inc"
+void osSetEventMesg(int event, int *queue, OSMesg message) {
+    assert((event == OS_EVENT_CPU_BREAK || event == OS_EVENT_FAULT) &&
+        queue == &gCrashScreen.queue && message);
+}
+int osRecvMesg(int *queue, OSMesg *message, int mode) {
+    assert(queue == &gCrashScreen.queue && message && mode == 1);
+    ++receives;
+    return 0;
+}
+OSThread *crash_screen_get_faulted_thread(void) {
+    return receives > 1 ? &faulted : NULL;
+}
+void osStopThread(OSThread *thread) {
+    assert(thread == &faulted && sc_crash_active);
+    ++stops;
+}
+void crash_screen_wait_for_button_combo(void) {
+    assert(sc_crash_active);
+    assert(restore() == SC_UNAVAILABLE && !writes);
+    ++waits;
+}
+void crash_screen_draw(OSThread *thread) {
+    assert(thread == &faulted && sc_crash_active);
+    captured_pixels = gCrashScreen.frameBuf;
+    assert(restore() == SC_UNAVAILABLE && !writes);
+    crash_screen_draw_rect(0, 0, 1, 1);
+    assert(captured_pixels == gCrashScreen.frameBuf && captured_pixels[0] == 1);
+    ++draws;
+    longjmp(draw_jump, 1);
+}
+#include "crash-thread-body.inc"
 
 u32 __osDisableInt(void) {
     unsigned previous = interrupts;
@@ -56,6 +103,7 @@ static void reset(void) {
     bad_write = fail_read = 0;
     interrupts = 1;
     osMemSize = 0x800000U;
+    sc_crash_active = 0;
 }
 static int restore(void) {
     int status = sc_native_crash_restore(&control, &admitted, &control, validate);
@@ -122,6 +170,18 @@ int main(void) {
     assert(restore() == SC_UNAVAILABLE && writes == 1);
     reset(); snapshot.events = 1;
     assert(restore() == SC_OK && writes == 1);
+    reset(); sc_crash_active = 1;
+    assert(restore() == SC_UNAVAILABLE && !writes && !reads);
+    assert(gCrashScreen.frameBuf == (u16 *)0xa0400000U && sc_crash_active);
+    reset();
+    gCrashScreen.frameBuf = fault_pixels;
+    gCrashScreen.width = 320;
+    fault_pixels[0] = 0;
+    if (!setjmp(draw_jump)) crash_screen_thread_entry(NULL);
+    assert(receives == 2 && stops == 1 && waits == 1 && draws == 1 && sc_crash_active);
+    assert(captured_pixels == fault_pixels);
+    assert(restore() == SC_UNAVAILABLE && !writes && !reads);
+    assert(captured_pixels == gCrashScreen.frameBuf && sc_crash_active);
     puts("NATIVE CRASH HOST PASSED: real restore logic, simulated token/snapshot/IRQ; not native authority");
     return 0;
 }

@@ -3,6 +3,17 @@ set -euo pipefail
 out="${1:?fresh output}"
 test ! -e "$out"
 mkdir -p "$out"
+python - "$out" <<'PY'
+import sys
+from pathlib import Path
+source = Path("src/crash_screen.c").read_text()
+start = source.index("void crash_screen_thread_entry(")
+end = source.index("\nvoid crash_screen_set_draw_info", start)
+(Path(sys.argv[1]) / "crash-thread-body.inc").write_text(source[start:end])
+start = source.index("void crash_screen_draw_rect(")
+end = source.index("\nvoid crash_screen_draw_glyph", start)
+(Path(sys.argv[1]) / "crash-rect-body.inc").write_text(source[start:end])
+PY
 bash host_tests/run_story_native_retirement.sh > "$out/retirement.log" 2>&1
 for mode in host san; do
     extra=()
@@ -10,7 +21,7 @@ for mode in host san; do
         extra=(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
     fi
     gcc -DSTORY_NATIVE_UI -std=gnu89 -O2 -Wall -Wextra -Werror \
-        -Wno-endif-labels -I. -iquote include \
+        -Wno-endif-labels -I. -I"$out" -iquote include \
         -include host_tests/story_native_crash_stubs.h "${extra[@]}" \
         src/story/sc_native_crash.c host_tests/test_story_native_crash.c \
         -o "$out/crash-$mode"
@@ -39,5 +50,7 @@ target=(-c -G 0 -non_shared -Xcpluscomm -nostdinc -Wab,-r4300_mul
     -DBUILD_VERSION=VERSION_I_P -DLANGUAGE_C -D_LANGUAGE_C -O2)
 tools/ido/linux/7.1/cc "${target[@]}" src/story/sc_native_crash.c \
     -o "$out/sc_native_crash.o" > "$out/ido.log" 2>&1
+tools/ido/linux/7.1/cc "${target[@]}" src/crash_screen.c \
+    -o "$out/crash_screen.o" >> "$out/ido.log" 2>&1
 mips-linux-gnu-objdump -dr "$out/sc_native_crash.o" > "$out/disassembly.txt"
 mips-linux-gnu-size -A "$out/sc_native_crash.o" > "$out/sizes.txt"

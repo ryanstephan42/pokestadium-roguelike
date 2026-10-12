@@ -2,6 +2,7 @@
 #include "test_story_native_retirement.c"
 #define _CRASH_SCREEN_H_
 u32 osMemSize = 0x800000U;
+volatile u32 sc_crash_active;
 #include "../src/story/sc_native_crash.c"
 
 static int crash_validate(void *context, const ScDpSnapshot *snapshot) {

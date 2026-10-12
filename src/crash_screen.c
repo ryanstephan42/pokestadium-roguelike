@@ -8,6 +8,9 @@
 #include "stdarg.h"
 
 CrashScreen gCrashScreen;
+#ifdef STORY_NATIVE_UI
+volatile u32 sc_crash_active;
+#endif
 
 u8 gCrashScreenCharToGlyph[128] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -322,6 +325,10 @@ void crash_screen_thread_entry(UNUSED void* unused) {
         faultedThread = crash_screen_get_faulted_thread();
     } while (faultedThread == NULL);
 
+#ifdef STORY_NATIVE_UI
+    /* Latched before any draw can retain a framebuffer pointer. */
+    sc_crash_active = 1;
+#endif
     osStopThread(faultedThread);
     crash_screen_wait_for_button_combo();
     crash_screen_draw(faultedThread);

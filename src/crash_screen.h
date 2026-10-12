@@ -12,6 +12,9 @@ typedef struct {
 } CrashScreen; // size = 0x9D4
 
 extern CrashScreen gCrashScreen;
+#ifdef STORY_NATIVE_UI
+extern volatile u32 sc_crash_active;
+#endif
 extern u8 gCrashScreenCharToGlyph[128];
 extern u32 gCrashScreenFont[];
 extern const char* gFaultCauses[18];
