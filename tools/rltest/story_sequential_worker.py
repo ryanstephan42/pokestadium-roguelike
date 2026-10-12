@@ -32,18 +32,38 @@ STORY_STATE = 0x32
 class LeasedFrontend(Frontend):
     """Frontend construction itself runs frame one; lease it before dispatch."""
 
-    def __init__(self, *args, frame_lease, **kwargs):
+    def __init__(self, *args, frame_lease, prepare_save, **kwargs):
         self.frame_lease = frame_lease
+        self.prepare_save = prepare_save
         self._sc_budget_bound = True
         super().__init__(*args, **kwargs)
 
     def step(self, frames=1):
+        if self.frame == 0:
+            self.prepare_save(self)
         self.frame_lease(frames)
         super().step(frames)
 
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def install_setup(emu, container, *, reload=False):
+    require(not reload and emu.frame == 0, "Save-RAM write refused outside pre-boot setup")
+    pointer, initial = save_ram(emu)
+    require(len(initial) == len(container), "Fresh core save container size changed")
+    ctypes.memmove(pointer, container, len(container))
+
+
+def load_persisted_save(emu, container, game_written_sha256):
+    require(emu.frame == 0, "Reload persistence must precede first frame")
+    require(digest(container) == game_written_sha256,
+            "Reload substituted bytes differ from game-written save")
+    pointer, initial = save_ram(emu)
+    require(len(initial) == len(container), "Persisted save container size changed")
+    ctypes.memmove(pointer, container, len(container))
+    require(save_ram(emu)[1] == container, "Core did not retain exact persisted save")
 
 
 def write_json(path, value):
@@ -448,10 +468,31 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
     config = seal["configuration"]
     require(digest(args.core.read_bytes()) == args.core_sha256,
             "Core differs from approved external pin")
+    cold_reload = terminal_reload or name == "carry-reload"
+    expected_container = ((args.out / ("loss-terminal-reload" if terminal_reload else "win")
+                           / "save-ram.bin").read_bytes() if cold_reload else None)
+    game_written_sha = (json.loads((args.out /
+                        ("loss-terminal-reload" if terminal_reload else "win") /
+                        "report.json").read_text())["game_written_save_sha256"]
+                        if cold_reload else None)
+    prepared = {}
+
+    def prepare_save(emu):
+        require(emu.frame == 0, "Save preparation must precede first frame")
+        initial = save_ram(emu)[1]
+        if cold_reload:
+            load_persisted_save(emu, expected_container, game_written_sha)
+            prepared["container"] = save_ram(emu)[1]
+        else:
+            note_name = "transform-route.note" if name == "transform" else "normal-route.note"
+            prepared["container"] = isolated_container(
+                initial, (args.package / note_name).read_bytes(), manifest["files"][note_name])
+            install_setup(emu, prepared["container"])
+
     emu = factory(args.core, ROOT / config["ROM"],
                   ROOT / config["BUILD_DIR"] / "pokestadium-rl.map", directory,
                   options={"mupen64plus-pak1": "memory", "mupen64plus-EnableExpansionPak": "True"},
-                  timeout=180, frame_lease=lambda n: reserve_frames(
+                  timeout=180, prepare_save=prepare_save, frame_lease=lambda n: reserve_frames(
                       stream_in, stream_out, name, n))
     require(getattr(emu, "_sc_budget_bound", False) and emu.frame == 1,
             "Frontend construction must lease initial boot frame")
@@ -459,17 +500,11 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
                     scope="scenario observables; not full heap/fence/ACE acceptance")
     scenario = None
     try:
-        pointer, initial = save_ram(emu)
-        if terminal_reload:
-            restored = (args.out / name / "save-ram.bin").read_bytes()
-        elif name == "carry-reload":
-            restored = (args.out / "win" / "save-ram.bin").read_bytes()
-        else:
-            note_name = "transform-route.note" if name == "transform" else "normal-route.note"
-            restored = isolated_container(initial, (args.package / note_name).read_bytes(),
-                                          manifest["files"][note_name])
-        require(len(initial) == len(restored), "Fresh core save container size changed")
-        ctypes.memmove(pointer, restored, len(restored))
+        restored = prepared["container"]
+        if cold_reload:
+            evidence["game_written_save_before_reload_sha256"] = game_written_sha
+            evidence["loaded_save_sha256"] = digest(restored)
+            require(save_ram(emu)[1] == expected_container, "Boot changed game-written save")
         calibration_path = args.out / "win" / "calibration.json"
         calibration = {} if name == "win" else json.loads(calibration_path.read_text())
         scenario = Scenario(emu, abi, manifest, directory, name, calibration)
@@ -520,8 +555,12 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
             evidence["transform"] = scenario.transform
             evidence["retirement"] = scenario.retirement
         final_container = save_ram(emu)[1]
+        if cold_reload:
+            evidence["game_written_save_after_reload_sha256"] = digest(final_container)
+            require(final_container == expected_container, "Cold reload changed game-written save")
         story_owned_changes(campaign_container, final_container, find_pak(campaign_container))
         (directory / "save-ram.bin").write_bytes(final_container)
+        evidence["game_written_save_sha256"] = digest(final_container)
         evidence["core_sha256"] = digest(args.core.read_bytes())
         evidence["options"] = emu.options
         evidence["isolated_journal_sha256"] = digest(story_note(final_container))

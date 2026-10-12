@@ -102,8 +102,12 @@ reaping. Unknown frames after a killed incomplete step remain unknown, not0.
 
 The worker verifies the external seal/core pins and all sealed source/artifact
 hashes before loading a core. It converts only that fresh core's formatted
-empty Pak, using the hash-bound real HOST journal note; cold reload restores
-only the private actual save container. During calibration, candidate
+empty Pak, using the hash-bound real HOST journal note, only during pre-boot
+scenario setup before frame zero. Cold reload models ordinary frontend Pak
+persistence: load only the exact unmodified game-written save container before
+the first frame, matching its producer report hash. Checkpoints or substituted
+bytes are refused. Reports record producer, loaded and post-reload hashes;
+the whole container must remain identical across Continue. During calibration, candidate
 RetroPad/right-stick mappings are hypotheses: actual native controller
 `buttonPressed` bits establish mappings. Missing buttons/Pak acceptance abort.
 There are no guessed C aliases or silent fallbacks. Menu entry waits for the

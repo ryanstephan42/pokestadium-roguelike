@@ -23,6 +23,9 @@ def collect(directory, budget, elapsed, reaped):
             attempted = (directory / (name + ".attempted.json")).is_file()
             row = dict(status="fail" if attempted else "untested",
                        last_verified_boundary="no scenario observables; see stderr")
+        if name == "transform" and row["status"] == "pass" and not row.get("transform"):
+            row["status"] = "untested"
+            row["last_verified_boundary"] = "no actual Transform observation"
         if name == "loss-terminal-reload" and row["status"] == "awaiting-terminal-reload":
             cold = path.parent / "terminal-reload" / "report.json"
             terminal = json.loads(cold.read_text()) if cold.is_file() else dict(status="untested")

@@ -25,7 +25,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class FakeCore:
     """Real save-buffer and frame leases; no ROM is loaded or executed."""
 
-    def __init__(self, core, rom, map_path, out, *, options, timeout, frame_lease):
+    def __init__(self, core, rom, map_path, out, *, options, timeout, frame_lease, prepare_save):
         self.options, self.frame_lease = options, frame_lease
         self.frame = 0
         self._sc_budget_bound = True
@@ -38,6 +38,7 @@ class FakeCore:
         self.lock = (out.parent.parent if out.name == "terminal-reload" else out.parent) / "core-live"
         self.fd = os.open(self.lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         try:
+            prepare_save(self)
             self.step(1)  # Same implicit constructor frame as the real Frontend.
         except HarnessError:
             self.close()
@@ -164,15 +165,39 @@ class SequentialWorkerTests(unittest.TestCase):
             emu.frame += n
 
         with patch.object(Frontend, "__init__", init), patch.object(Frontend, "step", step):
-            emu = worker.LeasedFrontend(frame_lease=lambda n: events.append(("lease", n)))
-            self.assertEqual(events, [("lease", 1), ("core-run", 1)])
+            emu = worker.LeasedFrontend(frame_lease=lambda n: events.append(("lease", n)),
+                                       prepare_save=lambda emu: events.append(("setup", emu.frame)))
+            self.assertEqual(events, [("setup", 0), ("lease", 1), ("core-run", 1)])
             self.assertEqual(emu.frame, 1)
 
             def refuse(n):
                 raise HarnessError("refused")
             with self.assertRaises(HarnessError):
-                worker.LeasedFrontend(frame_lease=refuse)
-            self.assertEqual(len(events), 2)
+                worker.LeasedFrontend(frame_lease=refuse, prepare_save=lambda emu: None)
+            self.assertEqual(len(events), 3)
+
+    def test_reload_and_postboot_save_writes_refused(self):
+        for frame, reload in ((0, True), (1, False)):
+            with patch.object(worker.ctypes, "memmove") as write:
+                with self.assertRaisesRegex(HarnessError, "write refused"):
+                    worker.install_setup(types.SimpleNamespace(frame=frame), b"checkpoint",
+                                         reload=reload)
+                write.assert_not_called()
+
+    def test_collect_transform_zero_is_untested(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            (out / "transform").mkdir()
+            worker.write_json(out / "transform/report.json", dict(status="pass", transform=0))
+            report = collect(out, RunBudget(0, 180), 1, True)
+            self.assertEqual(report["scenarios"]["transform"]["status"], "untested")
+
+    def test_substituted_reload_bytes_refused_before_write(self):
+        with patch.object(worker.ctypes, "memmove") as write:
+            with self.assertRaisesRegex(HarnessError, "substituted bytes"):
+                worker.load_persisted_save(types.SimpleNamespace(frame=0), b"checkpoint",
+                                           worker.digest(b"game-written"))
+            write.assert_not_called()
 
     def test_fake_core_cold_reloads_real_worker_and_supervisor(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -204,6 +229,12 @@ print(json.dumps(collect(Path(sys.argv[1]), budget, 0, True)))
             cold = json.loads((output / "carry-reload/committed-state.json").read_text()) \
                 if (output / "carry-reload/committed-state.json").exists() else None
             self.assertIsNone(cold, "Reload must inspect, not write a new checkpoint")
+            for name in ("carry-reload", "loss-terminal-reload/terminal-reload"):
+                cold_report = json.loads((output / name / "report.json").read_text())
+                self.assertEqual(cold_report["game_written_save_before_reload_sha256"],
+                                 cold_report["loaded_save_sha256"])
+                self.assertEqual(cold_report["loaded_save_sha256"],
+                                 cold_report["game_written_save_after_reload_sha256"])
 
     def test_cold_reload_mismatch_refuses_without_success_report(self):
         with tempfile.TemporaryDirectory() as directory:
