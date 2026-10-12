@@ -211,6 +211,9 @@ s32 func_80019328(MemoryBlock* arg0, Fragment* arg1, arg1_func_80010CA8 arg2) {
         if (temp_v0_2->unk_00.unk_00 == 0xE) {
             temp_v0_2->unk_28 = arg1;
             if (arg2.raw != 0) {
+#ifdef ROGUELIKE
+                rl_geo_recolor_admit(temp_v0_2);
+#endif
                 func_80018C40(temp_v0_2, arg2);
             }
         }
@@ -239,7 +242,13 @@ void func_80019484(unk_func_80019600* arg0) {
     sp24 = func_80019204(sp28, D_800ABE10.unk_A04.unk_00, arg0->unk_02, D_800ABE10.unk_A04.unk_08, 0x28000);
 
     if (sp24 != NULL) {
+#ifdef ROGUELIKE
+        rl_geo_image_set(sp24);
+#endif
         arg0->unk_08 = func_80019328(sp28, sp24, arg0->unk_18);
+#ifdef ROGUELIKE
+        rl_geo_image_set(NULL);
+#endif
     } else {
         arg0->unk_08 = 0;
     }
@@ -266,7 +275,13 @@ void func_80019514(unk_func_80019600* arg0) {
         }
 
         temp_s6[var_s2] = temp_v0 + 1;
+#ifdef ROGUELIKE
+        rl_geo_image_set(temp_v0);
+#endif
         func_80019420(temp_s3, temp_v0 + 1);
+#ifdef ROGUELIKE
+        rl_geo_image_set(NULL);
+#endif
         var_s0++;
         var_s2++;
     }

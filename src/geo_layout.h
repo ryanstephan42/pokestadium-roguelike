@@ -352,5 +352,10 @@ void func_80018A40(void); // cmd 36
 void func_80018A8C(void); // cmd 37
 void func_80018AD0(void); // cmd 38
 GraphNode* process_geo_layout(MemoryBlock*, void*);
+#ifdef ROGUELIKE
+struct Fragment;
+void rl_geo_image_set(struct Fragment* frag);
+void rl_geo_recolor_admit(unk_D_86002F34* node);
+#endif
 
 #endif // _18480_H_

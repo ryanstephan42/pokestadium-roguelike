@@ -124,6 +124,113 @@ int main(void) {
         }
     }
 
+    /* loader image: [lo, hi) = fragment start .. relocOffset (addresses are N64 words) */
+    {
+        static unsigned int img[64];
+        unsigned char* c = (unsigned char*)img;
+        const unsigned int lo = 0x80400000U, hi = lo + 0x1000;
+        RlGeoTexDesc tex[2];
+        RlGeoPalDesc pal[1];
+
+        CHECK(sizeof(RlGeoTexDesc) == 12 && sizeof(RlGeoPalDesc) == 12);
+        CHECK(rl_geo_image_ok(lo, 0x1000, 0x1200, 0x80000000U, 0x80800000U));
+        CHECK(!rl_geo_image_ok(lo, 0x1F, 0x1200, 0x80000000U, 0x80800000U));
+        CHECK(!rl_geo_image_ok(lo, 0x1300, 0x1200, 0x80000000U, 0x80800000U));
+        CHECK(!rl_geo_image_ok(lo + 2, 0x1000, 0x1200, 0x80000000U, 0x80800000U));
+        CHECK(!rl_geo_image_ok(0x807FF000U, 0x2000, 0x2000, 0x80000000U, 0x80800000U));
+        CHECK(!rl_geo_image_ok(0x7FFFF000U, 0x100, 0x100, 0x80000000U, 0x80800000U));
+
+        memset(img, 0, sizeof(img));
+        c[0] = 0x05;
+        CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        CHECK(rl_geo_image_cmd_ok(c, hi - 4, lo, hi, sizes));
+        CHECK(!rl_geo_image_cmd_ok(c, hi, lo, hi, sizes));
+        CHECK(!rl_geo_image_cmd_ok(c, lo - 4, lo, hi, sizes));
+        CHECK(!rl_geo_image_cmd_ok(c, lo + 2, lo, hi, sizes));
+        c[0] = 0x02;
+        CHECK(!rl_geo_image_cmd_ok(c, hi - 4, lo, hi, sizes));
+        CHECK(rl_geo_image_cmd_ok(c, hi - 8, lo, hi, sizes));
+        c[0] = 0x0A;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        c[0] = 0x12;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+
+        c[0] = 0x17;
+        *(short*)(c + 2) = 0x0102; /* low byte 2 textures */
+        *(short*)(c + 4) = 1;
+        img[2] = lo + 0x100;
+        img[3] = lo + 0x200;
+        img[4] = lo + 0x300;
+        CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[2] = hi - 24;
+        CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[2] = hi - 20;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[2] = lo + 0x102;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[2] = lo - 12;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        *(short*)(c + 2) = 0x0100;
+        CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        *(short*)(c + 2) = 2;
+        img[2] = lo + 0x100;
+        img[3] = hi;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        *(short*)(c + 4) = 0;
+        CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        *(short*)(c + 4) = 1;
+        img[3] = lo + 0x200;
+        img[4] = 0;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[4] = lo + 0x304;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[4] = hi - 16;
+        CHECK(rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        img[4] = hi - 8;
+        CHECK(!rl_geo_image_cmd_ok(c, lo, lo, hi, sizes));
+        CHECK(!rl_geo_image_cmd_ok(c, hi - 16, lo, hi, sizes));
+
+        memset(tex, 0, sizeof(tex));
+        memset(pal, 0, sizeof(pal));
+        tex[0].type = 2;
+        tex[0].texels = 0x100;
+        tex[0].texture = hi - 0x200;
+        tex[1].type = 3;
+        tex[1].texels = 4;
+        tex[1].texture = lo;
+        pal[0].count = 16;
+        pal[0].data = hi - 32;
+        CHECK(rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        tex[0].texture = hi - 0x1FE;
+        CHECK(!rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        tex[0].kind = 1; /* not written by the recolor writer */
+        CHECK(rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        tex[0].kind = 0;
+        tex[0].type = 4;
+        CHECK(rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        tex[0].type = 2;
+        tex[0].texels = -1;
+        CHECK(rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        tex[0].texels = 0x100;
+        tex[0].texture = hi - 0x200;
+        tex[1].texture = lo + 2;
+        CHECK(!rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        CHECK(rl_geo_recolor_ok(tex, 1, pal, 1, lo, hi));
+        tex[1].texture = lo - 4;
+        CHECK(!rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        tex[1].texture = lo;
+        pal[0].data = hi - 30;
+        CHECK(!rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        pal[0].data = hi - 31;
+        CHECK(!rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        pal[0].data = hi - 32;
+        pal[0].count = 0x7FFFFFFF;
+        CHECK(!rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        pal[0].count = -5;
+        CHECK(rl_geo_recolor_ok(tex, 2, pal, 1, lo, hi));
+        CHECK(rl_geo_recolor_ok(tex, 0, pal, 0, lo, hi));
+    }
+
     if (failures) {
         return 1;
     }
