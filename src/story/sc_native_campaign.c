@@ -110,7 +110,17 @@ int sc_campaign_dispatch(unsigned command) {
         calls.retire_display = retire_display; calls.release = release;
         status = sc_native_loop_open(loop, &c->lifetime.display, &calls);
         if (status != SC_OK) return status;
-        return sc_native_operation_bind(&c->operation, &c->lifetime);
+        status = sc_native_operation_bind(&c->operation, &c->lifetime);
+        if (status != SC_OK) return status;
+        if (c->sequential_result_ready) {
+            status = sc_ui_resume_postbattle(loop->backing.ui, &c->sequential_request,
+                &c->sequential_state, &c->sequential_result, &c->sequential_ledger,
+                c->sequential_outcome);
+            if (status != SC_OK && status != SC_PENDING) return status;
+            c->sequential_result_ready = 0;
+            c->sequential_active = 0;
+        }
+        return SC_OK;
     case SC_CAMPAIGN_STEP:
         return sc_native_loop_step(loop);
     case SC_CAMPAIGN_CLOSE:

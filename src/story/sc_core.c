@@ -300,6 +300,7 @@ int sc_combat_prepare(ScCombat *combat, const ScState *state, const ScCatalog *c
     }
     for (i = 0; i < 166; i++) combat->pp[i] = catalog->pp[i];
     combat->team = entry->teams[state->encounter_variant];
+    combat->operation_id = 0;
     combat->encounter = state->encounter;
     combat->variant = state->encounter_variant;
     combat->kind = entry->kind;
@@ -456,8 +457,10 @@ int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,
     const ScEvolution *evo;
     RlMon mon;
     unsigned i, j;
+    RlU8 return_phase;
     if (!state || !catalog || !catalog->species || !catalog->pp ||
-        state->party_count > 6 || slot >= state->party_count || state->phase != SC_ROUTE ||
+        state->party_count > 6 || slot >= state->party_count ||
+        (state->phase != SC_ROUTE && state->phase != SC_BATTLE) ||
         (confirmed != 0 && confirmed != 1) || (trade_unlocked != 0 && trade_unlocked != 1))
         return SC_INVALID;
     mon = state->party[slot];
@@ -467,6 +470,8 @@ int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,
         return SC_INVALID;
     evo = &old->evolution[evolution];
     if (evo->method < 1 || evo->method > 3) return SC_INVALID;
+    if (state->phase == SC_BATTLE && evo->method != SC_LEVEL_EVOLUTION)
+        return SC_UNAVAILABLE;
     if (!evo->species || evo->species > 151 || mon.level < evo->level ||
         (evo->method == SC_LEVEL_EVOLUTION && !(state->evolution_mask & (1U << slot))) ||
         (evo->method == SC_STONE_EVOLUTION && (!evo->stone || evo->stone > 5 ||
@@ -479,6 +484,7 @@ int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,
     species = &catalog->species[evo->species];
     if (species->growth != mon.growth || species->learn_count > SC_LEARN_CAPACITY)
         return SC_INVALID;
+    return_phase = state->phase;
     mon.species = evo->species;
     for (i = 0; i < 5; i++) mon.base_stats[i] = species->base[i];
     sc_recalculate(&mon, 1);
@@ -489,7 +495,7 @@ int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,
         for (j = 0; j < 4; j++) if (mon.moves[j] == species->learn[i].move) return SC_OK;
         state->learn_moves[slot] = species->learn[i].move;
         state->learn_mask = (RlU8)(1U << slot);
-        state->return_phase = SC_ROUTE;
+        state->return_phase = return_phase;
         state->phase = SC_LEARNING;
         break;
     }
@@ -527,6 +533,24 @@ int sc_evolve_owned(ScState *state, const ScCatalog *catalog, unsigned slot,
     }
     *state = next;
     return status;
+}
+
+int sc_evolve_earned(ScState *state, const ScCatalog *catalog, unsigned slot,
+                     unsigned evolution, int confirmed) {
+    const ScSpecies *species;
+    const ScEvolution *evo;
+    if (!state || !catalog || !catalog->species || state->phase != SC_BATTLE ||
+        (confirmed != 0 && confirmed != 1) || state->party_count > 6 ||
+        slot >= state->party_count || !state->party[slot].species ||
+        state->party[slot].species > 151 ||
+        catalog->species[state->party[slot].species].evolution_count > SC_EVOLUTION_CAPACITY)
+        return SC_INVALID;
+    if (!catalog->graph_reviewed) return SC_UNREVIEWED;
+    species = &catalog->species[state->party[slot].species];
+    if (evolution >= species->evolution_count) return SC_INVALID;
+    evo = &species->evolution[evolution];
+    if (evo->method != SC_LEVEL_EVOLUTION) return SC_UNAVAILABLE;
+    return sc_evolve(state, catalog, slot, evolution, 0, 0, confirmed);
 }
 
 #ifdef SC_SCRATCH_TEST

@@ -27,19 +27,20 @@ and page movement clamps rather than wrapping outside a list.
 | Confirm creation | Pending route snapshot writes to isolated story note; `SC_UI_REGIONS` only after successful journal |
 | Party and member details | `SC_UI_PARTY`/`SC_UI_MON`; real species/move names, HP bar, all PP/status; six slots maximum, no PC |
 | Select unlocked region/encounter | `SC_UI_ENCOUNTERS`; full selected canonical ID in panel, unavailable/retired nodes absent; rivals/fossils locked |
-| Confirm trainer | `SC_UI_REQUEST`; interrupted route checkpoint already durable; copy encounter/variant/party/enemy/progression/operation ID |
-| Native persistent callback | `sc_ui_observe(ui, id, snapshots, active, enemy, enemy_hp)`; actual HP/PP/status copied; stale IDs refused |
-| KO with pending learning | `SC_UI_LEARN`; pause native progression; replace/decline; resume only when state returns to `SC_BATTLE` |
-| Finish win | After final snapshot and all KO transactions, `sc_ui_finish(ui,id,SC_WIN)` journals pending result; `SC_UI_REWARD` |
+| Confirm trainer | `SC_UI_REQUEST`; interrupted route checkpoint already durable; copy encounter/variant/party/enemy/progression/operation ID, detach request, retire full UI/display shell before battle |
+| Native battle callbacks | Capture active participants, KO recipients and final carry/result only; campaign XP, stat experience, moves and evolution stay unchanged during combat |
+| Win resolution | Reopen the shell; apply each KO in order, pausing after each event for its level-up, learning and evolution choices before advancing |
+| Loss/draw | Discard the KO ledger; preserve no XP/stat experience/learning/evolution from the lost battle; show terminal result backed by the interrupted prebattle checkpoint |
+| Finish win | After ordered progression resolves, `sc_finish` journals the resulting reward state with `interrupted=0`; `SC_UI_REWARD` |
 | Recruit/transfer confirmation | No mutation on cancel; actual offered donor move only; full party replacement explicitly warns no PC |
 | Save failure and retry | `SC_UI_SAVE_ERROR`; committed state unchanged, exact pending result retained; original Pak retry required |
 | Save/menu/fresh Continue | Decoded full party, options, completion/retirement ledger and pending reward retained; v1 upgrade message when applicable |
 | Native loss/draw or interrupted Continue | `SC_UI_TERMINAL`, `SC_LOST`; no heal/retry to resurrect campaign |
 | Champion terminal | Completion available after Champion; explicit close preserves optional postgame until chosen; `SC_FINISHED` reload remains terminal |
 
-Expected callback refusal: wrong operation ID, duplicate finish, invalid snapshot
-values or unsupported evolution acquisition do not grant progression. `SC_PENDING`
-means settle learning or retry journal according to screen, never reinterpret
+Expected refusal: wrong operation/encounter/variant/party identity, duplicate KO
+or invalid capture does not grant progression. `SC_PENDING` means resolve the
+current ordered learning/evolution choice or retry the journal, never reinterpret
 it as battle success. Service owns battle loader, AI, allocator/image generations
 and native state; none appear in the UI request.
 

@@ -130,6 +130,7 @@ static void show(ScUi *ui, unsigned screen) {
     char label[72], area[72];
     const RlMon *mon;
     ScState trial;
+    int status;
     ui->screen = screen;
     ui->list.count = 0;
     ui->list.cursor = ui->list.scroll = 0;
@@ -242,9 +243,14 @@ static void show(ScUi *ui, unsigned screen) {
                 text(label, "Evolve to No.000");
                 number(label + 13, evo->species);
                 trial = ui->state;
-                row(ui, label, i, sc_evolve_owned(&trial, ui->catalog, ui->slot, i, 1) != SC_OK);
+                status = ui->postbattle_active && ui->state.phase == SC_BATTLE ?
+                    sc_evolve_earned(&trial, ui->catalog, ui->slot, i, 1) :
+                    sc_evolve_owned(&trial, ui->catalog, ui->slot, i, 1);
+                row(ui, label, i, status != SC_OK);
             }
             if (!count) row(ui, "No evolution", 0, 1);
+            if (ui->postbattle_active && ui->state.phase == SC_BATTLE)
+                row(ui, "Continue without evolving", 255, 0);
             break;
         case SC_UI_BATTLE:
             row(ui, "Waiting for native battle service", 0, 1);
@@ -278,6 +284,54 @@ static int save_pending(ScUi *ui) {
     return SC_UI_STAY;
 }
 
+static int postbattle_advance(ScUi *ui) {
+    int status;
+    unsigned i, j;
+    if (!ui || !ui->postbattle_active || ui->state.phase != SC_BATTLE)
+        return SC_INVALID;
+    for (;;) {
+        for (i = 0; i < ui->state.party_count; i++) {
+            if (!(ui->postbattle_evolution_mask & (1U << i))) continue;
+            for (j = 0; j < ui->catalog->species[ui->state.party[i].species].evolution_count; j++) {
+                ScState trial = ui->state;
+                if (sc_evolve_earned(&trial, ui->catalog, i, j, 1) == SC_OK) {
+                    ui->slot = i;
+                    show(ui, SC_UI_EVOLVE);
+                    return SC_OK;
+                }
+            }
+            ui->postbattle_evolution_mask &= (RlU8)~(1U << i);
+        }
+        if (ui->postbattle_ledger.next >= ui->postbattle_ledger.count) break;
+        {
+            RlU8 old_levels[6];
+            for (i = 0; i < ui->state.party_count; i++)
+                old_levels[i] = ui->state.party[i].level;
+            status = sc_ko_ledger_apply_next(&ui->postbattle_ledger, &ui->state,
+                                             &ui->postbattle_combat);
+            for (i = 0; i < ui->state.party_count; i++)
+                if (ui->state.party[i].level > old_levels[i])
+                    ui->postbattle_evolution_mask |= (RlU8)(1U << i);
+        }
+        if (status == SC_PENDING && ui->state.phase == SC_LEARNING) {
+            sync(ui);
+            return SC_OK;
+        }
+        if (status != SC_OK && status != SC_PENDING) return status;
+    }
+    status = sc_finish(&ui->state, ui->catalog, SC_WIN, ui->state.encounter_variant);
+    if (status != SC_OK) return status;
+    ui->postbattle_active = 0;
+    ui->postbattle_evolution_mask = 0;
+    sc_ko_ledger_discard(&ui->postbattle_ledger);
+    ui->pending.state = ui->state;
+    ui->pending.interrupted = 0;
+    ui->create_save = 0;
+    ui->operation = SC_UI_DECLINE;
+    save_pending(ui);
+    return ui->pending_save ? SC_PENDING : SC_OK;
+}
+
 static void confirm(ScUi *ui, unsigned operation, const char *message) {
     ui->back = ui->screen;
     ui->operation = operation;
@@ -287,6 +341,7 @@ static void confirm(ScUi *ui, unsigned operation, const char *message) {
 
 static int execute(ScUi *ui) {
     int status = SC_INVALID;
+    unsigned prior_species;
     ui->pending.state = ui->state;
     ui->pending.interrupted = 0;
     ui->create_save = 0;
@@ -333,7 +388,33 @@ static int execute(ScUi *ui) {
                 ui->move < 4 ? ui->move : 0, ui->move < 4);
             break;
         case SC_UI_EVOLUTION:
-            status = sc_evolve_owned(&ui->pending.state, ui->catalog, ui->slot, ui->evolution, 1);
+            if (ui->postbattle_active && ui->state.phase == SC_BATTLE) {
+                prior_species = ui->pending.state.party[ui->slot].species;
+                status = sc_evolve_earned(&ui->pending.state, ui->catalog, ui->slot,
+                                           ui->evolution, 1);
+                if (status == SC_OK) {
+                    if (sc_ko_ledger_follow_evolution(&ui->postbattle_ledger,
+                            &ui->postbattle_combat, &ui->pending.state, ui->slot,
+                            prior_species) != SC_OK) {
+                        status = SC_INVALID;
+                        break;
+                    }
+                    ui->postbattle_combat.party_species[ui->slot] =
+                        ui->catalog->species[ui->pending.state.party[ui->slot].species];
+                    ui->postbattle_evolution_mask &= (RlU8)~(1U << ui->slot);
+                }
+            } else status = sc_evolve_owned(&ui->pending.state, ui->catalog, ui->slot,
+                                             ui->evolution, 1);
+            break;
+        case SC_UI_EVOLUTION_SKIP:
+            if (!ui->postbattle_active || ui->state.phase != SC_BATTLE ||
+                !(ui->postbattle_evolution_mask & (1U << ui->slot))) {
+                status = SC_INVALID;
+                break;
+            }
+            ui->pending.state.evolution_mask &= (RlU8)~(1U << ui->slot);
+            ui->postbattle_evolution_mask &= (RlU8)~(1U << ui->slot);
+            status = SC_OK;
             break;
         case SC_UI_HEAL_SITE:
             status = sc_location_heal(&ui->pending.state, ui->catalog, ui->node);
@@ -351,6 +432,12 @@ static int execute(ScUi *ui) {
     }
     ui->status = SC_OK;
     if (ui->operation == SC_UI_NEW) ui->request_ready = 0;
+    if (ui->postbattle_active && ui->pending.state.phase == SC_BATTLE) {
+        ui->state = ui->pending.state;
+        status = postbattle_advance(ui);
+        if (status != SC_OK && status != SC_PENDING) return report(ui, status);
+        return SC_UI_STAY;
+    }
     /* Learning is a paused battle transaction, not a serializable checkpoint. */
     if (ui->pending.state.phase == SC_LEARNING || ui->pending.state.phase == SC_BATTLE) {
         ui->state = ui->pending.state;
@@ -408,7 +495,11 @@ static int input_body(ScUi *ui, unsigned pressed) {
             case SC_UI_CONFIRM: show(ui, ui->back); break;
             case SC_UI_ENCOUNTERS: case SC_UI_PARTY: case SC_UI_HEAL: show(ui, SC_UI_REGIONS); break;
             case SC_UI_MON: show(ui, SC_UI_PARTY); break;
-            case SC_UI_EVOLVE: show(ui, SC_UI_MON); break;
+            case SC_UI_EVOLVE:
+                if (ui->postbattle_active && ui->state.phase == SC_BATTLE)
+                    return report(ui, SC_PENDING);
+                show(ui, SC_UI_MON);
+                break;
             case SC_UI_VARIANT: show(ui, SC_UI_ENCOUNTERS); break;
             case SC_UI_REPLACE: case SC_UI_DONOR: case SC_UI_TARGET: show(ui, SC_UI_REWARD); break;
             case SC_UI_MOVE: show(ui, SC_UI_TARGET); break;
@@ -516,8 +607,12 @@ static int input_body(ScUi *ui, unsigned pressed) {
             confirm(ui, SC_UI_LEARN_MOVE, id == 4 ? "Decline this learned move?" : "Replace this move with pending level-up move?");
             break;
         case SC_UI_EVOLVE:
-            ui->evolution = id;
-            confirm(ui, SC_UI_EVOLUTION, "Evolve this member? HP / PP / status persist.");
+            if (id == 255 && ui->postbattle_active && ui->state.phase == SC_BATTLE)
+                confirm(ui, SC_UI_EVOLUTION_SKIP, "Skip this level-up evolution?");
+            else {
+                ui->evolution = id;
+                confirm(ui, SC_UI_EVOLUTION, "Evolve this member? HP / PP / status persist.");
+            }
             break;
         case SC_UI_TERMINAL: show(ui, SC_UI_MENU); break;
         case SC_UI_SAVE_ERROR: return save_pending(ui);
@@ -551,6 +646,7 @@ int sc_ui_battle_request(const ScUi *ui, ScUiBattleRequest *request) {
     request->encounter = ui->state.encounter;
     request->variant = ui->state.encounter_variant;
     request->operation_id = ui->operation_id;
+    request->progression.operation_id = ui->operation_id;
     return SC_OK;
 }
 
@@ -583,6 +679,92 @@ int sc_ui_finish(ScUi *ui, RlU32 operation_id, unsigned outcome) {
     ui->operation = SC_UI_DECLINE;
     save_pending(ui);
     return ui->pending_save ? SC_PENDING : SC_OK;
+}
+
+int sc_ui_resume_postbattle(ScUi *ui, const ScUiBattleRequest *request,
+                            const ScState *battle_state, const RlLaunchResult *result,
+                            const ScKoLedger *ledger, unsigned outcome) {
+    ScState next;
+    RlU8 returned = 0;
+    unsigned i, j, slot;
+    if (!ui || !ui->catalog || !request || !battle_state || !result || !ledger ||
+        ui->pending_save || ui->request_ready || battle_state->phase != SC_BATTLE ||
+        battle_state->party_count < 1 || battle_state->party_count > 6 ||
+        request->party_count != battle_state->party_count ||
+        request->enemy_count < 1 || request->enemy_count > 6 ||
+        request->encounter != battle_state->encounter ||
+        request->variant != battle_state->encounter_variant ||
+        request->operation_id == 0 || result->player_count > request->party_count ||
+        result->enemy_count != request->enemy_count || outcome > SC_DRAW ||
+        ledger->count > SC_KO_LEDGER_CAPACITY || ledger->next != 0 ||
+        !ledger->bound || ledger->operation_id != request->operation_id ||
+        ledger->encounter != request->encounter || ledger->variant != request->variant ||
+        ledger->party_count != request->party_count ||
+        ledger->enemy_count != request->enemy_count)
+        return SC_INVALID;
+    for (i = 0; i < request->party_count; i++)
+        if (request->party[i].species != battle_state->party[i].species ||
+            ledger->party_ids[i] != battle_state->party[i].species)
+            return SC_INVALID;
+    next = *battle_state;
+    if (outcome == SC_WIN) {
+        if (result->outcome != RL_BATTLE_WIN) return SC_INVALID;
+        for (i = 0; i < result->player_count; i++) {
+            slot = result->player_index[i];
+            if (slot >= next.party_count || (returned & (1U << slot)) ||
+                result->player[i].species != next.party[slot].species ||
+                result->player[i].cur_hp > next.party[slot].max_hp ||
+                result->player[i].moves[0] != next.party[slot].moves[0] ||
+                result->player[i].moves[1] != next.party[slot].moves[1] ||
+                result->player[i].moves[2] != next.party[slot].moves[2] ||
+                result->player[i].moves[3] != next.party[slot].moves[3])
+                return SC_INVALID;
+            for (j = 0; j < 4; j++)
+                if (result->player[i].pp[j] > next.party[slot].max_pp[j])
+                    return SC_INVALID;
+            next.party[slot].cur_hp = result->player[i].cur_hp;
+            next.party[slot].fainted = result->player[i].cur_hp == 0;
+            next.party[slot].status = result->player[i].status;
+            for (j = 0; j < 4; j++) next.party[slot].pp[j] = result->player[i].pp[j];
+            returned |= (RlU8)(1U << slot);
+        }
+        if (ledger->enemy_count != request->enemy_count ||
+            ledger->party_count != request->party_count ||
+            ledger->count != request->enemy_count ||
+            request->progression.operation_id != request->operation_id)
+            return SC_INVALID;
+        ui->postbattle_combat = request->progression;
+        ui->postbattle_ledger = *ledger;
+        ui->postbattle_active = 1;
+    } else {
+        if ((outcome == SC_LOSS && result->outcome != RL_BATTLE_LOSS) ||
+            (outcome == SC_DRAW && result->outcome != RL_LAUNCH_DRAW))
+            return SC_INVALID;
+        ui->operation_id = request->operation_id;
+        sc_ko_ledger_discard(&ui->postbattle_ledger);
+        ui->postbattle_active = 0;
+        ui->postbattle_evolution_mask = 0;
+        next.phase = SC_LOST;
+        ui->state = next;
+        ui->postbattle_evolution_mask = 0;
+        ui->request_ready = 0;
+        ui->active = 1;
+        ui->status = SC_OK;
+        ui->message = "Battle lost: this campaign has ended";
+        show(ui, SC_UI_TERMINAL);
+        return SC_OK;
+    }
+    for (i = 0; i < request->party_count; i++)
+        if (ui->postbattle_combat.party_ids[i] != next.party[i].species)
+            return SC_INVALID;
+    ui->operation_id = request->operation_id;
+    ui->state = next;
+    for (i = 0; i < 6; i++) ui->bridge.participants[i] = 0;
+    ui->bridge.enemy_count = request->enemy_count;
+    ui->request_ready = 0;
+    ui->active = 1;
+    ui->status = SC_OK;
+    return postbattle_advance(ui);
 }
 
 #ifdef SC_SCRATCH_TEST

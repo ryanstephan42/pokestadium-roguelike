@@ -3,6 +3,7 @@
 
 #include "sc_combat.h"
 #include "../roguelike/rl_ui_model.h"
+#include "../roguelike/rl_battle.h"
 
 enum ScUiScreen {
     SC_UI_MENU, SC_UI_CREATE, SC_UI_REGIONS, SC_UI_ENCOUNTERS,
@@ -13,7 +14,7 @@ enum ScUiScreen {
 enum ScUiOperation {
     SC_UI_NEW, SC_UI_START, SC_UI_ACTION, SC_UI_RECRUIT, SC_UI_TRANSFER,
     SC_UI_DECLINE, SC_UI_LEARN_MOVE, SC_UI_EVOLUTION, SC_UI_HEAL_SITE,
-    SC_UI_END, SC_UI_GIFT, SC_UI_SAVE_EXIT
+    SC_UI_END, SC_UI_GIFT, SC_UI_SAVE_EXIT, SC_UI_EVOLUTION_SKIP
 };
 enum ScUiResult { SC_UI_STAY, SC_UI_EXIT, SC_UI_REQUEST };
 
@@ -32,6 +33,8 @@ typedef struct ScUi {
     ScState state;
     ScSnapshot pending;
     ScBridge bridge;
+    ScCombat postbattle_combat;
+    ScKoLedger postbattle_ledger;
     ScOptions options;
     RlU32 seed, operation_id;
     RlUiList list;
@@ -42,6 +45,8 @@ typedef struct ScUi {
     const char *message;
     unsigned screen, back, operation, node, variant, slot, donor, move, evolution;
     int status, storage_status, active, request_ready, pending_save, create_save;
+    int postbattle_active;
+    RlU8 postbattle_evolution_mask;
 } ScUi;
 
 int sc_ui_init(ScUi *ui, const ScCatalog *catalog, const ScSaveDevice *device, RlU32 seed);
@@ -50,6 +55,9 @@ int sc_ui_battle_request(const ScUi *ui, ScUiBattleRequest *request);
 int sc_ui_observe(ScUi *ui, RlU32 operation_id, const ScBattleSnapshot party[6], unsigned active_slot,
                   unsigned enemy_slot, unsigned enemy_hp);
 int sc_ui_finish(ScUi *ui, RlU32 operation_id, unsigned outcome);
+int sc_ui_resume_postbattle(ScUi *ui, const ScUiBattleRequest *request,
+                            const ScState *battle_state, const RlLaunchResult *result,
+                            const ScKoLedger *ledger, unsigned outcome);
 int sc_ui_unsupported(ScUi *ui);
 const char *sc_ui_status_text(int status);
 const char *sc_ui_save_text(int status);

@@ -59,6 +59,8 @@ int sc_evolve(ScState *state, const ScCatalog *catalog, unsigned slot,
 int sc_pickup_stone(ScState *state, const ScCatalog *catalog, unsigned pickup);
 int sc_evolve_owned(ScState *state, const ScCatalog *catalog, unsigned slot,
                     unsigned evolution, int confirmed);
+int sc_evolve_earned(ScState *state, const ScCatalog *catalog, unsigned slot,
+                     unsigned evolution, int confirmed);
 
 RlU32 sc_random(RlU32 *state);
 RlU32 sc_random_bounded(RlU32 *state, RlU32 bound);

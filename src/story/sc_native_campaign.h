@@ -18,9 +18,15 @@ typedef struct ScCampaignControl {
     ScNativeOperation operation;
     ScNativeTerminal terminal;
     ScNativeTerminalBinding binding;
+    ScUiBattleRequest sequential_request;
+    ScState sequential_state;
+    ScBridge sequential_bridge;
+    ScKoLedger sequential_ledger;
+    RlLaunchResult sequential_result;
     ScMaArena *arena;
     RlU32 seed;
     unsigned installed;
+    unsigned sequential_active, sequential_result_ready, sequential_outcome;
     /* Resident observation staging for SC_CAMPAIGN_OBSERVE (story slot order). */
     ScBattleSnapshot observed[6];
     unsigned observed_active, observed_enemy, observed_hp;

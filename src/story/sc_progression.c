@@ -45,8 +45,8 @@ void sc_recalculate(RlMon *mon, int preserve_hp) {
     mon->fainted = (RlU8)(mon->cur_hp == 0);
 }
 
-int sc_add_xp_species(RlMon *mon, RlU32 award, RlU8 *learn_move,
-                      const ScSpecies *species) {
+static int add_xp_species(RlMon *mon, RlU32 award, RlU8 *learn_move,
+                         const ScSpecies *species, int deferred) {
     unsigned old, i, j;
     RlU32 maximum;
     if (!mon || !species || !learn_move ||
@@ -59,7 +59,7 @@ int sc_add_xp_species(RlMon *mon, RlU32 award, RlU8 *learn_move,
         (mon->level < 100 && mon->exp >= sc_xp(mon->level + 1, mon->growth)))
         return SC_INVALID;
     *learn_move = 0;
-    if (!mon->cur_hp) return SC_OK;
+    if (!mon->cur_hp && !deferred) return SC_OK;
     old = mon->level;
     if (award > maximum - mon->exp) mon->exp = maximum;
     else mon->exp += award;
@@ -76,4 +76,14 @@ int sc_add_xp_species(RlMon *mon, RlU32 award, RlU8 *learn_move,
         break;
     }
     return SC_OK;
+}
+
+int sc_add_xp_species(RlMon *mon, RlU32 award, RlU8 *learn_move,
+                      const ScSpecies *species) {
+    return add_xp_species(mon, award, learn_move, species, 0);
+}
+
+int sc_add_xp_species_deferred(RlMon *mon, RlU32 award, RlU8 *learn_move,
+                               const ScSpecies *species) {
+    return add_xp_species(mon, award, learn_move, species, 1);
 }

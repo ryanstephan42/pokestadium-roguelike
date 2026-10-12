@@ -42,7 +42,8 @@ typedef struct ScCampaignRun {
 } ScCampaignRun;
 extern ScCampaignRun gScCampaignRun;
 enum {
-    SC_RUN_ENTRY, SC_RUN_ACTIVE, SC_RUN_CLOSING, SC_RUN_FAILED
+    SC_RUN_ENTRY, SC_RUN_ACTIVE, SC_RUN_CLOSING, SC_RUN_BATTLE_READY,
+    SC_RUN_BATTLE_ACTIVE, SC_RUN_REOPEN, SC_RUN_FAILED
 };
 #else
 #define SC_STORY_BATTLE gScProbeActive

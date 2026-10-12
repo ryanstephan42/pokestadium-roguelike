@@ -3,8 +3,10 @@
 `src/story/sc_ui.c` is a pure-C controller using the tracked canonical graph,
 progression, bridge and isolated save journal. `src/story/sc_scene.c`
 renders it using the existing shared UI, species/move names, icons and HP/PP
-detail panel. **Neither file is wired into a ROM profile yet.** This unit does
-not establish a playable/native campaign acceptance claim.
+detail panel. The controller and renderer are compiled into the guarded
+candidate path, but this unit does not establish a playable/native campaign
+acceptance claim. Sequential runner wiring exists in that path, but its full
+lifecycle has not been accepted by native/emulator validation.
 
 The controller implements creation/continue, locked version/starter/healing
 options, seed selection, region and finite encounter lists, nonbattle story
@@ -19,48 +21,55 @@ before ending the campaign.
 Creation confirms replacement of an existing campaign save. Every serializable
 mutation is journaled before the committed UI state changes. Failed saves retain
 the exact pending choice and require retry with the original Pak; they do not
-silently discard a reward, heal or evolution. Battle start uses
-`sc_bridge_begin`'s interrupted checkpoint before issuing a request. Continue
-of that checkpoint terminates the interrupted campaign instead of granting a
-battle retry. Learning during a battle stays inside the paused bridge transaction
-and is not passed to the route-only codec. Finish applies `sc_finish` to a
-pending snapshot and journals it with the same commit-before-publish semantics
-as `sc_bridge_commit`, retaining that snapshot for I/O retry.
+silently discard a reward, heal or evolution. `sc_bridge_begin` journals the
+pre-battle route checkpoint with `interrupted=1` before issuing a request.
+Continue of that checkpoint terminates the interrupted campaign instead of
+granting a battle retry. In sequential battles, KO-time participants, eligible
+recipients, operation identity and encounter identity are captured without
+changing progression. A win applies XP, stat experience, level gains, learning
+and level-up evolution in KO order after the battle; a loss discards the ledger
+and leaves the interrupted checkpoint as the persisted run-ending result.
+Combat stats therefore remain fixed for the entire battle. The resolved win
+applies `sc_finish` to a pending snapshot and journals it with the same
+commit-before-publish semantics as `sc_bridge_commit`, retaining that snapshot
+for I/O retry.
 
 ## Integration contract
 
 - Supply a validated, reviewed `ScCatalog`, a real `ScSaveDevice`, a seed and
-  admitted storage for `ScUi` to `sc_ui_init`. Keep `ScUi` and its referenced
-  catalog/device alive across battle swaps. It contains its own
+  admitted storage for `ScUi` to `sc_ui_init`. `ScUi` contains its own
   `ScState`/`ScBridge`, pending transaction, list strings and selection state;
   **do not allocate it as a large automatic stack object**.
 - Initialize shared UI resources in the owning display-list/pool scope before
   `sc_scene_draw`. Pass controller button presses to `sc_ui_input`. It returns
   `SC_UI_STAY`, `SC_UI_EXIT`, or `SC_UI_REQUEST`; an exit asks the caller to
   return to its mode menu, not to destroy an unresolved save transaction.
-- On `SC_UI_REQUEST`, copy `ScUiBattleRequest` with `sc_ui_battle_request`.
+- On `SC_UI_REQUEST`, copy `ScUiBattleRequest` with `sc_ui_battle_request`,
+  copy compact campaign state and bridge/ledger values to resident control,
+  detach the request, then fully close and retire the story shell before
+  starting the standard battle. Preserve display close, task/DP retirement and
+  memory release order; do not retain the story framebuffer or UI slab.
   The request contains six-party/team values and copied `ScCombat` progression
   values, encounter/variant, counts and a controller-lifetime `operation_id`.
   It has **no native pointers, allocator generations, AI selectors or loader
   authority**. Keep only one outstanding battle per controller lifetime.
-- Return snapshots through `sc_ui_observe(ui, operation_id, party, active_slot,
-  enemy_slot, enemy_hp)`. Pause native progression when the state is
-  `SC_LEARNING`; present its replace/decline choice until state returns to
-  `SC_BATTLE`. Deliver each KO once, as required by the existing bridge.
-- Call `sc_ui_finish(ui, operation_id, outcome)` only after the final persistent
-  snapshot. A win requires all enemy KO transactions to have settled; any loss
-  or draw terminates the campaign. Old operation IDs and duplicate finish
-  delivery cannot mutate a later battle. `SC_PENDING` with a save-error screen
-  means retain the UI transaction and let the user retry; do not run another
-  battle. Never deliver a callback to a destroyed/reinitialized controller.
+- During battle, capture KO facts and final carry/result values only; do not
+  mutate campaign XP, stat experience, moves, evolutions or currency. A winning
+  result reopens the shell and resolves each KO's progression and resulting
+  learning/evolution choices before the next KO event. A loss discards all
+  captured KO progression and ends the run; only the pre-battle interrupted
+  checkpoint is durable. Never deliver a callback to a destroyed/reinitialized
+  controller.
 
 The native service owner retains battle image, allocator, loader and AI
-ownership. Shared state must be placed in reviewed backing **after Expansion
-Pak residency admission**, not merely allocated above 4 MiB optimistically.
-Normal roguelike and vanilla profiles are unchanged and must remain 4 MiB.
-The menu entry/dispatcher, scene resource lifetime, story-only build profile
-and reviewed native battle-service call remain integration dependencies.
-No uncommitted service prototypes were copied into this unit.
+ownership. The sequential runner reacquires only separate BATL loader storage
+for battle and releases it after loader unbind; campaign request/state/result
+values remain resident outside the story UI shell. Shared state must be placed
+in reviewed backing **after Expansion Pak residency admission**, not merely
+allocated above 4 MiB optimistically. Normal roguelike and vanilla profiles
+are unchanged and must remain 4 MiB. Source/host tests do not establish the
+native close/reopen, save-device or emulator lifecycle; those remain acceptance
+dependencies.
 
 Moon evolution uses `sc_evolve_owned` and the finite campaign ledger, not caller
 permission bits. Other stones are unavailable because their sourced acquisition

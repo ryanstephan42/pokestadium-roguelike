@@ -4,7 +4,7 @@
 static int ko_apply_values(ScState *state, const ScSpecies party_species[6],
                            const ScSpecies enemy_species[6], const ScTeam *team,
                            unsigned kind, unsigned enemy_slot, RlU8 participants,
-                           RlU8 recipients) {
+                           RlU8 recipients, int deferred) {
     ScState next;
     const ScSpecies *enemy;
     RlU32 award, value;
@@ -33,7 +33,8 @@ static int ko_apply_values(ScState *state, const ScSpecies party_species[6],
             next.party[i].stat_exp[j] = (RlU16)(value > 65535U ? 65535U : value);
         }
         old_level = next.party[i].level;
-        if (sc_add_xp_species(&next.party[i], award, &next.learn_moves[i], &party_species[i]) != SC_OK)
+        if ((deferred ? sc_add_xp_species_deferred : sc_add_xp_species)(
+                &next.party[i], award, &next.learn_moves[i], &party_species[i]) != SC_OK)
             return SC_INVALID;
         if (next.party[i].level > old_level) next.evolution_mask |= (RlU8)(1U << i);
         if (next.learn_moves[i]) next.learn_mask |= (RlU8)(1U << i);
@@ -57,36 +58,84 @@ int sc_ko_values(ScState *state, const ScSpecies party_species[6],
         if ((participants & (1U << i)) && state->party[i].cur_hp)
             recipients |= (RlU8)(1U << i);
     return ko_apply_values(state, party_species, enemy_species, team, kind,
-                           enemy_slot, participants, recipients);
+                           enemy_slot, participants, recipients, 0);
 }
 
 void sc_ko_ledger_init(ScKoLedger *ledger) {
     unsigned i;
     if (!ledger) return;
     ledger->count = ledger->next = ledger->enemy_count = ledger->party_count = 0;
+    ledger->operation_id = 0;
+    ledger->encounter = 0;
+    ledger->variant = ledger->bound = 0;
     for (i = 0; i < SC_KO_LEDGER_CAPACITY; i++) {
         ledger->events[i].enemy_slot = 0;
         ledger->events[i].participants = 0;
         ledger->events[i].recipients = 0;
     }
+    for (i = 0; i < 6; i++)
+        ledger->party_ids[i] = ledger->progression_ids[i] = 0;
 }
 
 void sc_ko_ledger_discard(ScKoLedger *ledger) {
     sc_ko_ledger_init(ledger);
 }
 
+int sc_ko_ledger_bind(ScKoLedger *ledger, const ScCombat *combat, RlU32 operation_id) {
+    unsigned i;
+    if (!ledger || !combat || combat->ready != 1 || !operation_id ||
+        ledger->bound || ledger->count || ledger->next || ledger->enemy_count ||
+        ledger->party_count || ledger->operation_id || !combat->team.count ||
+        combat->team.count > SC_KO_LEDGER_CAPACITY || !combat->party_ids[0])
+        return SC_INVALID;
+    for (i = 0; i < 6; i++) {
+        if (i < 5 && !combat->party_ids[i] && combat->party_ids[i + 1])
+            return SC_INVALID;
+        if (combat->party_ids[i] > 151) return SC_INVALID;
+        ledger->party_ids[i] = ledger->progression_ids[i] = combat->party_ids[i];
+    }
+    ledger->operation_id = operation_id;
+    ledger->encounter = combat->encounter;
+    ledger->variant = combat->variant;
+    ledger->enemy_count = combat->team.count;
+    for (i = 0; i < 6 && combat->party_ids[i]; i++) {}
+    if (!i || i > 6) { sc_ko_ledger_init(ledger); return SC_INVALID; }
+    ledger->party_count = (RlU8)i;
+    ledger->bound = 1;
+    return SC_OK;
+}
+
+int sc_ko_ledger_follow_evolution(ScKoLedger *ledger, const ScCombat *combat,
+                                  const ScState *state, unsigned party_slot,
+                                  unsigned prior_species) {
+    unsigned i;
+    if (!ledger || !combat || !state || !ledger->bound ||
+        combat->ready != 1 || !ledger->operation_id ||
+        ledger->operation_id != combat->operation_id ||
+        ledger->encounter != combat->encounter || ledger->variant != combat->variant ||
+        ledger->party_count != state->party_count || party_slot >= ledger->party_count ||
+        ledger->progression_ids[party_slot] != prior_species ||
+        (state->phase != SC_BATTLE &&
+         !(state->phase == SC_LEARNING && state->return_phase == SC_BATTLE)) ||
+        !state->party[party_slot].species || state->party[party_slot].species == prior_species)
+        return SC_INVALID;
+    for (i = 0; i < 6; i++)
+        if (ledger->party_ids[i] != combat->party_ids[i]) return SC_INVALID;
+    ledger->progression_ids[party_slot] = state->party[party_slot].species;
+    return SC_OK;
+}
+
 int sc_ko_ledger_record(ScKoLedger *ledger, unsigned enemy_slot,
                         unsigned enemy_count, unsigned party_count,
                         RlU8 participants, RlU8 recipients) {
     unsigned i;
-    if (!ledger || !enemy_count || enemy_count > SC_KO_LEDGER_CAPACITY ||
+    if (!ledger || !ledger->bound || !ledger->operation_id ||
+        !enemy_count || enemy_count > SC_KO_LEDGER_CAPACITY ||
         enemy_slot >= enemy_count || !party_count || party_count > 6 ||
         !participants || (participants >> party_count) ||
         (recipients & (RlU8)~participants) ||
         ledger->count > SC_KO_LEDGER_CAPACITY || ledger->next ||
-        (!ledger->count && (ledger->enemy_count || ledger->party_count)) ||
-        (ledger->count && (ledger->enemy_count != enemy_count ||
-                           ledger->party_count != party_count)))
+        ledger->enemy_count != enemy_count || ledger->party_count != party_count)
         return SC_INVALID;
     for (i = 0; i < ledger->count; i++)
         if (ledger->events[i].enemy_slot == enemy_slot) return SC_DUPLICATE;
@@ -101,17 +150,58 @@ int sc_ko_ledger_record(ScKoLedger *ledger, unsigned enemy_slot,
     return SC_OK;
 }
 
+int sc_combat_capture_ko(ScBridge *bridge, ScKoLedger *ledger,
+                         const ScCombat *combat, const ScBattleSnapshot party[6],
+                         unsigned active_slot, unsigned enemy_slot, unsigned enemy_hp) {
+    RlU8 participants, recipients = 0;
+    unsigned i;
+    int status;
+    if (!bridge || !ledger || !combat || combat->ready != 1 || !party ||
+        !combat->team.count || combat->team.count > 6 ||
+        !combat->party_ids[0] || active_slot >= 6 ||
+        !combat->party_ids[active_slot] || enemy_slot >= combat->team.count ||
+        bridge->enemy_count != combat->team.count || enemy_hp > 999 ||
+        !ledger->bound || !ledger->operation_id ||
+        ledger->operation_id != combat->operation_id ||
+        ledger->encounter != combat->encounter || ledger->variant != combat->variant ||
+        ledger->enemy_count != combat->team.count)
+        return SC_INVALID;
+    participants = bridge->participants[enemy_slot] | (RlU8)(1U << active_slot);
+    bridge->participants[enemy_slot] = participants;
+    if (enemy_hp) return SC_OK;
+    for (i = 0; i < 6; i++) {
+        if (!combat->party_ids[i]) break;
+        if (party[i].hp) recipients |= (RlU8)(1U << i);
+    }
+    recipients &= participants;
+    status = sc_ko_ledger_record(ledger, enemy_slot, combat->team.count, i,
+                                 participants, recipients);
+    return status == SC_DUPLICATE ? SC_OK : status;
+}
+
 int sc_ko_ledger_apply_next(ScKoLedger *ledger, ScState *state,
                             const ScCombat *combat) {
     const ScKoEvent *event;
     int status;
     if (!ledger || !state || !combat || combat->ready != 1 ||
+        !ledger->bound || !ledger->operation_id ||
+        ledger->operation_id != combat->operation_id ||
+        ledger->encounter != combat->encounter || ledger->variant != combat->variant ||
         ledger->count > SC_KO_LEDGER_CAPACITY || ledger->next > ledger->count ||
         state->encounter != combat->encounter ||
-        state->encounter_variant != combat->variant)
+        state->encounter_variant != combat->variant ||
+        ledger->party_count != state->party_count)
         return SC_INVALID;
+    {
+        unsigned i;
+        for (i = 0; i < 6; i++)
+            if (ledger->party_ids[i] != combat->party_ids[i] ||
+                (i < state->party_count &&
+                 state->party[i].species != ledger->progression_ids[i]))
+                return SC_INVALID;
+    }
     if (!ledger->count)
-        return ledger->next || ledger->enemy_count || ledger->party_count ||
+        return ledger->next || ledger->enemy_count ||
             state->phase != SC_BATTLE ? SC_INVALID : SC_OK;
     if (ledger->enemy_count != combat->team.count ||
         ledger->party_count != state->party_count)
@@ -122,7 +212,7 @@ int sc_ko_ledger_apply_next(ScKoLedger *ledger, ScState *state,
     event = &ledger->events[ledger->next];
     status = ko_apply_values(state, combat->party_species, combat->enemy_species,
                              &combat->team, combat->kind, event->enemy_slot,
-                             event->participants, event->recipients);
+                             event->participants, event->recipients, 1);
     if (status != SC_OK) return status;
     ledger->next++;
     return state->phase == SC_LEARNING || ledger->next < ledger->count ?

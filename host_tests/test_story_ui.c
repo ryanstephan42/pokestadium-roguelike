@@ -499,6 +499,108 @@ static void test_pending_learning_fixture(void) {
     resolve_reward();
 }
 
+static void test_sequential_postbattle(void) {
+    ScState battle_state;
+    ScKoLedger ledger;
+    ScSnapshot saved;
+    RlLaunchResult result;
+    RlU32 exp;
+    unsigned i;
+    int status;
+
+    reset(0, SC_STANDARD);
+    enter_node(find_node("OaksLab/rival-lab"));
+    assert(sc_ui_battle_request(&ui, &request) == SC_OK);
+    battle_state = ui.state;
+    sc_ko_ledger_init(&ledger);
+    assert(sc_ko_ledger_bind(&ledger, &request.progression,
+        request.operation_id) == SC_OK);
+    for (i = 0; i < request.enemy_count; i++)
+        assert(sc_ko_ledger_record(&ledger, i, request.enemy_count,
+            request.party_count, 1, 1) == SC_OK);
+    memset(&result, 0, sizeof(result));
+    result.outcome = RL_BATTLE_WIN;
+    result.player_count = 1;
+    result.enemy_count = request.enemy_count;
+    result.player_index[0] = 0;
+    result.player[0] = request.party[0];
+    result.player[0].cur_hp--;
+    ui.request_ready = 0;
+    status = sc_ui_resume_postbattle(&ui, &request, &battle_state, &result,
+        &ledger, SC_WIN);
+    assert(status == SC_OK);
+    assert(ui.operation_id == request.operation_id);
+    assert(ui.state.phase == SC_REWARD && ui.screen == SC_UI_REWARD);
+    assert(ui.state.party[0].max_hp - ui.state.party[0].cur_hp ==
+        request.party[0].max_hp - result.player[0].cur_hp);
+    assert(sc_state_valid(&ui.state, &sc_catalog));
+    resolve_reward();
+
+    reset(0, SC_STANDARD);
+    enter_node(find_node("OaksLab/rival-lab"));
+    assert(sc_ui_battle_request(&ui, &request) == SC_OK);
+    battle_state = ui.state;
+    exp = ui.state.party[0].exp;
+    sc_ko_ledger_init(&ledger);
+    assert(sc_ko_ledger_bind(&ledger, &request.progression,
+        request.operation_id) == SC_OK);
+    assert(sc_ko_ledger_record(&ledger, 0, request.enemy_count,
+        request.party_count, 1, 1) == SC_OK);
+    memset(&result, 0, sizeof(result));
+    result.outcome = RL_BATTLE_LOSS;
+    result.player_count = 1;
+    result.enemy_count = request.enemy_count;
+    result.player_index[0] = 0;
+    result.player[0] = request.party[0];
+    ui.request_ready = 0;
+    assert(sc_ui_resume_postbattle(&ui, &request, &battle_state, &result,
+        &ledger, SC_LOSS) == SC_OK);
+    assert(ui.state.phase == SC_LOST && ui.screen == SC_UI_TERMINAL);
+    assert(ui.state.party[0].exp == exp);
+    assert(sc_storage_load(&device, &sc_catalog, &saved) == SC_SAVE_OK);
+    assert(saved.interrupted && saved.state.party[0].exp == exp);
+    assert(sc_ui_init(&cold, &sc_catalog, &device, 456) == SC_OK);
+    assert(sc_ui_input(&cold, RL_UI_A) == SC_UI_STAY);
+    assert(cold.state.phase == SC_LOST && cold.screen == SC_UI_TERMINAL);
+    assert(cold.state.party[0].exp == exp);
+}
+
+static void test_sequential_evolution_order(void) {
+    ScState battle_state;
+    ScKoLedger ledger;
+    RlLaunchResult result;
+    ScTemplate starter = {1, 15, {33, 45, 0, 0}, 1, 0x1248};
+
+    reset(0, SC_STANDARD);
+    enter_node(find_node("OaksLab/rival-lab"));
+    assert(sc_make_mon(&sc_catalog, &starter, 0x1248, &ui.state.party[0]) == SC_OK);
+    ui.state.party[0].exp = sc_xp(16, ui.state.party[0].growth) - 1;
+    assert(sc_ui_battle_request(&ui, &request) == SC_OK);
+    request.progression.enemy_species[0].yield = 100;
+    battle_state = ui.state;
+    sc_ko_ledger_init(&ledger);
+    assert(sc_ko_ledger_bind(&ledger, &request.progression,
+        request.operation_id) == SC_OK);
+    assert(sc_ko_ledger_record(&ledger, 0, request.enemy_count,
+        request.party_count, 1, 1) == SC_OK);
+    memset(&result, 0, sizeof(result));
+    result.outcome = RL_BATTLE_WIN;
+    result.player_count = 1;
+    result.enemy_count = request.enemy_count;
+    result.player_index[0] = 0;
+    result.player[0] = request.party[0];
+    ui.request_ready = 0;
+    assert(sc_ui_resume_postbattle(&ui, &request, &battle_state, &result,
+        &ledger, SC_WIN) == SC_OK);
+    assert(ui.screen == SC_UI_EVOLVE && ui.postbattle_ledger.next == 1);
+    choose(0);
+    confirm_choice();
+    settle_learning();
+    assert(ui.state.party[0].species == 2);
+    assert(ui.state.phase == SC_REWARD && ui.screen == SC_UI_REWARD);
+    assert(!ui.postbattle_active && ui.postbattle_ledger.count == 0);
+}
+
 int main(void) {
 #ifdef SC_MOON_UI_FIXTURE
     init_moon_fixture();
@@ -513,6 +615,8 @@ int main(void) {
     test_replacement_and_duplicate();
     test_unsupported_evolutions();
     test_pending_learning_fixture();
+    test_sequential_postbattle();
+    test_sequential_evolution_order();
     test_full_graph(0);
     test_full_graph(1);
     assert(learnings && recruits >= 10 && transfers && battles > 650 && drawings);

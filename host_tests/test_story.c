@@ -281,6 +281,8 @@ static void test_postbattle_ko_ledger(void) {
     ScKoLedger ledger;
     ScCombat combat, wrong_combat;
     ScState captured, after_capture;
+    ScBridge bridge;
+    ScBattleSnapshot party[6];
     ScTemplate input = {1, 6, {0, 0, 0, 0}, 1, 0xffff};
     RlU32 old_exp, award, second_award;
     unsigned i, denominator;
@@ -297,8 +299,23 @@ static void test_postbattle_ko_ledger(void) {
     state.party_count = 2;
     assert(sc_begin(&state, &catalog, 0, 2) == SC_OK);
     assert(sc_combat_prepare(&combat, &state, &catalog) == SC_OK);
+    combat.operation_id = 77;
     sc_ko_ledger_init(&ledger);
+    assert(sc_ko_ledger_bind(&ledger, &combat, combat.operation_id) == SC_OK);
+    memset(&bridge, 0, sizeof(bridge));
+    memset(party, 0, sizeof(party));
+    bridge.enemy_count = combat.team.count;
+    party[0].hp = state.party[0].cur_hp;
+    party[1].hp = 0;
     captured = state;
+    assert(sc_combat_capture_ko(&bridge, &ledger, &combat, party, 0, 0, 0) == SC_OK);
+    assert(sc_combat_capture_ko(&bridge, &ledger, &combat, party, 0, 0, 0) == SC_OK);
+    assert(ledger.count == 1 && ledger.events[0].participants == 1 &&
+           ledger.events[0].recipients == 1);
+    assert(!memcmp(&state, &captured, sizeof(state)));
+    sc_ko_ledger_discard(&ledger);
+    memset(bridge.participants, 0, sizeof(bridge.participants));
+    assert(sc_ko_ledger_bind(&ledger, &combat, combat.operation_id) == SC_OK);
     assert(sc_ko_ledger_record(&ledger, 0, combat.team.count, state.party_count,
                                3, 1) == SC_OK);
     assert(sc_ko_ledger_record(&ledger, 1, combat.team.count, state.party_count,
@@ -309,9 +326,22 @@ static void test_postbattle_ko_ledger(void) {
                                1, 2) == SC_INVALID);
     assert(ledger.count == 2 && ledger.next == 0);
     assert(memcmp(&state, &captured, sizeof(state)) == 0);
+    state.party[0].cur_hp = 0;
+    state.party[0].fainted = 1;
+    state.party[0].status = 3;
     after_capture = state;
     wrong_combat = combat;
     wrong_combat.encounter++;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &wrong_combat) == SC_INVALID);
+    assert(ledger.next == 0 && memcmp(&state, &after_capture, sizeof(state)) == 0);
+    wrong_combat = combat;
+    wrong_combat.variant++;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &wrong_combat) == SC_INVALID);
+    wrong_combat = combat;
+    wrong_combat.operation_id++;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &wrong_combat) == SC_INVALID);
+    wrong_combat = combat;
+    wrong_combat.party_ids[0] = 2;
     assert(sc_ko_ledger_apply_next(&ledger, &state, &wrong_combat) == SC_INVALID);
     assert(ledger.next == 0 && memcmp(&state, &after_capture, sizeof(state)) == 0);
 
@@ -325,6 +355,7 @@ static void test_postbattle_ko_ledger(void) {
     assert(sc_ko_ledger_record(&ledger, 2, combat.team.count, state.party_count,
                                1, 1) == SC_INVALID);
     assert(state.party[0].level == 7 && state.party[0].exp == old_exp + award);
+    assert(!state.party[0].cur_hp && state.party[0].fainted && state.party[0].status == 3);
     assert(state.learn_moves[0] == 73);
     for (i = 0; i < 5; i++)
         assert(state.party[0].stat_exp[i] == combat.enemy_species[0].base[i] / denominator);
@@ -345,10 +376,16 @@ static void test_postbattle_ko_ledger(void) {
     setup();
     assert(sc_begin(&state, &catalog, 0, 2) == SC_OK);
     assert(sc_combat_prepare(&combat, &state, &catalog) == SC_OK);
+    combat.operation_id = 78;
     sc_ko_ledger_init(&ledger);
+    assert(sc_ko_ledger_bind(&ledger, &combat, combat.operation_id) == SC_OK);
     assert(sc_ko_ledger_record(&ledger, 0, combat.team.count, state.party_count,
                                1, 1) == SC_OK);
     captured = state;
+    wrong_combat = combat;
+    wrong_combat.operation_id++;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &wrong_combat) == SC_INVALID);
+    assert(!memcmp(&state, &captured, sizeof(state)));
     assert(sc_finish(&state, &catalog, SC_LOSS, 2) == SC_OK);
     assert(state.phase == SC_LOST && state.party[0].exp == captured.party[0].exp);
     assert(!memcmp(state.party, captured.party, sizeof(state.party)));
@@ -403,6 +440,20 @@ static void test_evolution(void) {
     assert(state.party[0].species == 2 && state.party[0].dvs == 0x1248);
     assert(state.party[0].max_hp - state.party[0].cur_hp == hp);
     assert(state.party[0].pp[0] == 2 && !state.evolution_mask);
+    input.species = 1;
+    input.level = 15;
+    assert(sc_make_mon(&catalog, &input, 0x1248, &state.party[0]) == SC_OK);
+    state.phase = SC_BATTLE;
+    state.evolution_mask = 1;
+    assert(sc_evolve_earned(&state, &catalog, 0, 0, 1) == SC_UNAVAILABLE);
+    state.party[0].level = 16;
+    state.party[0].exp = sc_xp(16, state.party[0].growth);
+    assert(sc_evolve_earned(&state, &catalog, 0, 0, 0) == SC_PENDING);
+    assert(!state.evolution_mask && state.phase == SC_BATTLE);
+    state.evolution_mask = 1;
+    assert(sc_evolve_earned(&state, &catalog, 0, 0, 1) == SC_OK);
+    assert(state.party[0].species == 2 && state.phase == SC_BATTLE);
+    state.phase = SC_ROUTE;
     input.species = 133;
     input.level = 25;
     assert(sc_make_mon(&catalog, &input, 0, &state.party[0]) == SC_OK);
