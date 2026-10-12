@@ -27,7 +27,7 @@ SC_PROBE_O := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SC_PROBE_C))
 SC_PROBE_CATALOG := $(BUILD_DIR)/story/sc_data.o
 SC_COLD_NAMES := sc_core sc_graph sc_bridge sc_save sc_storage sc_pak_probe sc_cold sc_native_cold sc_make
 SC_COLD_NAMES += sc_ui sc_scene sc_ui_driver
-SC_COLD_NAMES += sc_native_ui sc_native_loop sc_native_display
+SC_COLD_NAMES += sc_native_ui sc_native_loop sc_native_display sc_rl_ui
 SC_COLD_NAMES += sc_native_operation sc_native_terminal sc_native_terminal_witness
 SC_COLD_O := $(addprefix $(BUILD_DIR)/src/story/,$(addsuffix .o,$(SC_COLD_NAMES))) $(SC_PROBE_CATALOG)
 ifeq ($(STORY_EMBER_PROBE),1)

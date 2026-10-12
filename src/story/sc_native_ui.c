@@ -2,7 +2,7 @@
 #include "sc_native_ui.h"
 #include "sc_scene.h"
 #include "src/controller.h"
-#include "src/fragments/rl/rl_ui.h"
+#include "sc_rl_ui.h"
 #include "src/stage_loader.h"
 
 static ScNativeUi *sResources;

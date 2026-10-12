@@ -278,6 +278,49 @@ does not launch native combat or call drain from the actual retirement path.
 Actual callback/dispatcher wiring, service/BATL retirement, complete stack/fit,
 and native validation remain required.
 
+### Story-private UI link (residency prerequisite)
+
+A campaign-lifetime SC mapping cannot keep calls into fragmentRL (`0xe8`):
+`func_80029008` frees that fragment after each call, and the previous SC image
+had 27 `R_MIPS_26` `jal`s into `rl_ui_*` there. Candidate native-UI builds now
+compile the unmodified `src/fragments/rl/rl_ui.c` and `rl_ui_mon.c` a second time
+through `src/story/sc_rl_ui.c`. `sc_rl_ui.h` renames all 16 external `rl_ui_*`
+functions to `sc_rl_ui_*` for every SC caller (`sc_native_ui.c`, `sc_scene.c`)
+and the resources HOST stubs. FragmentRL, `make rl` and vanilla are unchanged.
+In the qualified build, fragmentRL keeps `rl_ui_text` at `0x8f808fc8` and SC has
+its own copy at `0x8f90ba98`.
+
+Transitive closure: the object's only undefined symbols are resident
+(`func_8001C6AC/EBE0/ECB4/F324/F3F4/F444/F504/F5B0`, `func_8002D7C0`,
+`func_80048B90`, `D_8006F518/F630`, `D_800AC870`, `gDisplayListHead`,
+`HAL_Printf`, and `rl_text`, `rl_text_demo_items`, `rl_ui_hp_width`,
+`rl_ui_list_init/step/valid` at `0x8007…`/`0x8009…`) or SC-owned
+(`sc_native_icon_cached/prefetch`, `sc_native_resources_acquire`). The copy's
+mutable data is its own 128-byte `.bss` (icon archive and name-table pointers,
+demo list state) inside the SC image. The archive and tables that it points to
+remain owned by the caller's pool scope through `sc_native_resources_acquire`.
+That scope's `restore_resources` record is SC code that writes SC `.bss`, so a
+persistent mapping may be released only after every such scope has popped.
+
+Fresh fixed-point relink (authority/rights v17 = v18), ELF
+`1494ff9db42b406b31fc78ca79fe6c0b28bb3f04de2ebad4e6c93abd963f559c`:
+
+| | before (`c4533660`) | after | delta |
+|---|---|---|---|
+| `.fragmentSC` | `0x32300` | `0x339c0` | +5,824 |
+| `.fragmentSC_bss` | `0x1f20` | `0x1fa0` | +128 |
+| SC RAM | 213,536 | 219,488 | +5,952 |
+| `.fragmentSC_relocs` (staging) | `0x2310` | `0x2700` | +1,008 |
+
+The `+5,952` equals the object's `.text 0x14c0 + .rodata 0x200 + .bss 0x80`.
+AI is unchanged at `.fragmentAI 0xdfe0 + .bss 0x4780 = 75,616`, with independent
+private relocation. All 2,497 `.rel.fragmentSC` entries were audited (code and
+data): 610/893/391/393 R26/R32/HI16/LO16 target SC (`0xe9`), 133/37/37
+R26/HI16/LO16 target resident KSEG0, and 3 `R_MIPS_32` are the absolute header
+symbols. **No target is in any other fragment.** The persistent loader, the
+`cold_invoke` exclusion, hook publication after admission, and the simultaneous
+fit ledger are still to be wired.
+
 ## Current build authority inputs
 
 The default-off `STORY_SERVICE_CANDIDATE` build requires explicit

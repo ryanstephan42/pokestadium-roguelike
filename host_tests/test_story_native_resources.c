@@ -8,6 +8,7 @@
 #include "../src/story/sc_native_loop.h"
 #include "../src/story/sc_native_operation.h" /* lifetime view injected by prelude */
 #include "../src/story/sc_native_terminal.h"
+#include "../src/story/sc_rl_ui.h" /* stubs bind the SC-private UI names */
 #include "../src/controller.h"
 
 int sc_pak_probe_load(unsigned, const ScCatalog *, ScSnapshot *);

@@ -1,6 +1,6 @@
 #ifdef ROGUELIKE
 #include "sc_scene.h"
-#include "src/fragments/rl/rl_ui.h"
+#include "sc_rl_ui.h"
 
 static const Color_RGBA8 sWhite = {255, 255, 255, 255};
 static const Color_RGBA8 sGold = {255, 224, 96, 255};
