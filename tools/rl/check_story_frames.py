@@ -5,7 +5,9 @@ IDO has no noinline attribute, so the static launch helper (rl_prepare_sides) is
 in the linked ELF instead: rl_start_battle must keep its capped frame and call an
 out-of-line, symbol-less helper before func_80029008. The helper must return before the
 battle starts, so its frame is not under the battle. sc_campaign_state must stay unreferenced
-because calling it would re-nest the poll beneath the launch frame. This is a regression gate for the
+because calling it would re-nest the poll beneath the launch frame. The ordinary roguelike pending-battle
+runner (static rl_main_run_pending_battle) must stay an out-of-line helper of rl_main_state_roguelike with a
+capped frame, since it sits beneath the battle. This is a regression gate for the
 measured frames, not a stack proof.
 """
 
@@ -25,6 +27,7 @@ CAPS = {
     "func_800078D4": 56,
 }
 HELPER_CAP = 96
+RUNNER_CAP = 48
 OPTIONAL = {"sc_runtime_probe_poll"}  # linked only in native-probe profiles
 
 
@@ -84,6 +87,14 @@ def leaf(data, sections, address):
     return False
 
 
+def body(data, sections, start):
+    """Size in bytes of the code from start through its first jr ra and delay slot."""
+    for i in range(4096):
+        if word(data, sections, start + 4 * i) == 0x03E00008:
+            return 4 * (i + 2)
+    raise ValueError(f"no jr ra after {start:08x}")
+
+
 def jals(data, sections, start, size):
     out = []
     for pc in range(start, start + size, 4):
@@ -119,6 +130,16 @@ def check(path):
     if not 0 < helper_frame <= HELPER_CAP:
         raise ValueError(f"launch helper {helpers[0][1]:08x} frame {helper_frame} outside (0,{HELPER_CAP}]")
     report.append(f"helper@{helpers[0][1]:08x}={helper_frame}")
+
+    start, size, _ = funcs["rl_main_state_roguelike"]
+    runners = [t for _, t in jals(data, sections, start, size) if t not in starts and
+               any(c == funcs["rl_start_battle"][0] for _, c in jals(data, sections, t, body(data, sections, t)))]
+    if len(runners) != 1:
+        raise ValueError(f"rl_main_state_roguelike has {len(runners)} local battle runners, expected 1")
+    runner_frame = frame(data, sections, runners[0])
+    if runner_frame > RUNNER_CAP:
+        raise ValueError(f"pending-battle runner {runners[0]:08x} frame {runner_frame} exceeds {RUNNER_CAP}")
+    report.append(f"runner@{runners[0]:08x}={runner_frame}")
 
     # func_800078D4's frame-handoff helpers must stay out-of-line leaves.
     start, size, _ = funcs["func_800078D4"]

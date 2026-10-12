@@ -39,8 +39,11 @@ int rl_prepare_mon(RlMon* mon, int full_heal) {
     if (full_heal) mon->cur_hp = mon->max_hp;
     return 0;
 }
+RlLaunchResult gRlLastBattleResult;
+/* Mirrors the launcher contract: fills gRlLastBattleResult, copies to out when non-NULL. */
 int rl_start_battle(const RlMon* party, int count, const RlMon* enemy, int enemy_count,
-                    const RlBattleRules* rules, int state, RlLaunchResult* result) {
+                    const RlBattleRules* rules, int state, RlLaunchResult* out) {
+    RlLaunchResult* result = &gRlLastBattleResult;
     int i;
     bzero(result, sizeof(*result));
     result->player_count = count;
@@ -49,6 +52,7 @@ int rl_start_battle(const RlMon* party, int count, const RlMon* enemy, int enemy
         result->player[i] = party[count - 1 - i];
         result->player[i].cur_hp = 10 + i;
     }
+    if (out != NULL) *out = *result;
     return RL_BATTLE_LOSS;
 }
 s32 rl_ui_list(RlUiList* list, u16 pressed) { return rl_ui_list_step(list, pressed); }
