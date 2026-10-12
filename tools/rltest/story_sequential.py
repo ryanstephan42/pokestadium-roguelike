@@ -113,6 +113,11 @@ def capture(emu, abi, decode_mon):
                 field(run, abi["run"], "launched", 4) == row["request"]["operation"] and
                 field(control, abi["control"], "sequential_active", 4) == 0)
     row["result_consumed"] = consumed
+    row["resume_started"] = (
+        stage == REOPEN and row["request"]["operation"] > 0 and
+        field(run, abi["run"], "launched", 4) == row["request"]["operation"] and
+        field(control, abi["control"], "sequential_active", 4) == 0 and
+        row["result_ready"] == 0)
     if stage == REOPEN or consumed:
         result = control[abi["control"]["sequential_result"]:
                          abi["control"]["sequential_result"] + abi["result"]["size"]]
@@ -225,7 +230,8 @@ class SequentialLedger:
         if row["stage"] == REOPEN or row.get("result_consumed", False):
             require(self.binding is not None and row["request"] == self.binding,
                     "Sequential result lacks bound operation")
-            require((row["result_ready"] == 1 if row["stage"] == REOPEN else
+            require((row["result_ready"] == 1 or row.get("resume_started", False)
+                     if row["stage"] == REOPEN else
                      row["stage"] == ACTIVE and row["result_ready"] == 0) and
                     row["outcome"] in (0, 1, 2),
                     "Sequential reopen lacks completed result")

@@ -463,3 +463,31 @@ The checkpoint's Ember-versus-Rock matchup now appears too slow for
 the bounded reservation, rather than input readiness being the blocker.
 A new legal sequential-only checkpoint or easier authenticated target
 has been referred to the coordinator; neither is approved by this report.
+
+The subsequent user decision approved the new Squirtle checkpoint and separate
+18,000-frame/480-second reservations described above. Run14 captured two
+ordered natural KOs but refused shell reacquisition: a completed prior
+retirement still marked the newly acquired DATA generation retired. The
+successful-acquisition path now resets only those completed-generation flags;
+the actual lifetime HOST regression reacquires, validates and releases a second
+generation and still refuses a copied stale DP token.
+
+Run15 passed that boundary and replayed XP/carry, but postbattle save lacked
+the native Pak session. Resume now acquires the session, consumes its result
+before applying it and releases the session afterward. Begin refusal alone
+retains a result; callback/end refusal fail-stops with the applied marker,
+mapping and lifetime retained, so reopening cannot replay earnings. HOST
+regressions cover both refusals and the installer's preserved FAILED phase.
+The read-only observer also recognizes the identity-bound consumed marker
+while blocking Pak I/O still leaves the runner at REOPEN; it continues to
+validate the original result/party and does not treat this as replay completion.
+
+Run16 (`c6bdcd9` image) first passed the entire win/save scenario in 7,579
+frames/190.157 seconds, with exact reap/no orphans. Its actual carry-note SHA is
+`40da60fd82ab6ea22fdae92cadc77a3f4ad659c8e177f37e89483f471dd6f4b1`;
+full game-written save SHA is
+`87febd6cc0b447e6541088a744473cdcb2584cc0c37995142995a46d4b299b6c`.
+This is success-path evidence for that image, not proof of the later
+fail-stop correction. Run17 on the corrected image stopped at the observer's
+old ready-bit requirement during Pak I/O; it is FAIL, not a producer.
+Carry must use a new passing producer on the corrected image.

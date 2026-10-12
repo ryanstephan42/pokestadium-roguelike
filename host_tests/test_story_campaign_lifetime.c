@@ -39,6 +39,9 @@ int sc_persist_native_enter(unsigned char *image, int arg0, unsigned arg1) {
 
 /* ---- HOST seams never reached once display acquisition is refused ---- */
 #define UNREACHED(what) assert(!what " reached after refused display acquisition")
+int sc_ui_driver_detach_battle(ScUiDriver *driver) {
+    (void)driver; UNREACHED("battle detach"); return SC_INVALID;
+}
 int sc_native_pak_begin(ScNativePak *p) {
     (void)p; UNREACHED("Pak begin"); return SC_SAVE_IO;
 }

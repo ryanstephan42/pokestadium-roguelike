@@ -89,6 +89,22 @@ class SequentialObserverTests(unittest.TestCase):
         with self.assertRaises(HarnessError):
             observer.accept(wrong)
 
+    def test_applied_marker_during_postbattle_pak_io_keeps_result_identity(self):
+        observer = self.observer()
+        row = self.completed(observer)
+        row.update(result_ready=0, resume_started=True)
+        observer.accept(row)
+        self.assertEqual(observer.result, 1)
+        self.assertEqual(observer.applied, 0)
+        wrong = copy.deepcopy(row)
+        wrong["resume_started"] = False
+        with self.assertRaisesRegex(HarnessError, "lacks completed result"):
+            observer.accept(wrong)
+        wrong = copy.deepcopy(row)
+        wrong["outcome"] = 0
+        with self.assertRaisesRegex(HarnessError, "completed result changed"):
+            observer.accept(wrong)
+
     def test_consumed_capture_requires_launched_operation_and_inactive_transaction(self):
         control = bytearray(300)
         ui_address = 0x80404000
@@ -132,6 +148,12 @@ class SequentialObserverTests(unittest.TestCase):
         row = capture(Emu(), abi, lambda raw: dict(species=raw[0]))
         self.assertTrue(row["result_consumed"])
         self.assertEqual(row["carry"], [(0, dict(species=4))])
+        run[:4] = REOPEN.to_bytes(4, "big")
+        self.assertTrue(capture(Emu(), abi, lambda raw: dict(species=raw[0]))["resume_started"])
+        control[292:296] = (1).to_bytes(4, "big")
+        self.assertFalse(capture(Emu(), abi, lambda raw: dict(species=raw[0]))["resume_started"])
+        control[292:296] = bytes(4)
+        run[:4] = ACTIVE.to_bytes(4, "big")
         for mutation in ("operation", "active"):
             if mutation == "operation":
                 run[8:12] = (78).to_bytes(4, "big")
