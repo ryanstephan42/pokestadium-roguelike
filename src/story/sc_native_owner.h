@@ -3,6 +3,7 @@
 
 #ifdef STORY_NATIVE_UI
 #include "sc_native_ui.h"
+#include "src/6BC0.h"
 
 enum ScNativeEventKind {
     SC_NATIVE_EVENT_NONE, SC_NATIVE_EVENT_OBSERVE, SC_NATIVE_EVENT_LEARNING,
