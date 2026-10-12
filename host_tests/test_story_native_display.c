@@ -143,7 +143,11 @@ static s32 frame_callback(u8 state) {
     if (mode == FRAME_NESTED) {
         inner_index = 0;
         assert(func_800078D4(inner_callback, 0x20, 0x10) == 1);
-        assert(sStoryFrame.armed && !sStoryFrame.consumed && sStoryFrame.head == native_head);
+        /* The inner loop leaves the handoff idle (c5f4bb0): a later outer
+           story frame cannot suppress the outer native submission. */
+        assert(!sStoryFrame.armed && !sStoryFrame.consumed && !sStoryFrame.head);
+        held_frame();
+        assert(!sStoryFrame.armed && !sStoryFrame.consumed && !sStoryFrame.head);
     }
     return frame_index++ == frame_return_at ? 3 : 0;
 }
@@ -165,7 +169,7 @@ static void frame_handoff(ScNativeDisplay *display, Gfx *head, unk_func_80007444
     static const int held_last[] = { FRAME_ORDINARY, FRAME_HELD, FRAME_ORDINARY };
     unk_func_80007444 saved = *screen;
     handoff = display; native_head = head;
-    frame_run(sequence, 5, "CSFCNCNCcSFcNNCSFCSFNCN");
+    frame_run(sequence, 5, "CSFCNCNCcSFcNSFNCSFCSFNCN");
     assert(sc_native_display_begin(display) == SC_OK && sc_native_display_end(display) == SC_OK);
     assert(!sStoryFrame.armed && !sStoryFrame.consumed);
     frame_run(ordinary, 0, "CNCN");
