@@ -188,9 +188,11 @@ class SequentialWorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory)
             (out / "transform").mkdir()
-            worker.write_json(out / "transform/report.json", dict(status="pass", transform=0))
+            worker.write_json(out / "transform/report.json",
+                              dict(status="pass", transform=0, local_frames=7))
             report = collect(out, RunBudget(0, 180), 1, True)
             self.assertEqual(report["scenarios"]["transform"]["status"], "untested")
+            self.assertEqual(report["frames_observed"], 7)
 
     def test_substituted_reload_bytes_refused_before_write(self):
         with patch.object(worker.ctypes, "memmove") as write:

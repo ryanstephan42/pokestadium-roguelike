@@ -40,7 +40,7 @@ def collect(directory, budget, elapsed, reaped):
     observed = 0
     exact_frames = True
     for row in scenarios.values():
-        if row["status"] != "untested":
+        if row["status"] != "untested" or "local_frames" in row:
             if "local_frames" not in row:
                 exact_frames = False
             observed += row.get("local_frames", 0)
