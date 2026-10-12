@@ -2,6 +2,9 @@
 #include "src/11BA0.h"
 #include "src/F420.h"
 #include "src/util.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_geo_guard.h"
+#endif
 
 static GeoLayoutCommandProc GeoLayoutJumpTable[] = {
     geo_layout_cmd_branch_and_link,
@@ -54,6 +57,50 @@ static s16 gGeoLayoutStackIndex;
 static s16 D_800ABDFC;
 static s16 gGeoLayoutReturnIndex;
 static u8* gGeoLayoutCommand;
+
+#ifdef ROGUELIKE
+static const u8 sRlGeoCommandSizes[RL_GEO_OPCODES] = {
+    sizeof(unk_D_800ABE00_cmd0),
+    sizeof(unk_D_800ABE00_cmd1),
+    sizeof(unk_D_800ABE00_cmd2),
+    sizeof(unk_D_800ABE00_cmd3),
+    sizeof(unk_D_800ABE00_cmd4),
+    sizeof(unk_D_800ABE00_cmd5),
+    sizeof(unk_D_800ABE00_cmd6),
+    sizeof(unk_D_800ABE00_cmd7),
+    sizeof(unk_D_800ABE00_cmd8),
+    sizeof(unk_D_800ABE00_cmd9),
+    sizeof(unk_D_800ABE00_cmdA),
+    sizeof(unk_D_800ABE00_cmdB),
+    sizeof(unk_D_800ABE00_cmdC),
+    sizeof(unk_D_800ABE00_cmdD),
+    sizeof(unk_D_800ABE00_cmdE),
+    sizeof(unk_D_800ABE00_cmdF),
+    sizeof(unk_D_800ABE00_cmd10),
+    sizeof(unk_D_800ABE00_cmd11),
+    0 /* func_80017F5C never advances */,
+    sizeof(unk_D_800ABE00_cmd13),
+    sizeof(unk_D_800ABE00_cmd14),
+    sizeof(unk_D_800ABE00_cmd15),
+    sizeof(unk_D_800ABE00_cmd16),
+    sizeof(unk_D_800ABE00_cmd17),
+    sizeof(unk_D_800ABE00_cmd18),
+    sizeof(unk_D_800ABE00_cmd19),
+    sizeof(unk_D_800ABE00_cmd1A),
+    sizeof(unk_D_800ABE00_cmd1B),
+    sizeof(unk_D_800ABE00_cmd1C),
+    sizeof(unk_D_800ABE00_cmd1D),
+    sizeof(unk_D_800ABE00_cmd1E),
+    sizeof(unk_D_800ABE00_cmd1F),
+    sizeof(unk_D_800ABE00_cmd20),
+    sizeof(unk_D_800ABE00_cmd21),
+    sizeof(unk_D_800ABE00_cmd22),
+    sizeof(unk_D_800ABE00_cmd23),
+    sizeof(unk_D_800ABE00_cmd24),
+    sizeof(unk_D_800ABE00_cmd25),
+    sizeof(unk_D_800ABE00_cmd26),
+};
+#endif
 
 /*
   0x00: Branch and store return address
@@ -441,6 +488,18 @@ void func_80018AD0(void) {
     gGeoLayoutCommand += sizeof(unk_D_800ABE00_cmd26);
 }
 
+#ifdef ROGUELIKE
+void rl_geo_layout_check(s32 dispatched) {
+    if (dispatched ? !rl_geo_state_ok(gGeoLayoutStackIndex, gGeoLayoutReturnIndex, gCurGraphNodeIndex)
+                   : !rl_geo_admit(gGeoLayoutCommand, (u8*)0x80000000, (u8*)(0x80000000 + osMemSize),
+                                   sRlGeoCommandSizes, gGeoLayoutStackIndex, gGeoLayoutReturnIndex,
+                                   gCurGraphNodeIndex)) {
+        osSyncPrintf("Unsupported geo layout command\n");
+        osStopThread(NULL);
+    }
+}
+#endif
+
 GraphNode* process_geo_layout(MemoryBlock* pool, void* segptr) {
     // set by register_scene_graph_node when gCurGraphNodeIndex is 0
     // and gCurRootGraphNode is NULL
@@ -462,7 +521,13 @@ GraphNode* process_geo_layout(MemoryBlock* pool, void* segptr) {
     gGeoLayoutStack[1] = 0;
 
     while (gGeoLayoutCommand != NULL) {
+#ifdef ROGUELIKE
+        rl_geo_layout_check(0);
+#endif
         GeoLayoutJumpTable[gGeoLayoutCommand[0x00]]();
+#ifdef ROGUELIKE
+        rl_geo_layout_check(1);
+#endif
     }
 
     return gCurRootGraphNode;

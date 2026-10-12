@@ -12,7 +12,7 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test story-test clean
+.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test native-relic-test story-test clean
 
 STORY_UI_SOURCES = test_story_ui.c ../src/story/sc_ui.c \
 	../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
@@ -132,7 +132,7 @@ story-test:
 		../src/story/sc_combat.c -o ../build/story/sc_combat.o
 	cd .. && bash host_tests/run_story_native.sh
 
-test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test
+test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test native-relic-test nodes-test scene-nodes-test
 	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance host_tests.test_progression_probes
 
 ido-test:
@@ -212,6 +212,13 @@ native-import-test:
 	$(CC) $(CFLAGS) test_native_imports.c ../src/roguelike/rl_native_imports.c -o ../build/host_tests/native-imports
 	../build/host_tests/native-imports
 	cd .. && python3 -m unittest host_tests.test_archive_import_generator
+geo-guard-test:
+	mkdir -p ../build/host_tests
+	$(CC) $(CFLAGS) -I../src/roguelike test_geo_guard.c ../src/roguelike/rl_geo_guard.c -o ../build/host_tests/geo-guard
+	$(CC) $(SANFLAGS) -I../src/roguelike test_geo_guard.c ../src/roguelike/rl_geo_guard.c -o ../build/host_tests/geo-guard-san
+	../build/host_tests/geo-guard
+	../build/host_tests/geo-guard-san
+
 save-test:
 	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \
