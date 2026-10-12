@@ -37,13 +37,14 @@ static void rl_ci_fail(void) {
 }
 
 /* Fail-closed replacement for the frame address: the fragment-8 distances must be read from the
-   currently resident fragment 8 (exact relocation binding), the palette must sit at the strip end,
+   currently resident fragment 8 (exact relocation binding, first through last byte of the 16-byte
+   table), the palette must sit at the strip end,
    and the whole 4-frame cycle at the selected distance must stay inside the strip. */
 static u8* rl_ci_frame(u16* palette, u8* texture, s32 index, s32 counter) {
     u32 travel;
 
     if ((Memmap_GetLoadedFragmentVaddr((uintptr_t)&D_862082A0[0]) != 0x862082A0U) ||
-        (Memmap_GetLoadedFragmentVaddr((uintptr_t)&D_862082A0[3]) != 0x862082ACU) ||
+        (Memmap_GetLoadedFragmentVaddr((uintptr_t)&D_862082A0[3] + 3) != 0x862082AFU) ||
         ((uintptr_t)palette - (uintptr_t)texture != RL_CI_STRIP_BYTES)) {
         rl_ci_fail();
     }

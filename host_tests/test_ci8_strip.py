@@ -102,8 +102,13 @@ int main(void) {
     frag8_base = (uintptr_t)D_862082A0 - 0x82a0;
     frag8_size = 0x82ac;
     assert(!try_frame(palette, 0, 0, 0, &frame));
-    assert(stops == 11);
-    n += 5;
+    /* registered span ends inside D_862082A0[3]: its first byte maps but its 4-byte read would not */
+    for (frag8_size = 0x82ad; frag8_size <= 0x82af; frag8_size++, n++)
+        assert(!try_frame(palette, 3, 0, 0, &frame));
+    frag8_size = 0x82b0;
+    assert(try_frame(palette, 3, 0, 0, &frame));
+    assert(stops == 14);
+    n += 6;
     printf("%d fixtures passed\n", n);
     return 0;
 }
