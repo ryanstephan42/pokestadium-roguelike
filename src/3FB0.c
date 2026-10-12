@@ -5,6 +5,9 @@
 #include "src/dp_intro.h"
 #include "src/util.h"
 #include "lib/ultralib/include/PR/leo.h"
+#ifdef STORY_AI_PROTOTYPE
+#include "src/story/sc_ai_runtime.h"
+#endif
 
 typedef enum {
     JPEG_MARKER_START_OF_FRAME = 0xC0,
@@ -502,6 +505,9 @@ MainPoolBlock* func_800042E0(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
 void func_80004364(u32 base_addr, u32 addr) {
     u32 sp1C;
     u32 temp_a0;
+#ifdef STORY_AI_PROTOTYPE
+    if (sc_ai_callback_clear(base_addr, addr)) return;
+#endif
 
     if ((addr & 0xFF000000) == 0x81000000) {
         sp1C = addr & 0xFFFFFF;
@@ -515,7 +521,12 @@ void func_800043BC(s32 arg0, Fragment* addr) {
     UNUSED s32 pad;
     u32 sp20 = main_pool_get_block_dist(addr);
 
+#ifdef STORY_AI_PROTOTYPE
+    sc_ai_loader_admit(arg0);
+    main_pool_set_func(addr, sc_ai_callback_tag(arg0), &func_80004364);
+#else
     main_pool_set_func(addr, arg0 + 0x81000000, &func_80004364);
+#endif
 
 #ifdef ROGUELIKE
     {
@@ -537,7 +548,13 @@ void func_800043BC(s32 arg0, Fragment* addr) {
 }
 
 ret_func_80004454 func_80004454(s32 arg0, u8* romStart, u8* romEnd) {
+#ifdef STORY_AI_PROTOTYPE
+    void *addr;
+    sc_ai_loader_admit(arg0);
+    addr = func_80003DC4(romStart, romEnd, 0, 0);
+#else
     void* addr = func_80003DC4(romStart, romEnd, 0, 0);
+#endif
 
     if (addr != NULL) {
         func_800043BC(arg0, (Fragment*)addr);

@@ -4,6 +4,10 @@
 #include "src/memory.h"
 #include "src/memmap.h"
 #include "sc_runtime_probe.h"
+#ifdef STORY_AI_PROTOTYPE
+#include "sc_ai_runtime.h"
+#include "sc_ai_lease.h"
+#endif
 
 extern u8 fragmentSC_ROM_START[], fragmentSC_relocs_ROM_END[];
 extern u8 fragmentSC_HDR_SIZE_IN_RAM[];
@@ -13,6 +17,9 @@ static int cold_invoke(ScColdRequest *request, u8 *rom_start, u8 *rom_end, unsig
     FragmentEntry entry;
     unsigned rom_size, required;
     int status;
+#ifdef STORY_AI_PROTOTYPE
+    unsigned token;
+#endif
     if (!request || calling || gScProbeActive) {
         osSyncPrintf("story probe: invalid/reentrant cold call\n");
         return 0x100 + SC_INVALID;
@@ -36,6 +43,9 @@ static int cold_invoke(ScColdRequest *request, u8 *rom_start, u8 *rom_end, unsig
     gScProbe.map_before = Memmap_GetFragmentBaseVaddr(0xe9);
     gScProbe.map_before_size = Memmap_GetFragmentSize(0xe9);
     main_pool_push_state(0x53434c44);
+#ifdef STORY_AI_PROTOTYPE
+    token = sc_ai_load_begin(SC_AI_LEASE_COLD);
+#endif
     entry = (FragmentEntry)func_80004454(0xe9, rom_start, rom_end);
     gScProbe.map_loaded = Memmap_GetFragmentBaseVaddr(0xe9);
     gScProbe.map_loaded_size = Memmap_GetFragmentSize(0xe9);
@@ -44,10 +54,22 @@ static int cold_invoke(ScColdRequest *request, u8 *rom_start, u8 *rom_end, unsig
         osSyncPrintf("story probe: cold overlay load failed\n");
         status = 0x100 + SC_INVALID;
     } else {
+#ifdef STORY_AI_PROTOTYPE
+        sc_ai_load_end(SC_AI_LEASE_COLD, token, (Fragment *)entry);
+        status = sc_ai_dispatch(SC_AI_LEASE_COLD, token, 0, request);
+        sc_ai_unload_begin(SC_AI_LEASE_COLD, token);
+#else
         status = entry(0, (unsigned)request);
+#endif
     }
+#ifdef STORY_AI_PROTOTYPE
+    if (!entry) sc_ai_fatal(22);
+#endif
     /* No cold code frame or pointer survives this pool pop. */
     main_pool_pop_state(0x53434c44);
+#ifdef STORY_AI_PROTOTYPE
+    sc_ai_unload_end(SC_AI_LEASE_COLD, token);
+#endif
     gScProbe.map_after = Memmap_GetFragmentBaseVaddr(0xe9);
     gScProbe.map_after_size = Memmap_GetFragmentSize(0xe9);
     gScProbe.cold_address = 0;
