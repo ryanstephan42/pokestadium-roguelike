@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "scope": "proposed-controller-inputs-not-native-menu-binding-proof",
+  "core": "mupen64plus_next",
+  "shared_frame_limit": 18000,
+  "shared_seconds_limit": 180,
+  "controller": 1,
+  "press_frames": 1,
+  "release_frames": 1,
+  "checkpoint_scope": "legal-pure-HOST-prehistory-not-native-wins",
+  "entry": [
+    {"when": "Menu Select top page", "button": "R"},
+    {"when": "SC_UI_MENU cursor New", "button": "DOWN"},
+    {"when": "SC_UI_MENU cursor Continue", "button": "N64_A"},
+    {"when": "SC_UI_REGIONS", "select_id": "PewterGym"},
+    {"when": "SC_UI_ENCOUNTERS", "select_id": "PewterGym/TEXT_PEWTERGYM_BROCK"},
+    {"when": "SC_UI_CONFIRM operation SC_UI_START", "button": "N64_A"}
+  ],
+  "scenarios": {
+    "win": {
+      "frame_limit": 7000,
+      "checkpoint": "normal-route.sc01",
+      "battle_policy": "select living Charmander slot 0 and Ember move 52 in move slot 3 through verified battle menu cursors; use other legal damaging moves if it faints; no writes to battle memory",
+      "required_outcome": "SC_WIN",
+      "earned_policy": "decline learning and skip evolution through explicit UI rows; inspect earned XP before reward; decline recruit/transfer to preserve carry"
+    },
+    "carry_reload": {
+      "frame_limit": 2000,
+      "checkpoint": "actual win journal from the same reservation, not a fabricated HOST win",
+      "input_policy": "save/menu, fresh Continue, inspect every party slot; no heal",
+      "required_state": "exact actually committed party, reward and completion state"
+    },
+    "loss": {
+      "frame_limit": 5000,
+      "checkpoint": "normal-route.sc01 in a separate isolated story save",
+      "battle_policy": "use Charmander slot 0 Growl move 45 and non-damaging legal actions for other slots through verified battle menu cursors; no forced outcome",
+      "required_outcome": "SC_LOSS then fresh Continue SC_LOST",
+      "required_state": "normal-interrupted.sc01 prebattle party and progression, terminal; no earned mutation"
+    },
+    "transform": {
+      "frame_limit": 4000,
+      "checkpoint": "transform-route.sc01",
+      "battle_policy": "select Ditto slot 0 and Transform move 144 through verified battle menu cursors; observe original-species carry on result",
+      "required_outcome": "actual Transform observed; win or loss recorded explicitly",
+      "optional": true
+    }
+  },
+  "pre_execution_blockers": [
+    "native ELF binding of HOST-derived layout and all checkpoint/data/source hashes",
+    "reviewed battle-menu cursor/button mapping for select-slot and select-move policies",
+    "reviewed conversion of SC01 source checkpoint into an isolated actual story Pak note",
+    "exclusive slot and explicit user execution grant"
+  ],
+  "failure_policy": "abort and reap exact owned process tree; never retry, force outcomes, enlarge budgets or mark unobserved cases passed"
+}

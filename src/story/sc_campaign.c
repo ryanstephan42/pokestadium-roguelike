@@ -5,6 +5,7 @@
 #include "sc_native_campaign.h"
 
 static ScCampaignControl control;
+const ScCampaignControl *const gScCampaignObserverControl = &control;
 static const ScNativeOperation zero_operation;
 static const ScNativeTerminal zero_terminal;
 static const ScNativeTerminalBinding zero_binding;

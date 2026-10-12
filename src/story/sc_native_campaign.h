@@ -31,6 +31,8 @@ typedef struct ScCampaignControl {
     ScBattleSnapshot observed[6];
     unsigned observed_active, observed_enemy, observed_hp;
 } ScCampaignControl;
+/* Read-only diagnostic address, never a battle authority or lifetime pin. */
+extern const ScCampaignControl *const gScCampaignObserverControl;
 
 /* SC image (sc_native_campaign.c): production owner adapter, entered only via
    sc_persist_call*(SC_CAMPAIGN_ENTRY, command). OPEN opens the presentation

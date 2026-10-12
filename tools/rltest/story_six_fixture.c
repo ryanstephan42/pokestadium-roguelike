@@ -13,7 +13,7 @@ static int record(ScSixTrace trace, void *context, const char *operation,
 }
 
 static int checkpoint(ScState *output, ScState *state, const ScCatalog *catalog,
-                      ScSixTrace trace, void *context) {
+                      ScSixTrace trace, void *context, int transform) {
     static const char *ids[] = {
         "OaksLab/rival-lab",
         "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER2",
@@ -23,6 +23,7 @@ static int checkpoint(ScState *output, ScState *state, const ScCatalog *catalog,
         "PewterGym/TEXT_PEWTERGYM_BROCK"
     };
     ScOptions options = {0, SC_STANDARD, SC_STARTER_TRIO, 4};
+    RlU32 seed = 42;
     unsigned encounters[6], heal = SC_NO_ENCOUNTER, i, j, variant, count, slot;
     int status;
     if (!output || !sc_catalog_valid(catalog) || !catalog->graph_reviewed ||
@@ -36,9 +37,19 @@ static int checkpoint(ScState *output, ScState *state, const ScCatalog *catalog,
     for (i = 0; i < catalog->graph->healing_count; i++)
         if (same_id(catalog->graph->healing[i].id, "heal:ViridianPokecenter")) heal = i;
     if (heal == SC_NO_ENCOUNTER) return SC_INVALID;
-    status = sc_new(state, catalog, &options, 42);
+    if (transform) {
+        options.starter_pool = SC_ALL_SPECIES;
+        options.starter = 0;
+        for (seed = 1; seed < 100000U; seed++) {
+            status = sc_new(state, catalog, &options, seed);
+            if (status != SC_OK) return status;
+            if (state->party[0].species == 132) break;
+        }
+        if (seed == 100000U) return SC_UNAVAILABLE;
+    }
+    status = sc_new(state, catalog, &options, seed);
     if (status != SC_OK) return status;
-    record(trace, context, "new", 42, state, status);
+    record(trace, context, "new", seed, state, status);
     for (i = 0; i < 5; i++) {
         variant = catalog->encounters[encounters[i]].kind == SC_RIVAL ? state->rival_branch : 0;
         status = record(trace, context, "begin", encounters[i], state,
@@ -83,11 +94,19 @@ int sc_six_checkpoint(ScState *output, const ScCatalog *catalog,
     int status;
     if (owned) return SC_INVALID;
     owned = 1;
-    status = checkpoint(output, &scratch, catalog, trace, context);
+    status = checkpoint(output, &scratch, catalog, trace, context, 0);
     owned = 0;
     return status;
 #else
     ScState scratch;
-    return checkpoint(output, &scratch, catalog, trace, context);
+    return checkpoint(output, &scratch, catalog, trace, context, 0);
 #endif
 }
+
+#ifndef STORY_SIX_PROBE
+int sc_six_transform_checkpoint(ScState *output, const ScCatalog *catalog,
+                                ScSixTrace trace, void *context) {
+    ScState scratch;
+    return checkpoint(output, &scratch, catalog, trace, context, 1);
+}
+#endif

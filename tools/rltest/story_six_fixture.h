@@ -8,5 +8,10 @@ typedef void (*ScSixTrace)(const char *operation, unsigned index,
 
 int sc_six_checkpoint(ScState *output, const ScCatalog *catalog,
                       ScSixTrace trace, void *context);
+/* HOST preparation only: legal all-species random Ditto starter seed. */
+#ifndef STORY_SIX_PROBE
+int sc_six_transform_checkpoint(ScState *output, const ScCatalog *catalog,
+                                ScSixTrace trace, void *context);
+#endif
 
 #endif
