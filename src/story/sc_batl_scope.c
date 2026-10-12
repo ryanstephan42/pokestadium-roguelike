@@ -111,6 +111,18 @@ int sc_batl_worker_admit(unk_D_86002F58_004_000_010 *worker) {
     return 1;
 }
 
+/*
+ * Story workers load archive 920000 entry model_id-1. Campaign model ids are party/enemy species
+ * (validated 1..151), Substitute 0x98 and the 25->0x99 variant; anything else is not a campaign model.
+ */
+int sc_batl_model_admit(unk_D_86002F58_004_000_010 *worker, u16 model_id) {
+    unsigned i;
+    if (!scope.active) return 1;
+    for (i = 0; i < 2; ++i)
+        if (scope.imports.workers[i] == worker) return model_id >= 1 && model_id <= 0x99;
+    return 1;
+}
+
 int sc_batl_scope_drain(const ScBatPermit *p) {
     unsigned i, bit;
     if (!sc_batl_scope_check(p)) {

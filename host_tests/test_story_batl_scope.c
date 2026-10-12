@@ -148,6 +148,11 @@ int main(int argc, char **argv) {
     copied = first; wrong = first; wrong.ticket++;
     assert(!sc_batl_scope_retire(&wrong));
     assert(sc_batl_scope_check(&first));
+    assert(sc_batl_model_admit(imports.workers[0], 1) && sc_batl_model_admit(imports.workers[1], 151));
+    assert(sc_batl_model_admit(imports.workers[0], 0x98) && sc_batl_model_admit(imports.workers[1], 0x99));
+    assert(!sc_batl_model_admit(imports.workers[0], 0) && !sc_batl_model_admit(imports.workers[1], 0x9A));
+    assert(!sc_batl_model_admit(imports.workers[0], 184) && !sc_batl_model_admit(imports.workers[0], 0xFFFF));
+    assert(imports.workers[0] && sc_batl_model_admit((void *)&imports, 184));
     assert(!sc_batl_scope_close() && !sc_batl_scope_map_change());
     if (failed >= 10) {
         unsigned j;

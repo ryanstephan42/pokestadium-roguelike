@@ -28,6 +28,7 @@ void sc_batl_scope_fail(void);
 void sc_batl_scope_require(int);
 int sc_batl_scope_map_change(void);
 int sc_batl_worker_admit(unk_D_86002F58_004_000_010 *);
+int sc_batl_model_admit(unk_D_86002F58_004_000_010 *, u16);
 int sc_batl_scope_drain(const ScBatPermit *);
 u32 Memmap_GetStoryBattleMapGeneration(void);
 

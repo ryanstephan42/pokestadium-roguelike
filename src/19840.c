@@ -367,7 +367,7 @@ s32 func_800198E4(unk_D_86002F58_004_000_010* arg0, u16 arg1, arg1_func_80010CA8
 
     sp1C = 0;
 #ifdef STORY_SERVICE_CANDIDATE
-    if (!sc_batl_worker_admit(arg0)) {
+    if (!sc_batl_worker_admit(arg0) || !sc_batl_model_admit(arg0, arg1)) {
         sc_batl_scope_require(0);
         return 0;
     }
