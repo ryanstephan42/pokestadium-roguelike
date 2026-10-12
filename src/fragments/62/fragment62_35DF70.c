@@ -5,7 +5,6 @@
 #endif
 #ifdef ROGUELIKE
 #include "src/roguelike/rl_native_relics.h"
-#include "src/roguelike/rl_effect_guard.h"
 
 static int rl_status_immunity(unsigned int status, int primary) {
     if (D_84390288 != 0 ||
@@ -1169,15 +1168,11 @@ void func_8437670C(void) {
     s32 idx = ptr->unk_44.unk_01;
 
 #ifdef ROGUELIKE
-    /* Handlers act on D_843C5238; the confusion self-hit swaps it without changing the actor, so
-       only dispatch when both agree. An effect outside the table (D_8438AE54[-1] is data) is
-       refused; a story campaign battle pauses fail-closed. */
-    idx = rl_effect_dispatch(D_843C5238, ptr, idx, ARRAY_COUNT(D_8438AE54));
-    if (idx <= RL_EFFECT_SKIP) {
+    /* Refuse an effect outside the table instead of calling D_8438AE54[-1]
+       (data); a story campaign battle pauses fail-closed. */
+    if (idx < 1 || idx > ARRAY_COUNT(D_8438AE54)) {
 #ifdef SC_CAMPAIGN_BATTLE_WIRED
-        if (idx == RL_EFFECT_REFUSE) {
-            sc_campaign_battle_fault();
-        }
+        sc_campaign_battle_fault();
 #endif
         return;
     }
