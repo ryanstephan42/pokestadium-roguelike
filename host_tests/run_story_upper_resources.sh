@@ -35,4 +35,9 @@ for unit in sc_resource_arena sc_native_resources sc_native_font sc_native_ui sc
     tools/ido/linux/7.1/cc "${target_flags[@]}" "src/story/$unit.c" -o "$output/$unit.o"
 done
 tools/ido/linux/7.1/cc "${target_flags[@]}" src/fragments/rl/rl_ui.c -o "$output/rl_ui.o"
+mips-linux-gnu-nm -u "$output/sc_native_resources.o" > "$output/resources-undefined.txt"
+if grep -q 'D_800A62C0' "$output/resources-undefined.txt"; then
+    echo "Resource loader references the private native DMA queue" >&2
+    exit 1
+fi
 echo "Upper resource HOST, ASan/UBSan and IDO checks: PASS (no ROM/native execution)"

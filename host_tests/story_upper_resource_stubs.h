@@ -48,6 +48,7 @@ void main_pool_set_func(void *, s32, AllocateFunc);
 BinArchive *func_800044F4(u8 *, u8 *, s32, s32);
 void *func_8000484C(BinArchive *, s32);
 int osRecvMesg(OSMesgQueue *, OSMesg *, int);
+void osCreateMesgQueue(OSMesgQueue *, OSMesg *, s32);
 u32 __osDisableInt(void);
 void __osRestoreInt(u32);
 void func_80003890(u8 *, u8 *);

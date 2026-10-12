@@ -41,6 +41,13 @@ destructor allocation on the upper path.
 Acquisition uses the existing ROM-read DMA dispatcher in chunks of at most
 4,096 bytes, checks dispatcher allocation failure before waiting, and checks
 the reply. Its temporary dispatcher request is not retained across BATL.
+Completion uses a story-owned, one-slot queue initialized once in the resource
+module, not the private queue in `3FB0.c`. The synchronous campaign acquisition
+submits one chunk and consumes its completion before submitting another.
+Queue, message slot and initialization flag add 32 bytes of target module
+storage before section alignment; they do not change the slab or lower-pool
+charges. The queue remains resident with the module through acquisition and
+retirement, including crash retention.
 The native worker provides cache invalidation for ROM reads; the existing
 PERS-SZP decompressor provides decompressed-cache writeback.
 

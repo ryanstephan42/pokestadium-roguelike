@@ -39,7 +39,6 @@ static BinArchive *icons;
 static char **moves, **species;
 unk_D_800AC870 *D_800AC870;
 u8 fonts_ROM_START[1], fonts_ROM_END[1], textdata_ROM_START[1], textdata_ROM_END[1];
-OSMesgQueue D_800A62C0;
 volatile u32 sc_crash_active;
 u32 __osDisableInt(void) { return 0; }
 void __osRestoreInt(u32 previous) { assert(!previous); }
@@ -206,6 +205,9 @@ s32 func_80000E80(s32 a, void *b, s32 c, s32 d, s32 e, s32 f) {
 }
 int osRecvMesg(OSMesgQueue *queue, OSMesg *message, int block) {
     (void)queue; (void)message; (void)block; assert(0); return -1;
+}
+void osCreateMesgQueue(OSMesgQueue *queue, OSMesg *message, s32 count) {
+    (void)queue; (void)message; (void)count; assert(0);
 }
 void func_80003890(u8 *a, u8 *b) { (void)a; (void)b; assert(0); }
 void sc_scene_draw(const ScUi *controller_ui) { assert(controller_ui == &ui); frames++; }

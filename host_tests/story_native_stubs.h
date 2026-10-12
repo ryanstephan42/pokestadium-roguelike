@@ -50,6 +50,7 @@ extern unk_D_800AC870 *D_800AC870;
 extern u8 fonts_ROM_START[], fonts_ROM_END[], textdata_ROM_START[];
 extern u8 textdata_ROM_END[];
 int osRecvMesg(OSMesgQueue *, OSMesg *, int);
+void osCreateMesgQueue(OSMesgQueue *, OSMesg *, s32);
 u32 __osDisableInt(void);
 void __osRestoreInt(u32);
 void func_80003890(u8 *, u8 *);

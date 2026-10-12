@@ -21,7 +21,14 @@ static unsigned receives;
 static unsigned disabled, restored;
 static int interrupt_crash;
 volatile u32 sc_crash_active;
-OSMesgQueue D_800A62C0;
+static OSMesgQueue *completion_queue;
+static unsigned queue_creations;
+static int pending_dma;
+void osCreateMesgQueue(OSMesgQueue *queue, OSMesg *messages, s32 count) {
+    assert(queue && messages && count == 1 && !queue_creations);
+    completion_queue = queue;
+    ++queue_creations;
+}
 u32 __osDisableInt(void) {
     assert(disabled == restored);
     ++disabled;
@@ -49,14 +56,17 @@ static void pop(void) {
     record = NULL;
 }
 s32 func_80000E80(s32 kind, void *out, s32 start, s32 bytes, s32 queue, s32 priority) {
-    assert(!kind && !priority && (OSMesgQueue *)queue == &D_800A62C0);
+    assert(!kind && !priority && completion_queue &&
+           (OSMesgQueue *)queue == completion_queue && !pending_dma);
     ++reads;
     if (fail_dma) return 1;
     memcpy(out, (void *)start, bytes);
+    pending_dma = 1;
     return 0;
 }
 int osRecvMesg(OSMesgQueue *queue, OSMesg *result, int block) {
-    assert(queue == &D_800A62C0 && block);
+    assert(queue == completion_queue && block && pending_dma);
+    pending_dma = 0;
     ++receives;
     *result = NULL;
     return 0;
@@ -135,6 +145,7 @@ int main(void) {
     pop(); fail_dma = 0;
     assert(!sc_native_resources_outstanding() && !arena.blocks[0].live);
     assert(sc_native_resources_acquire_upper(&arena, &icons, &moves, &species));
+    assert(queue_creations == 1 && !pending_dma);
     assert(sc_native_resources_outstanding() == 1 && allocations == 3);
     assert(D_800AC870 != &borrowed && !memcmp(&borrowed, &saved, sizeof(saved)));
     assert(arena.blocks[0].size == SC_NATIVE_RESOURCE_BYTES);

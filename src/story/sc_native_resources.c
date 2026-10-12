@@ -11,9 +11,11 @@
 
 extern u8 pokemon_icons_ROM_START[], pokemon_icons_ROM_END[];
 extern u8 textdata_ROM_END[];
-extern OSMesgQueue D_800A62C0;
 extern volatile u32 sc_crash_active;
 
+static OSMesgQueue resource_queue;
+static OSMesg resource_message;
+static int resource_queue_ready;
 /* Restore records hold caller slot pointers, which may lie in the mapped
    story image; it must stay mapped while any record is outstanding. */
 static u32 outstanding;
@@ -69,10 +71,14 @@ static int same_bytes(const void *a, const void *b, unsigned count) {
 static int read_rom(u8 *out, u8 *start, unsigned bytes) {
     OSMesg result;
     unsigned chunk;
+    if (!resource_queue_ready) {
+        osCreateMesgQueue(&resource_queue, &resource_message, 1);
+        resource_queue_ready = 1;
+    }
     while (bytes) {
         chunk = bytes > 0x1000 ? 0x1000 : bytes;
-        if (func_80000E80(0, out, (s32)start, chunk, (s32)&D_800A62C0, 0) ||
-            osRecvMesg(&D_800A62C0, &result, 1) || result) return 0;
+        if (func_80000E80(0, out, (s32)start, chunk, (s32)&resource_queue, 0) ||
+            osRecvMesg(&resource_queue, &result, 1) || result) return 0;
         out += chunk; start += chunk; bytes -= chunk;
     }
     return 1;
