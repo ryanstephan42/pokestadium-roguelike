@@ -137,8 +137,11 @@ specific native boot cause. Source comparison with `tools/rl/boot_test.py`
 and `test_play_run.py` finds the same Frontend, Angrylion software RDP, HLE
 RSP, dynamic-recompiler CPU, word-swapped RAM and software video callback.
 Boot smoke uses default Pak; play-run and story use pak1=memory. Story alone
-requests EnableExpansionPak=True, which must still be verified against real
-ELF-bound osMemSize8MiB. Save type is ROM/core-selected, not overridden.
+previously requested EnableExpansionPak=True, but offline inspection of the
+pinned core has no such key. The worker now uses the same core default as
+normal play-run, with actual ELF-bound osMemSize8MiB still mandatory for story.
+It does not guess a replacement from the "Disable Expansion Pak" label.
+Save type is ROM/core-selected, not overridden.
 Both configure joypad device1 at ports0/1; story additionally calibrates right
 stick/controller bits and uses preboot private note setup. Historical exact
 core bytes/settings cannot be claimed identical without prior pinned evidence.

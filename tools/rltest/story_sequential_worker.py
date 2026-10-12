@@ -626,7 +626,7 @@ def execute_scenario(name, args, factory=LeasedFrontend, stream_in=None, stream_
 
     emu = factory(args.core, ROOT / config["ROM"],
                   ROOT / config["BUILD_DIR"] / "pokestadium-rl.map", directory,
-                  options={"mupen64plus-pak1": "memory", "mupen64plus-EnableExpansionPak": "True"},
+                  options={"mupen64plus-pak1": "memory"},
                   timeout=180, prepare_save=prepare_save, progress=progress,
                   boot_symbols=binding.get("boot_symbols"),
                   frame_lease=lambda n: reserve_frames(
@@ -738,7 +738,7 @@ def execute_control(args, stream_out, factory=LeasedFrontend):
     progress = Progress(directory)
     emu = factory(args.core, args.control.parent / control["rom"],
                   args.control.parent / control["map"], directory,
-                  options={"mupen64plus-pak1": "memory", "mupen64plus-EnableExpansionPak": "True"},
+                  options={"mupen64plus-pak1": "memory"},
                   timeout=180, prepare_save=lambda emu: None, progress=progress,
                   boot_symbols=control["boot_symbols"],
                   frame_lease=lambda n: reserve_frames(sys.stdin, stream_out, "control", n))
