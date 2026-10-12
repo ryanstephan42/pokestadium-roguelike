@@ -44,6 +44,12 @@ MAP_NAME_RE = re.compile(r"^ (\.[A-Za-z0-9_.]+)\s*$")
 MAP_CONT_RE = re.compile(r"^\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S+)\s*$")
 
 
+def remap_build_paths(text, build_dir):
+    return re.sub(r"(?<![A-Za-z0-9_/])build/",
+                  lambda match: match.group() if text.startswith(build_dir + "/", match.start())
+                  else build_dir + "/", text)
+
+
 def script_key(path, section):
     # build/lib/libultra.a:foo.o -> build/lib/libultra.a(foo.o), matching ld's map syntax
     if ":" in path:
@@ -280,7 +286,7 @@ def gen(args):
             if not any(re.match(rf"^\s*{name}_VRAM_END = \.;", t) for t in tail):
                 sys.exit(f"gen_rl_ld: tail segment {name} not relocated")
     text = "\n".join(out)
-    text = re.sub(r"(?<![A-Za-z0-9_/])build/", args.build_dir + "/", text)
+    text = remap_build_paths(text, args.build_dir)
     with open(args.out_ld, "w") as f:
         f.write(text)
 
