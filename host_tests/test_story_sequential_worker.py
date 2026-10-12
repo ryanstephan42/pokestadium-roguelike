@@ -51,6 +51,20 @@ class ChildExitTests(unittest.TestCase):
 
 
 class BootThreadTests(unittest.TestCase):
+    def test_early_action_edge_does_not_wait_forever(self):
+        frames = []
+        scenario = object.__new__(worker.Scenario)
+        scenario.emu = types.SimpleNamespace(step=lambda n: frames.append(n))
+        scenario.abi = {"native_run_address": 0x80010000}
+        scenario.mapping = [0]
+        presses = []
+        scenario.press = presses.append
+        menu = dict(mode=0, action=0, locked=False, hp=[32], active=0)
+        with patch.object(worker, "read_menu", return_value=menu):
+            scenario.battle_action()
+        self.assertEqual(presses, ["N64_A"])
+        self.assertEqual(frames, [1] * 60)
+
     def test_native_observation_is_read_only_and_bounded(self):
         reads = []
         def read(symbol, size):

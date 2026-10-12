@@ -688,8 +688,11 @@ class Scenario:
                      menu["active"] != desired)
         if menu["mode"] == 0 and menu["action"] == 0:
             self.press(action_menu("switch" if switching else "fight"))
-            self.wait(lambda: read_menu(self.emu, self.abi["native_run_address"])["mode"] != 0,
-                      "native action menu acknowledged")
+            for _ in range(60):
+                if read_menu(self.emu, self.abi["native_run_address"])["mode"] != 0:
+                    break
+                self.emu.step(1)
+            return
             return
         if menu["mode"] == 2:
             slots = [i for i, hp in enumerate(menu["hp"]) if hp and i != menu["active"]]

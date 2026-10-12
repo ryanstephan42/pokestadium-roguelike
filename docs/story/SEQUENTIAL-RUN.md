@@ -420,3 +420,10 @@ the move. Saves containing gaps are refused as invalid, not silently
 truncated. The sequential package compacts its own prepared checkpoints;
 the shared historical fixture and frozen c399 are unchanged. The old
 six-probe build excludes the new rule; vanilla/normal roguelike are unchanged.
+Run12 preserved Ember and passed 4,274 native observations with no guard
+error. Its viewed snapshot shows a rendered human action menu waiting for
+A/B/Start; the worker had pulsed A during the earlier battle fade and then
+waited forever for that missed edge. The worker now rechecks the actual
+mode after at most 60 counted neutral frames, then returns to its normal
+input policy, allowing another fresh edge when the menu is ready. It
+does not write native state or extend any scenario/watchdog cap.
