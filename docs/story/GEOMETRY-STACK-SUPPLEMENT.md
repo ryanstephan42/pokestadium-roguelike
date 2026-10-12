@@ -183,10 +183,31 @@ code. It replaces the v3 "26 distinct targets" estimate.
 **Installer path (source).**
 - The only `GraphNode.unk_10` writers are `func_80010FA0`, which writes NULL (11BA0.c:15), and
   `func_80010FDC` (11BA0.c:27).
-- `func_80010FDC` is called only from geo cmd8, `func_80017B60` (geo_layout.c:150). It receives the raw
-  layout word `cmd->unk_04`, with no segment or offset conversion.
+- `func_80010FDC` is called only from geo cmd8, `func_80017B60` (geo_layout.c:150), with the layout word
+  `cmd->unk_04`.
+- It converts a non-NULL operand with `Util_ConvertAddrToVirtAddr` (11BA0.c:22, util.c:23) before storing it.
 - The other `unk_10` writers in `src/` act on non-GraphNode types.
-- Therefore every installed value is a cmd8 operand word, as it stands after load-time relocation.
+- Therefore every installed value is the converter image of a cmd8 operand word, as it stands after load-time
+  relocation.
+
+**Converter domains (`Util_ConvertAddrToVirtAddr`, osMemSize 4 or 8 MiB).**
+
+| Operand | Result |
+|---|---|
+| `v < osMemSize` (physical) | `v | 0x80000000` |
+| `v < 0x10000000` (segmented) | `gSegments[(v>>24)&15].vaddr + (v & 0xffffff)`; the raw value if the base is NULL |
+| `[0x81000000,0x90000000)` | `Memmap_GetFragmentVaddr` |
+| `[0x80000000,0x80000000+osMemSize)` | Passed through unchanged |
+| Anything else | NULL |
+
+Segment bases:
+- Segment 0 is `0x80000000` (stage_loader.c:319). This is the same as the physical path.
+- Segments 1–15 are set only to main-pool blocks (3FB0.c:486/498).
+- `main_pool_init(&gPool, …)` (util.c:66/68) puts every pool block at or above `gPool`, which is above both
+  target ranges.
+- No other `gSegments` writer exists; `Memmap_ClearSegmentMemmap` sets NULL.
+- So a segmented operand with segment id ≥ 1 cannot resolve into `.text`. A segment-0 operand at or above
+  osMemSize resolves to at least `0x80400000`.
 
 **Load-time translation (source).**
 - `Memmap_RelocateFragment` (memmap.c) applies R_MIPS_32, R_MIPS_26 and HI16/LO16 relocations through
@@ -215,23 +236,31 @@ code. It replaces the v3 "26 distinct targets" estimate.
     (`func_81407874`).
 - N and vanilla domains are identical apart from symbol names.
 
-**Over-approximation** (`tools/cmd8scan.py`). This scan does not assume the archive parser above is
-complete:
+**Over-approximation** (`tools/cmd8scan.py`, v4.1 `tools/cmd8scan-v2.py`). This scan does not assume the
+archive parser above is complete:
 - It treats every byte 0x08 at any phase as a candidate cmd8 and reads the operand at +4.
 - It covers every ELF PROGBITS section, the raw ROM, and every decompressed Yay0 stream. Yay0 (PERS-SZP) is
   the only decompressor; the ROMs contain no MIO0 or Yaz0 streams.
 - The KSEG1 alias is included.
 
-| Build | Candidates | Hits in the `func_80015220` range |
-|---|---:|---:|
-| N | 622,400 | 0 in `[0x80015eb0,0x80015fcc)` |
-| Vanilla | 617,050 | 0 in `[0x80015220,0x8001533c)` |
+v4.1 resolves every candidate through the full converter model above (physical, segment 0, segment ≥ 1,
+fragment, KSEG0 passthrough, NULL), for both osMemSize values:
+
+| Build | Candidates | KSEG0 literal hits (v4) | Converter-model hits (v4.1, 4 and 8 MiB) |
+|---|---:|---:|---|
+| N | 622,400 | 0 | **0** |
+| Vanilla | 617,050 | 0 | 29 |
+
+- All 29 vanilla hits are odd physical-alias values (for example `0x0001526f` and `0x00015295`), found in
+  icon/image data and Yay0 image streams. An odd target cannot be an instruction address.
+- N's per-class counts are in `outputs/cmd8scan-v2-*`.
 
 `refscan2.py` and `yay0scan.py` add register-tracked `lui` and all-phase stream scans. Their only non-self
 hits are unaligned or odd DATA values, or bytes inside compressed streams.
 
 **`func_80015220` status.**
-- Under this installer and relocation model it is **excluded** from the installed `unk_10` domain.
+- Under this installer, converter and relocation model it is **excluded** from the installed `unk_10` domain.
+- v4 omitted the physical and segmented converter paths. v4.1 corrects this; the N result is unchanged (0 hits).
 - Qualification: this assumes geo layouts are not synthesised at runtime by code that stores computed words.
   That has not been proven exhaustively.
 
