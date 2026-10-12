@@ -167,6 +167,16 @@ or visible-campaign acceptance are included.
 
 ## Reproducible current image authority
 
+The default-off `STORY_SERVICE_CANDIDATE` build requires explicit
+`SC_AI_BASE` (closure input ELF), `SC_SERVICE_AUTH_DIR` (generated authority),
+and `SC_SERVICE_SPAN_DIR` (generated module rights). It no longer silently
+selects historical service authority. Use an immutable input ELF rather than
+the output being linked. Regenerate authority and rights from the output and
+relink to a verified fixed point before binding the final ELF/map hashes.
+This bootstrap process is not a clean-room build or whole-candidate acceptance.
+`STORY_NATIVE_UI` additionally retains the existing libultra `getthreadid.o`
+and `vigetnextframebuf.o` members for authenticated DP retirement.
+
 For a current linked candidate, generate authority with
 `python host_tests/generate_story_ai_authority.py OUTPUT BUILD/pokestadium-rl.elf --native`.
 This path reads the supplied ELF and the adjacent source-controlled

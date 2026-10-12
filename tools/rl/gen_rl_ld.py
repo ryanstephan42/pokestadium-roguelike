@@ -102,6 +102,8 @@ def fragment_block(header_obj, frag_objs, relocs_obj, name="fragmentRL", vram=RL
         "        fragmentRL_TEXT_START = .;",
     ]
     b += [f"        {o}(.text);" for o in objs]
+    if name == "fragmentAI":
+        b += ["        . = ALIGN(32);"]
     b += ["        fragmentRL_TEXT_END = .;", "        fragmentRL_DATA_START = .;"]
     b += [f"        {o}(.data);" for o in objs]
     b += ["        fragmentRL_DATA_END = .;", "        fragmentRL_RODATA_START = .;"]
@@ -236,6 +238,10 @@ def gen(args):
                 out.extend(fragment_block(args.story_header, args.story_objs, args.story_relocs,
                                           "fragmentSC", 0x8F900000))
                 out.append('    __sc_assert_size = ASSERT(fragmentSC_HDR_SIZE_IN_RAM < 0x100000, "story overlay exceeds fragment address window");')
+                if args.ai_header:
+                    out.extend(fragment_block(args.ai_header, args.ai_objs, args.ai_relocs,
+                                              "fragmentAI", 0x8F900000))
+                    out.append('    __ai_assert_size = ASSERT(fragmentAI_HDR_SIZE_IN_RAM < 0x100000, "AI overlay exceeds fragment address window");')
             elif args.story_catalog:
                 out.append('    __sc_assert_rom = ASSERT(fragmentRL_relocs_ROM_END <= sc_probe_catalog_ROM_START, "story catalog overlaps RL overlay ROM");')
         out.append(l)
@@ -296,6 +302,9 @@ def main():
     p.add_argument("--story-header")
     p.add_argument("--story-relocs")
     p.add_argument("--story-objs", nargs="*", default=[])
+    p.add_argument("--ai-header")
+    p.add_argument("--ai-relocs")
+    p.add_argument("--ai-objs", nargs="*", default=[])
     p.add_argument("--frag-objs", nargs="*", default=[])
     p.add_argument("--sym-files", nargs="*", default=[])
     p.add_argument("--regen-fragments", nargs="*", type=int, default=[])

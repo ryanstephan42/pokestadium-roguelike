@@ -37,4 +37,5 @@ build_story_probe/
 build_story_ko_probe/
 build_story_ember_probe/
 build_story_six_probe/
+build_story_ai_prototype/
 .local/

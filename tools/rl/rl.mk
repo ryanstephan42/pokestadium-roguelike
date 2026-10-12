@@ -36,13 +36,14 @@ RL_LD_ARGS = $(foreach f,$(RL_SYM_OUT),-T $f)
 $(VANILLA_MAP):
 	$(error $(VANILLA_MAP) missing: build the vanilla ROM first (`make rl` does this))
 
-$(LDSCRIPT) $(RL_SYM_OUT) &: linker_scripts/$(VERSION)/$(TARGET).ld $(VANILLA_MAP) $(RL_SYM_PP) tools/rl/gen_rl_ld.py $(MAKEFILE_LIST) $(RL_MAIN_O) $(RL_FRAG_O) $(SC_COLD_O) $(RL_NATIVE_CONFIG)
+$(LDSCRIPT) $(RL_SYM_OUT) &: linker_scripts/$(VERSION)/$(TARGET).ld $(VANILLA_MAP) $(RL_SYM_PP) tools/rl/gen_rl_ld.py $(MAKEFILE_LIST) $(RL_MAIN_O) $(RL_FRAG_O) $(SC_COLD_O) $(SC_AI_OBJECTS) $(RL_NATIVE_CONFIG)
 	$(call print,Generating RL linker script:,$<,$(LDSCRIPT))
 	$(V)$(PYTHON) tools/rl/gen_rl_ld.py --vanilla-ld $< --vanilla-map $(VANILLA_MAP) --build-dir $(BUILD_DIR) \
 		--out-ld $(LDSCRIPT) --out-sym-dir $(RL_DIR) --out-anchors $(RL_DIR)/anchors.txt \
 		--frag-header $(RL_HEADER_O) --frag-relocs $(RL_RELOCS_O) \
-		--main-objs $(RL_MAIN_O) --frag-objs $(RL_FRAG_O) --sym-files $(RL_SYM_PP) \
+		--main-objs $(RL_MAIN_O) $(SC_DP_LIBRARY_OBJS) --frag-objs $(RL_FRAG_O) --sym-files $(RL_SYM_PP) \
 		$(if $(SC_PROBE_CATALOG),--story-catalog $(SC_PROBE_CATALOG) --story-header $(SC_HEADER_O) --story-relocs $(SC_RELOCS_O) --story-objs $(SC_COLD_O)) \
+		$(if $(SC_AI_HEADER),--ai-header $(SC_AI_HEADER) --ai-relocs $(SC_AI_RELOCS) --ai-objs $(SC_AI_OBJECTS)) \
 		--regen-fragments $(RL_REGEN_FRAGMENTS)
 
 $(RL_DIR)/%.o: $(RL_DIR)/%.s
@@ -64,21 +65,22 @@ $(foreach n,$(RL_REGEN_FRAGMENTS),$(eval $(call RL_NATIVE_RULES,$(n))))
 RL_LINK = $(LD) $(LDFLAGS) -T $(1) $(RL_LD_ARGS) -Map $(2) $(LIBULTRA_LIB) -o $(3)
 
 # Pass 1: link with an empty reloc table to learn the fragment's relocations.
-$(RL_ELF_PASS1): $(O_FILES) $(LIBULTRA_LIB) $(LDSCRIPT) $(RL_SYM_OUT) $(RL_RELOCS0_O) $(SC_RELOCS0_O) $(RL_NATIVE_HEADERS) $(RL_NATIVE_RELOCS0)
+$(RL_ELF_PASS1): $(O_FILES) $(LIBULTRA_LIB) $(LDSCRIPT) $(RL_SYM_OUT) $(RL_RELOCS0_O) $(SC_RELOCS0_O) $(SC_AI_RELOCS0) $(RL_NATIVE_HEADERS) $(RL_NATIVE_RELOCS0)
 	@$(PRINT) "$(GREEN)Linking RL pass 1:  $(BLUE)$@ $(NO_COL)\n"
-	$(V)sed -e 's|$(RL_RELOCS_O)|$(RL_RELOCS0_O)|' $(if $(SC_RELOCS_O),-e 's|$(SC_RELOCS_O)|$(SC_RELOCS0_O)|') $(foreach n,$(RL_REGEN_FRAGMENTS),-e 's|$(RL_DIR)/fragment$(n)_relocs.o|$(RL_DIR)/fragment$(n)_relocs_pass1.o|') $(LDSCRIPT) > $(RL_DIR)/pass1.ld
+	$(V)sed -e 's|$(RL_RELOCS_O)|$(RL_RELOCS0_O)|' $(if $(SC_RELOCS_O),-e 's|$(SC_RELOCS_O)|$(SC_RELOCS0_O)|') $(if $(SC_AI_RELOCS),-e 's|$(SC_AI_RELOCS)|$(SC_AI_RELOCS0)|') $(foreach n,$(RL_REGEN_FRAGMENTS),-e 's|$(RL_DIR)/fragment$(n)_relocs.o|$(RL_DIR)/fragment$(n)_relocs_pass1.o|') $(LDSCRIPT) > $(RL_DIR)/pass1.ld
 	$(V)$(call RL_LINK,$(RL_DIR)/pass1.ld,$(RL_DIR)/pass1.map,$@)
 
 $(RL_DIR)/fragmentRL_relocs.s: $(RL_ELF_PASS1) tools/rl/gen_rl_relocs.py
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $< $@
 
 # Pass 2: final link with the real reloc table, then check the table is stable.
-$(ELF): $(RL_ELF_PASS1) $(RL_RELOCS_O) $(SC_RELOCS_O) $(RL_NATIVE_RELOCS) tools/rl/check_rl_anchors.py $(if $(SC_RELOCS_O),tools/rl/check_story_residency.py)
+$(ELF): $(RL_ELF_PASS1) $(RL_RELOCS_O) $(SC_RELOCS_O) $(SC_AI_RELOCS) $(RL_NATIVE_RELOCS) tools/rl/check_rl_anchors.py $(if $(SC_RELOCS_O),tools/rl/check_story_residency.py)
 	@$(PRINT) "$(GREEN)Linking RL ELF file:  $(BLUE)$@ $(NO_COL)\n"
 	$(V)$(call RL_LINK,$(LDSCRIPT),$(MAP),$@)
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragmentRL_relocs_check.s >/dev/null
 	$(V)cmp -s $(RL_DIR)/fragmentRL_relocs.s $(RL_DIR)/fragmentRL_relocs_check.s || (echo "rl: fragment relocs changed between passes" && false)
 	$(if $(SC_RELOCS_O),$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragmentSC_relocs_check.s --section .fragmentSC && cmp $(RL_DIR)/fragmentSC_relocs.s $(RL_DIR)/fragmentSC_relocs_check.s)
+	$(if $(SC_AI_RELOCS),$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragmentAI_relocs_check.s --section .fragmentAI && cmp $(RL_DIR)/fragmentAI_relocs.s $(RL_DIR)/fragmentAI_relocs_check.s)
 	$(V)$(foreach n,$(RL_REGEN_FRAGMENTS),$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragment$(n)_relocs_check.s --section .fragment$(n) --original assets/$(VERSION)/fragments/$(n)/fragment$(n)_reloc.rodatabin.bin --anchors $(RL_DIR)/anchors.txt --map $(MAP) --patch-data && cmp $(RL_DIR)/fragment$(n)_relocs.s $(RL_DIR)/fragment$(n)_relocs_check.s && ) true
 	$(V)$(PYTHON) tools/rl/check_rl_anchors.py $(RL_DIR)/anchors.txt $(MAP)
 	$(if $(SC_RELOCS_O),$(V)$(PYTHON) tools/rl/check_story_residency.py $@)

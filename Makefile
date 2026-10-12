@@ -61,6 +61,30 @@ STORY_PROBE ?= 0
 STORY_KO_PROBE ?= 0
 STORY_EMBER_PROBE ?= 0
 STORY_SIX_PROBE ?= 0
+STORY_AI_PROTOTYPE ?= 0
+STORY_SERVICE_CANDIDATE ?= 0
+STORY_MOON_STONES ?= 0
+STORY_NATIVE_UI ?= 0
+ifeq ($(STORY_NATIVE_UI),1)
+  ifneq ($(STORY_PROBE),1)
+    $(error STORY_NATIVE_UI=1 requires STORY_PROBE=1)
+  endif
+  BUILD_DEFINES += -DSTORY_NATIVE_UI
+endif
+ifeq ($(STORY_SERVICE_CANDIDATE),1)
+  ifneq ($(STORY_SIX_PROBE),1)
+    $(error STORY_SERVICE_CANDIDATE=1 requires STORY_SIX_PROBE=1)
+  endif
+  ifeq ($(STORY_AI_PROTOTYPE),1)
+    $(error STORY_SERVICE_CANDIDATE excludes the legacy SELECT prototype)
+  endif
+  BUILD_DEFINES += -DSTORY_SERVICE_CANDIDATE
+endif
+ifeq ($(STORY_AI_PROTOTYPE),1)
+  ifneq ($(STORY_SIX_PROBE),1)
+    $(error STORY_AI_PROTOTYPE=1 requires STORY_SIX_PROBE=1)
+  endif
+endif
 ifeq ($(STORY_SIX_PROBE),1)
   ifneq ($(STORY_KO_PROBE),1)
     $(error STORY_SIX_PROBE=1 requires STORY_KO_PROBE=1)
@@ -143,6 +167,9 @@ ifeq ($(ROGUELIKE),1)
       endif
       ifeq ($(STORY_SIX_PROBE),1)
         BUILD_DIR := build_story_six_probe
+        ifeq ($(STORY_AI_PROTOTYPE),1)
+          BUILD_DIR := build_story_ai_prototype
+        endif
       endif
     endif
   endif
@@ -184,6 +211,9 @@ ifeq ($(ROGUELIKE),1)
       endif
       ifeq ($(STORY_SIX_PROBE),1)
         BUILD_DEFINES += -DSTORY_SIX_PROBE
+        ifeq ($(STORY_AI_PROTOTYPE),1)
+          BUILD_DEFINES += -DSTORY_AI_PROTOTYPE
+        endif
       endif
     endif
   endif
