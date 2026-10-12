@@ -22,6 +22,28 @@ from tools.rltest import story_sequential_worker as worker
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
+class BootThreadTests(unittest.TestCase):
+    def test_saved_thread_register_offsets_and_bounded_stack(self):
+        data = bytearray(0x130)
+        data[0x10:0x12] = (8).to_bytes(2, "big")
+        for offset, value in ((0x14, 6), (0x11C, 0x80005000),
+                              (0xF4, 0x80001000), (0x104, 0x80007000)):
+            data[offset:offset + 4] = value.to_bytes(4, "big")
+        reads = []
+
+        def read(address, size):
+            reads.append((address, size))
+            return bytes(data) if address == "pThreads" else bytes(size)
+
+        row = worker.boot_thread(types.SimpleNamespace(read=read))
+        self.assertEqual((row["state"], row["id"], row["pc"], row["ra"]),
+                         (8, 6, 0x80005000, 0x80007000))
+        self.assertEqual(len(row["stack_words"]), 16)
+        self.assertEqual(len(reads), 17)
+        data[0xF4:0xF8] = (0xFFFFFFFF).to_bytes(4, "big")
+        self.assertNotIn("stack_words", worker.boot_thread(types.SimpleNamespace(read=read)))
+
+
 class FakeCore:
     """Real save-buffer and frame leases; no ROM is loaded or executed."""
 

@@ -330,3 +330,12 @@ carry reload, loss/terminal reload and reachable Transform. The gate and vanilla
 byte-match remain separately outstanding; neither was run under SOURCE/HOST
 scope. No existing `six_natural` command may silently consume this package.
 Old c399 evidence and normal 4 MiB paths are untouched.
+# Standing-grant boot diagnosis
+
+The first `8ddd6dc` control reached the visible title at 1500 frames under
+registered Angrylion four-thread settings; story remained at intro state 1
+through 5500 frames with actual 8 MiB. This rules out shared software readback
+and absent Expansion Pak as explanations for that run, not story boot faults.
+Read-only diagnostics now retain mapped overlay bases/sizes, saved Game-thread
+PC/cause/SP/RA and at most 16 stack words, plus pool/failure records. Missing
+diagnostic symbols are reported individually; no native memory is changed.

@@ -64,6 +64,18 @@ def atomic_bytes(path, data):
     os.replace(temporary, path)
 
 
+def boot_thread(emu):
+    data = emu.read("pThreads", 0x130)
+    word = lambda offset: int.from_bytes(data[offset:offset + 4], "big")
+    row = dict(state=int.from_bytes(data[0x10:0x12], "big"), id=word(0x14),
+               queue=word(8), pc=word(0x11C), cause=word(0x120),
+               badvaddr=word(0x124), sp=word(0xF4), ra=word(0x104))
+    if 0x80000000 <= row["sp"] <= 0x807FFFC0:
+        row["stack_words"] = [int.from_bytes(value, "big") for value in
+                              [emu.read(row["sp"] + i * 4, 4) for i in range(16)]]
+    return row
+
+
 class Progress:
     def __init__(self, directory):
         self.directory = directory
@@ -97,6 +109,20 @@ class Progress:
                     fragments = emu.read("gFragments", 0xEA * 8)
                     self.boot_witness["mapped_fragments"] = [
                         i for i in range(0xEA) if any(fragments[i * 8:(i + 1) * 8])]
+                    self.boot_witness["fragment_maps"] = {
+                        str(i): dict(base=int.from_bytes(fragments[i * 8:i * 8 + 4], "big"),
+                                     size=int.from_bytes(fragments[i * 8 + 4:(i + 1) * 8], "big"))
+                        for i in self.boot_witness["mapped_fragments"]}
+                    try:
+                        self.boot_witness["game_thread"] = boot_thread(emu)
+                    except HarnessError as exc:
+                        self.boot_witness["game_thread"] = {"error": str(exc)}
+                    for symbol, size in (("sMemPool", 0x34), ("gScPoolFailure", 40),
+                                         ("gScPoolZero", 40)):
+                        try:
+                            self.boot_witness[symbol] = emu.read(symbol, size).hex()
+                        except HarnessError as exc:
+                            self.boot_witness[symbol] = {"error": str(exc)}
             except HarnessError as exc:
                 error = str(exc)
         changed = self.boundary not in self.snapshot_boundaries
