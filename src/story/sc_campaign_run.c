@@ -150,6 +150,13 @@ int sc_campaign_battle_after(RlBattleSide *player, RlBattleSide *enemy, int resu
     return result;
 }
 
+void sc_campaign_battle_fault(void) {
+    if (!gScCampaignBattle) return;
+    tick_failed = 1;
+    gScCampaignRun.error = 1;
+    osSyncPrintf("story campaign: unbound effect dispatch; battle paused\n");
+}
+
 int sc_campaign_battle_paused(void) {
     return gScCampaignBattle && (tick_failed || held(sc_campaign_control()));
 }

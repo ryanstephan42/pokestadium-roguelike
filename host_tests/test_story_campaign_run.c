@@ -530,6 +530,25 @@ static void observe_refusal(void) {
     }
 }
 
+/* fragment62 refuses an out-of-table effect dispatch: inert outside a
+   campaign battle, otherwise the same render-only pause as a bad frame */
+static void effect_fault(void) {
+    int result = 7;
+    start();
+    state();
+    want_launch = 1; state();
+    assert(!gScCampaignBattle);
+    gScCampaignRun.error = 0;
+    sc_campaign_battle_fault();
+    assert(!sc_campaign_battle_paused() && !gScCampaignRun.error);
+    gScCampaignBattle = 1;
+    sc_campaign_battle_fault();
+    assert(sc_campaign_battle_paused() && gScCampaignRun.error);
+    assert(sc_campaign_battle_gate(&sides[0], &sides[1], &result) == 1 && result == 0);
+    assert(sc_campaign_battle_after(&sides[0], &sides[1], 9) == 0);
+    gScCampaignBattle = 0;
+}
+
 int main(void) {
     /* shared installer/adapter harness scenarios (hooks unset) */
     run(lifecycle, "harness: installer lifecycle");
@@ -554,6 +573,7 @@ int main(void) {
     run(refused_drain_run, "refused drain after arm: fail-stop retains hook/mapping");
     run(bad_frame, "invalid frame: tick fail-stops and pauses the battle; inert outside launch");
     run(observe_refusal, "refused observation: tick fail-stop pause");
+    run(effect_fault, "unbound effect dispatch: campaign-only render pause");
     puts("STORY CAMPAIGN RUN HOST PASSED");
     return 0;
 }

@@ -20,6 +20,9 @@ int sc_campaign_battle_mapping(const RlU8 indices[6], unsigned count);
 int sc_campaign_battle_gate(RlBattleSide *player, RlBattleSide *enemy, int *result);
 int sc_campaign_battle_after(RlBattleSide *player, RlBattleSide *enemy, int result);
 int sc_campaign_battle_paused(void);
+/* Fragment-62 refusal of an unbound native effect dispatch: pauses the
+   battle the same way as an invalid observation (render only). */
+void sc_campaign_battle_fault(void);
 /* Handler for STATE_STORY_CAMPAIGN and the Menu Select hook. The poll returns 1
    when a battle launch is ready; Game_Thread then calls the launch from its own
    frame (a shallower battle stack). sc_campaign_state composes the two. */
