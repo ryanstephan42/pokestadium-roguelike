@@ -49,8 +49,9 @@ SHA `e9b319b24ec50bc7eb3ea72229fc72aef673939e665ef1bfc4ca4a3a44dbcb12`.
 Native win and exact carry reload passed on the preceding image. Accepted
 learning/evolution and natural terminal loss/reload are not yet natively
 verified; the user's own play replaces further automated loss attempts.
-Authentic Red/Blue teams use Stadium mechanics/presentation. A PC, shops and
-items are outside scope. Long animations and remaining integration issues
+Authentic Red/Blue teams use Stadium mechanics/presentation; move/model
+animation pairing is not exhaustively verified. A PC, shops and items are
+outside scope. Long animations and remaining integration issues
 should be reported with version, seed, preset, trainer, party/levels, screen,
 last action, expected/actual result and whether saving/Continue was involved.
 Keep ROMs, saves and game screenshots out of git.
