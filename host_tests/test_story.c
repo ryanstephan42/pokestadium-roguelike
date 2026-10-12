@@ -286,10 +286,9 @@ static void test_postbattle_ko_ledger(void) {
     unsigned i, denominator;
 
     setup();
-    /* Repeated entries make a bounded synthetic multi-KO/loss fixture. */
-    fixtures[0].teams[2].count = 3;
+    /* Repeated entries make a bounded synthetic multi-KO fixture. */
+    fixtures[0].teams[2].count = 2;
     fixtures[0].teams[2].mons[1] = fixtures[0].teams[2].mons[0];
-    fixtures[0].teams[2].mons[2] = fixtures[0].teams[2].mons[0];
     assert(sc_make_mon(&catalog, &input, 0, &state.party[0]) == SC_OK);
     state.party[0].exp = sc_xp(7, RL_MEDIUM_SLOW) - 1;
     state.party[1] = state.party[0];
@@ -340,8 +339,23 @@ static void test_postbattle_ko_ledger(void) {
     assert(sc_ko_ledger_apply_next(&ledger, &state, &combat) == SC_OK);
     assert(ledger.next == ledger.count && state.party[0].exp == old_exp + second_award);
     assert(state.defeated_mask == 3);
+    assert(sc_finish(&state, &catalog, SC_WIN, 2) == SC_OK);
+    assert(state.phase == SC_REWARD);
+
+    setup();
+    assert(sc_begin(&state, &catalog, 0, 2) == SC_OK);
+    assert(sc_combat_prepare(&combat, &state, &catalog) == SC_OK);
+    sc_ko_ledger_init(&ledger);
+    assert(sc_ko_ledger_record(&ledger, 0, combat.team.count, state.party_count,
+                               1, 1) == SC_OK);
+    captured = state;
     assert(sc_finish(&state, &catalog, SC_LOSS, 2) == SC_OK);
-    assert(state.phase == SC_LOST);
+    assert(state.phase == SC_LOST && state.party[0].exp == captured.party[0].exp);
+    assert(!memcmp(state.party, captured.party, sizeof(state.party)));
+    sc_ko_ledger_discard(&ledger);
+    assert(ledger.count == 0 && ledger.next == 0 &&
+           ledger.enemy_count == 0 && ledger.party_count == 0);
+    assert(state.phase == SC_LOST && !memcmp(state.party, captured.party, sizeof(state.party)));
 }
 
 static void test_healing_and_loss(void) {

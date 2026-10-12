@@ -23,6 +23,7 @@ typedef struct ScKoLedger {
 } ScKoLedger;
 
 void sc_ko_ledger_init(ScKoLedger *ledger);
+void sc_ko_ledger_discard(ScKoLedger *ledger);
 int sc_combat_prepare(ScCombat *combat, const ScState *state, const ScCatalog *catalog);
 int sc_ko_values(ScState *state, const ScSpecies party_species[6],
                  const ScSpecies enemy_species[6], const ScTeam *team,

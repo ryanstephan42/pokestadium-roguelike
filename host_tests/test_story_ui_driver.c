@@ -39,6 +39,10 @@ static int launch(void *context, const ScUiBattleRequest *request) {
     assert(checkpoint.interrupted && checkpoint.state.phase == SC_ROUTE);
     return launch_status;
 }
+static int launch_detached(void *context, const ScUiBattleRequest *request) {
+    int status = launch(context, request);
+    return status == SC_OK ? sc_ui_driver_detach_battle(&driver) : status;
+}
 static void draw(void *context, const ScUi *controller) {
     (void)context;
     assert(controller == &ui && rl_ui_list_valid(&controller->list));
@@ -158,6 +162,29 @@ int main(void) {
         assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_INVALID);
         assert(sc_ui_driver_bind(&driver, &ui, &backing, &calls) == SC_OK && driver.bound);
     }
+    sc_ui_driver_retire(&driver, &ui, &backing);
+    memset(&ui, 0, sizeof(ui));
+    memset(&driver, 0, sizeof(driver));
+    memset(note, 0, sizeof(note));
+    calls.launch = launch_detached;
+    assert(sc_ui_init(&ui, &sc_catalog, &device, 456) == SC_OK);
+    assert(sc_ui_driver_bind(&driver, &ui, &backing, &calls) == SC_OK);
+    assert(sc_ui_driver_detach_battle(&driver) == SC_INVALID && !driver.exit_requested);
+    assert(choose(1) == SC_OK);
+    assert(choose(3) == SC_OK);
+    assert(choose(5) == SC_OK);
+    assert(choose(1) == SC_OK && ui.screen == SC_UI_REGIONS);
+    region = 0;
+    for (i = 0; i < (unsigned)ui.list.count; i++)
+        if (!strcmp(ui.labels[i], "OaksLab")) region = ui.ids[i];
+    assert(region && choose(region) == SC_OK);
+    for (encounter = 0; encounter < sc_catalog.count; encounter++)
+        if (!strcmp(sc_catalog.encounters[encounter].id, "OaksLab/rival-lab")) break;
+    assert(choose(encounter) == SC_OK && choose(1) == SC_OK);
+    assert(driver.exit_requested && !driver.launched && !driver.launch_pending);
+    assert(!ui.request_ready && captured.operation_id && captured.party_count == 1);
+    assert(sc_ui_driver_step(&driver, 0) == SC_UNAVAILABLE);
+    assert(sc_ui_driver_retire(&driver, &ui, &backing) == SC_OK);
     puts("Typed story UI driver: refusal/retry, two sequential operations, save/continue, stale completion and terminal; OK");
     return 0;
 }

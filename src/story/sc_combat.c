@@ -71,6 +71,10 @@ void sc_ko_ledger_init(ScKoLedger *ledger) {
     }
 }
 
+void sc_ko_ledger_discard(ScKoLedger *ledger) {
+    sc_ko_ledger_init(ledger);
+}
+
 int sc_ko_ledger_record(ScKoLedger *ledger, unsigned enemy_slot,
                         unsigned enemy_count, unsigned party_count,
                         RlU8 participants, RlU8 recipients) {

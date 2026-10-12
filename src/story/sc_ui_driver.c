@@ -47,6 +47,19 @@ int sc_ui_driver_retire(ScUiDriver *driver, const ScUi *ui, const ScUiBattleRequ
     return SC_OK;
 }
 
+int sc_ui_driver_detach_battle(ScUiDriver *driver) {
+    if (!driver || !driver->bound || driver->exit_requested ||
+        (!driver->launch_pending && !driver->launched) || !driver->ui ||
+        !driver->ui->request_ready || driver->ui->state.phase != SC_BATTLE ||
+        driver->ui->pending_save)
+        return failure(driver, SC_INVALID, "Cannot detach an unresolved story battle request");
+    driver->ui->request_ready = 0;
+    driver->launch_pending = driver->launched = 0;
+    driver->exit_requested = 1;
+    driver->calls.leave(driver->calls.context);
+    return SC_OK;
+}
+
 static int launch(ScUiDriver *driver) {
     int status;
     if (!driver->ui->request_ready || driver->ui->state.phase != SC_BATTLE)
@@ -61,6 +74,7 @@ static int launch(ScUiDriver *driver) {
         if (status < SC_INVALID || status > SC_UNREVIEWED) status = SC_INVALID;
         return failure(driver, status, "Battle launch refused; A retries unchanged checkpointed request");
     }
+    if (driver->exit_requested) return SC_OK;
     driver->launch_pending = 0;
     driver->launched = 1;
     return SC_OK;

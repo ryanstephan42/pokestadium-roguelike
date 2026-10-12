@@ -24,6 +24,10 @@ typedef struct ScUiDriver {
 
 int sc_ui_driver_bind(ScUiDriver *driver, ScUi *prepared_ui,
                       ScUiBattleRequest *request_backing, const ScUiDriverCalls *calls);
+/* Ends the presentation transaction after the caller has copied the request.
+   The request remains valid in caller-owned storage; this clears UI launch
+   ownership so its presentation shell can retire before the battle starts. */
+int sc_ui_driver_detach_battle(ScUiDriver *driver);
 /* Unbinds only an exited driver with no launch, request or save in flight;
    SC_PENDING otherwise, SC_INVALID on identity mismatch. */
 int sc_ui_driver_retire(ScUiDriver *driver, const ScUi *ui, const ScUiBattleRequest *request);
