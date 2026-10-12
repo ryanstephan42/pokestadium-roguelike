@@ -614,12 +614,18 @@ static int commit_result(void) {
 }
 
 int sc_runtime_probe_poll(void) {
-    ScColdRequest request = {0};
-    RlBattleRules rules = {3,0,0x20,0,1,0,1,0};
+    /* Static, not stack: the poll is not re-entered and rl_start_battle runs the whole native battle
+       beneath this frame on the Game thread stack. */
+    static ScColdRequest request;
+    static const RlBattleRules rules = {3,0,0x20,0,1,0,1,0};
     static RlLaunchResult result;
     unsigned command = gScProbe.command, i;
     int status;
     if (!command) return 0;
+    {
+        unsigned char *values = (unsigned char *)&request;
+        for (i = 0; i < sizeof(request); i++) values[i] = 0;
+    }
 #ifdef STORY_KO_PROBE
     if (command == 6) {
         osSyncPrintf("story probe: bridge command unavailable in KO profile\n");

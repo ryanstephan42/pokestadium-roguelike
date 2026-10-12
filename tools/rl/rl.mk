@@ -74,7 +74,7 @@ $(RL_DIR)/fragmentRL_relocs.s: $(RL_ELF_PASS1) tools/rl/gen_rl_relocs.py
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $< $@
 
 # Pass 2: final link with the real reloc table, then check the table is stable.
-$(ELF): $(RL_ELF_PASS1) $(RL_RELOCS_O) $(SC_RELOCS_O) $(SC_AI_RELOCS) $(RL_NATIVE_RELOCS) tools/rl/check_rl_anchors.py $(if $(SC_RELOCS_O),tools/rl/check_story_residency.py)
+$(ELF): $(RL_ELF_PASS1) $(RL_RELOCS_O) $(SC_RELOCS_O) $(SC_AI_RELOCS) $(RL_NATIVE_RELOCS) tools/rl/check_rl_anchors.py $(if $(SC_RELOCS_O),tools/rl/check_story_residency.py tools/rl/check_story_frames.py)
 	@$(PRINT) "$(GREEN)Linking RL ELF file:  $(BLUE)$@ $(NO_COL)\n"
 	$(V)$(call RL_LINK,$(LDSCRIPT),$(MAP),$@)
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragmentRL_relocs_check.s >/dev/null
@@ -84,6 +84,7 @@ $(ELF): $(RL_ELF_PASS1) $(RL_RELOCS_O) $(SC_RELOCS_O) $(SC_AI_RELOCS) $(RL_NATIV
 	$(V)$(foreach n,$(RL_REGEN_FRAGMENTS),$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragment$(n)_relocs_check.s --section .fragment$(n) --original assets/$(VERSION)/fragments/$(n)/fragment$(n)_reloc.rodatabin.bin --anchors $(RL_DIR)/anchors.txt --map $(MAP) --patch-data && cmp $(RL_DIR)/fragment$(n)_relocs.s $(RL_DIR)/fragment$(n)_relocs_check.s && ) true
 	$(V)$(PYTHON) tools/rl/check_rl_anchors.py $(RL_DIR)/anchors.txt $(MAP)
 	$(if $(SC_RELOCS_O),$(V)$(PYTHON) tools/rl/check_story_residency.py $@)
+	$(if $(SC_RELOCS_O),$(V)$(PYTHON) tools/rl/check_story_frames.py $@)
 
 # Extracted asm that needs position-independence fixups (see tools/rl/asm_fixups.py).
 RL_ASM_FIXUP_FILES := asm/$(VERSION)/49190.s
