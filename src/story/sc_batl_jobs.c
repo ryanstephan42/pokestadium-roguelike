@@ -80,9 +80,12 @@ int sc_job_fx_complete(unsigned int size, unsigned int buffer, unsigned int expe
 }
 
 /* Mirrors the 8432C830 walk: every 8-byte record it reads (tag s8 +0, slot s16 +2, payload +4)
- * lies in the buffer, every published slot indexes D_843920C0[256], and the walk terminates. */
+ * lies in the buffer, every published slot indexes D_843920C0[256], every published payload is a
+ * 4-aligned pointer with at least 4 bytes left inside the same buffer (as all 192 records of the
+ * decoded N9 effect archive are), and the walk terminates. The typed payload extent is not checked. */
 int sc_job_fx_list_ok(unsigned int buffer, unsigned int list) {
     unsigned int at = list;
+    unsigned int payload;
     short id;
 
     for (;;) {
@@ -95,6 +98,10 @@ int sc_job_fx_list_ok(unsigned int buffer, unsigned int list) {
             return *(const signed char*)at == 0;
         }
         if (id < 0 || id >= SC_FX_SLOTS) {
+            return 0;
+        }
+        payload = *(const unsigned int*)(at + 4);
+        if (!sc_job_in(buffer, SC_JOB_FX_BYTES, payload, 4)) {
             return 0;
         }
         at += 8;

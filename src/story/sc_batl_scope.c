@@ -328,6 +328,9 @@ static int model_done(unk_D_86002F58_004_000_010 *worker, sp18_func_800198E4 *jo
     return 1;
 }
 
+/* Called from func_80019484 on the loader thread AFTER 19328 parsed the result and the image scope
+ * was cleared: ties the completed job to the index/fragment/header actually loaded. It does not
+ * snapshot the index at enqueue time and does not prove header+0 == species. */
 void sc_batl_model_loaded(const void *queue, const void *job, s32 index, const void *fragment,
                           const void *header) {
     int i;
