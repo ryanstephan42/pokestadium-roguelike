@@ -181,10 +181,19 @@ Thread roots come from every `jal osCreateThread` in the candidate ELF (`osct-si
     - Without the GBEM roots and job handlers the scan has no unresolved site (42,396 instructions).
 - **Fragment-created threads**:
   - Fragments 22, 23 and 24 (six creators, including fragment23's table entry `D_88217FC8[arg1]`) create, start and `osDestroyThread` their thread inside the same creator function. Examples: fragment22.c:3114-3124 and fragment23_1AE680.c:2707-2716. None of those fragments is in the main-path sections, so their threads cannot exist during close→unbind.
-- **Residual, open: fragment1 `func_81200AA8`.**
-  - It is created inside the GB Tower session (fragment1_7F9A0.c:1435, called through a GBEM callback). It self-destroys only on a NULL message (:521-524), but the only senders (`func_8120572C`) send a non-NULL emulator pointer. So after a GB Tower visit it can stay blocked on `D_8122C4C0`, which lives in released fragment1 BSS.
-  - Only fragment1 code materializes that queue address (binary `qrefs`), so the main path cannot wake it.
-  - Waking through corruption of reused memory is not excluded. This is vanilla behaviour, not introduced by the story.
+- **Fragment1 GB worker `func_81200AA8` (corrected; validator counterexample).** An earlier v5 statement said it had no NULL sender and could stay dormant after a GB Tower visit. That was wrong. The chain, from the sealed ELF and source:
+  1. Each GB Tower session runs `func_8000D738` (E1C0.c:55-71). It pushes `GBEM`, runs `FRAGMENT_LOAD(fragment1)`, and creates the GBEM threads (priorities 0x11 and 0xF). Each load zeroes fragment1's relocation+BSS tail (memmap.c:122,171), so `D_8122B2FC`, `D_8122C4DC` and `D_8122C4E0` start at 0.
+  2. `func_8000D678` calls `func_81206D9C`→`func_812033F4` exactly once (E1C0.c:35-43; fragment1_7F9A0.c:2281). Two outcomes:
+     - Allocation fails: it sets `D_8122B2FC=4` and returns before `osCreateThread` (:1405-1410), so no worker exists.
+     - Otherwise it creates and starts the worker at priority 0x50 (:1435-1436). The worker sets `D_8122C4E0=1` before its first receive (:518-521).
+     - `D_8122B2FC` is written as 4 only at :1408. Every other write stores 1 or 3 (:1546,1556; func_8120572C.s).
+  3. The only nonzero return of `func_8120572C` is -1, at the shutdown tail `812065E4..81206644`. There are two ways in:
+     - Exit case `8120578C`: when `D_8122B2FC != 4` it branches to `.L8120651C`, as do the `.L81206518` exits (func_8120572C.s:341,410,533,582,926,1420,1428,1434). That path sends NULL to `D_8122C4C0` at `812065A4..812065C0` (`a1` set in the beq delay slot on both paths) and spins until `D_8122C4E0 == 0` (`812065C4..812065E0`).
+     - When `D_8122B2FC == 4` (no worker) it skips the send (`812057A8`).
+  4. The worker receives NULL, sets `D_8122C4E0=0` and calls `osDestroyThread(NULL)` (:521-524). The worker (0x50) outranks the spinning GBEM thread (0xF/0x11) and `Game_Thread` (20). So after the NULL send, it runs to self-destruction before either lower thread resumes; only unrelated higher-priority system threads can interleave.
+  5. On -1, `func_81206E64` posts `queue2` (:2285-2288), the only `queue2` sender in source; no fragment1 asm references `D_800AA660`. `func_8002A728` blocks in `func_8000D8A8` until that post, then `func_8000D8DC` destroys both GBEM threads and pops `GBEM` (E1C0.c:73-90; 29BA0.c:1098-1102).
+
+  So every GB Tower session that returns to the game state machine has already destroyed the fragment1 worker, or never created it. No fragment1 thread survives into a later story battle. This is a source/static argument with priority-based ordering; there is no native witness.
 - Caveats:
   - Data-indexed tables assume well-formed asset and command indices.
   - Controllers created by other game states and the timing interleavings of real concurrency are not modelled.
