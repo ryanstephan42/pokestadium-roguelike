@@ -1,5 +1,6 @@
 #include "story_native_stubs.h"
 #include "src/story/sc_native_operation.h"
+#include "src/story/sc_native_terminal.h"
 #include "tools/rltest/story_six_fixture.h"
 #include <assert.h>
 #include <stdarg.h>
@@ -268,6 +269,130 @@ static void drain(void) {
     assert(operation.phase == SC_NATIVE_OPERATION_IDLE);
 }
 
+static ScNativeTerminalWitness native;
+static unsigned witness_reads;
+static int pool_states[2];
+
+void sc_native_terminal_witness(ScNativeTerminalWitness *w) {
+    witness_reads++;
+    *w = native;
+}
+
+static void service_cycle(void) {
+    native.starts++; native.drains++; native.revokes++; native.retires++;
+}
+
+static void terminal(void) {
+    ScNativeCampaignBacking *b = &lifetime.loop.backing;
+    ScNativeTerminal t, held;
+    ScNativeOperation control;
+    ScNativeCampaignStorage previous;
+    ScBattleSnapshot party[6];
+    unsigned flags, field, enemy;
+    static const unsigned expected[4] = { SC_DRAW, SC_LOSS, SC_WIN, SC_DRAW };
+    memset(&native, 0, sizeof(native));
+    native.scope_idle = 1; native.pool_state = &pool_states[0];
+    /* the outcome comes only from raw side flags: equal -> DRAW */
+    for (flags = 0; flags < 4; ++flags) {
+        unsigned player = flags & 2 ? 5 : 0, opponent = flags & 1 ? 9 : 0;
+        initialize(); memset(&t, 0, sizeof(t));
+        assert(sc_native_terminal_arm(&t, &operation) == SC_INVALID && t.failed);
+        memset(&t, 0, sizeof(t));
+        assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+        assert(sc_native_terminal_arm(&t, &operation) == SC_OK && t.armed);
+        assert(sc_native_terminal_arm(&t, &operation) == SC_INVALID && t.failed);
+        memset(&t, 0, sizeof(t));
+        assert(sc_native_terminal_arm(&t, &operation) == SC_OK);
+        /* no completed service cycle yet: retirement unproven */
+        control = operation; previous = storage;
+        assert(sc_native_terminal_drain(&t, &operation, b, player, opponent) == SC_INVALID);
+        assert(t.failed && !t.armed && !memcmp(&operation, &control, sizeof(control)));
+        assert(!memcmp(&storage, &previous, sizeof(storage)));
+        memset(&t, 0, sizeof(t));
+        assert(sc_native_terminal_arm(&t, &operation) == SC_OK);
+        service_cycle();
+        if (expected[flags] == SC_WIN) {
+            for (enemy = 0; enemy < storage.request.enemy_count; ++enemy) {
+                snapshots(party);
+                assert(sc_native_operation_observe(&operation, b, party, 0, enemy, 0) == SC_OK);
+                if (operation.phase == SC_NATIVE_OPERATION_HELD) {
+                    assert(sc_native_terminal_drain(&t, &operation, b, player, opponent) == SC_PENDING);
+                    assert(t.armed && !t.failed);
+                    consume(); settle_learning();
+                } else {
+                    assert(sc_native_terminal_drain(&t, &operation, b, player, opponent) == SC_PENDING);
+                    consume();
+                }
+            }
+        }
+        assert(sc_native_terminal_drain(&t, &operation, b, player, opponent) == SC_OK);
+        assert(!t.armed && !t.failed && !t.operation && !t.pool_state);
+        assert(operation.pending.kind == SC_NATIVE_EVENT_DRAINED &&
+               operation.pending.outcome == expected[flags]);
+        /* finish-once: a disarmed authority cannot produce another result */
+        control = operation;
+        assert(sc_native_terminal_drain(&t, &operation, b, player, opponent) == SC_INVALID);
+        assert(!memcmp(&operation, &control, sizeof(control)));
+        assert(sc_native_operation_poll(&operation, b, b->event) == SC_OK);
+        assert(storage.event.outcome == expected[flags]);
+        memset(b->event, 0, sizeof(*b->event));
+    }
+    /* each witness field independently refuses a forged/incomplete retirement */
+    for (field = 0; field < 10; ++field) {
+        initialize(); memset(&t, 0, sizeof(t));
+        assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+        assert(sc_native_terminal_arm(&t, &operation) == SC_OK);
+        service_cycle();
+        switch (field) {
+            case 0: native.drains--; break;
+            case 1: native.revokes--; break;
+            case 2: native.active = 1; break;
+            case 3: native.pending = 1; break;
+            case 4: native.failed = 1; break;
+            case 5: native.scope_idle = 0; break;
+            case 6: native.pool_state = &pool_states[1]; break;
+            case 7: native.pool_state = 0; break;
+            case 8: service_cycle(); break;
+            case 9: t.operation++; break;
+        }
+        control = operation; previous = storage;
+        assert(sc_native_terminal_drain(&t, &operation, b, 1, 0) == SC_INVALID && t.failed);
+        assert(!memcmp(&operation, &control, sizeof(control)));
+        assert(!memcmp(&storage, &previous, sizeof(storage)));
+        assert(sc_native_terminal_drain(&t, &operation, b, 1, 0) == SC_INVALID);
+        switch (field) {
+            case 0: native.drains++; break;
+            case 1: native.revokes++; break;
+            case 2: native.active = 0; break;
+            case 3: native.pending = 0; break;
+            case 4: native.failed = 0; break;
+            case 5: native.scope_idle = 1; break;
+            case 6: case 7: native.pool_state = &pool_states[0]; break;
+            case 8: native.starts--; native.drains--; native.revokes--; native.retires--; break;
+            default: break;
+        }
+        service_cycle();
+    }
+    /* arming is refused while a service is live or its scope is borrowed */
+    initialize(); memset(&t, 0, sizeof(t));
+    assert(sc_native_operation_submit(&operation, b, b->request) == SC_OK);
+    native.starts++;
+    assert(sc_native_terminal_arm(&t, &operation) == SC_INVALID);
+    native.starts--;
+    memset(&t, 0, sizeof(t)); native.scope_idle = 0;
+    assert(sc_native_terminal_arm(&t, &operation) == SC_INVALID);
+    native.scope_idle = 1;
+    /* a refused operation-level drain fail-stops the authority, not retries */
+    memset(&t, 0, sizeof(t));
+    assert(sc_native_terminal_arm(&t, &operation) == SC_OK);
+    held = t;
+    service_cycle();
+    lifetime.loop.backing.ui->pending_save = 1;
+    assert(sc_native_terminal_drain(&t, &operation, b, 0, 1) == SC_INVALID && t.failed);
+    assert(operation.phase == SC_NATIVE_OPERATION_FAILED);
+    (void)held;
+}
+
 int main(void) {
     ScNativeCampaignBacking *b = &lifetime.loop.backing;
     ScNativeCampaignStorage previous;
@@ -389,7 +514,8 @@ int main(void) {
     request_mutations();
     output_mutations();
     drain();
+    terminal();
     assert(notices);
-    puts("NATIVE OPERATION HOST PASSED: canonical copies, all-byte accepted-request mutation refusals at submit/observe/poll/resume, held-before-delivery, owner-retained queued identity with all-byte clean-output/replay/identity refusals, single DRAINED producer with WIN/sc_finish and settlement refusals, exact learning replay, monotonic/refusal policy; lifetime validation injected, no native launch/retirement");
+    puts("NATIVE OPERATION HOST PASSED: canonical copies; all-byte request mutation refusals at submit/observe/poll/resume, held-before-delivery, owner-retained queued identity with all-byte clean-output/replay/identity refusals, single DRAINED producer with WIN/sc_finish and settlement refusals, terminal authority with raw-flag outcome, per-field forged-retirement refusal and finish-once; lifetime validation and retirement witness injected, no native launch");
     return 0;
 }

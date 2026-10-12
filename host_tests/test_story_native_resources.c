@@ -7,6 +7,7 @@
 #include "../src/story/sc_native_icons.h"
 #include "../src/story/sc_native_loop.h"
 #include "../src/story/sc_native_operation.h" /* lifetime view injected by prelude */
+#include "../src/story/sc_native_terminal.h"
 #include "../src/controller.h"
 
 int sc_pak_probe_load(unsigned, const ScCatalog *, ScSnapshot *);
@@ -682,18 +683,31 @@ static void loop_battle(void) {
 }
 
 /* Actual ScNativeLoop driving the actual owner operation kernel. The lifetime
-   validator is the fixture lease check; no native battle launch or drain. */
+   validator is the fixture lease check; the retirement witness is injected and
+   advanced only by the simulated service cycle. No native battle launch. */
 static ScNativeLifetime life;
 static ScNativeCampaignStorage life_storage;
 static ScNativeOperation life_operation;
+static ScNativeTerminal life_terminal;
+static ScNativeTerminalWitness life_witness;
+static int life_pool;
+void sc_native_terminal_witness(ScNativeTerminalWitness *w) { *w = life_witness; }
+static void life_arm(void) {
+    memset(&life_terminal, 0, sizeof(life_terminal));
+    assert(sc_native_terminal_arm(&life_terminal, &life_operation) == SC_OK);
+}
 int sc_native_lifetime_validate(void *p, const ScNativeCampaignBacking *b) {
     assert(p == &life);
     if (b != &life.loop.backing) return SC_INVALID;
     return validate_backing(NULL, b);
 }
 static int op_submit(void *p, const ScNativeCampaignBacking *b, const ScUiBattleRequest *r) {
+    int status;
     assert(p == &life); submissions++;
-    return sc_native_operation_submit(&life_operation, b, r);
+    status = sc_native_operation_submit(&life_operation, b, r);
+    /* the owner arms terminal authority before the battle pool push */
+    if (status == SC_OK) life_arm();
+    return status;
 }
 static int op_poll(void *p, const ScNativeCampaignBacking *b, ScNativeCampaignEvent *e) {
     assert(p == &life); return sc_native_operation_poll(&life_operation, b, e);
@@ -729,6 +743,8 @@ static void operation_loop(void) {
     unsigned i, region = 0, encounter, before, submitted, before_writes;
     int snapshots_ok;
     fixture(); memset(&life, 0, sizeof(life)); memset(&display, 0, sizeof(display));
+    memset(&life_witness, 0, sizeof(life_witness));
+    life_witness.scope_idle = 1; life_witness.pool_state = &life_pool;
     memset(&life_storage, 0, sizeof(life_storage)); memset(&life_operation, 0, sizeof(life_operation));
     life.live = life.memory.live = 1; life.memory.storage = &life_storage;
     calls.context = &life; calls.submit = op_submit; calls.poll = op_poll; calls.resume = op_resume;
@@ -767,6 +783,7 @@ static void operation_loop(void) {
         memset(&life_operation, 0, sizeof(life_operation)); life.memory.failed = 0;
         assert(sc_native_operation_bind(&life_operation, &life) == SC_OK);
         assert(sc_native_operation_submit(&life_operation, &life.loop.backing, &request) == SC_OK);
+        life_arm();
         assert(sc_native_operation_observe(&life_operation, &life.loop.backing, party, 0, 0, 1) == SC_OK);
     }
     replay = life_operation.pending;
@@ -788,8 +805,19 @@ static void operation_loop(void) {
     assert(loop_choose(1) == SC_OK && resumes == before + 1 && !life.loop.held_operation);
     assert(life_operation.phase == SC_NATIVE_OPERATION_RUNNING && !life_operation.queued);
     assert(!memcmp(&ui.state, &life_storage.settled, sizeof(ui.state)) && op_clean());
-    /* terminal DRAINED: produced once by the owner, finished once by the loop */
-    assert(sc_native_operation_drain(&life_operation, &life.loop.backing, SC_LOSS) == SC_OK);
+    /* terminal DRAINED: only after the witnessed service/permit/BATL retirement
+       and pool pop, produced once by the owner, finished once by the loop */
+    assert(life_terminal.armed && life_terminal.operation == request.operation_id);
+    life_witness.starts++;
+    {
+        ScNativeTerminal armed = life_terminal;
+        assert(sc_native_terminal_drain(&life_terminal, &life_operation, &life.loop.backing, 0, 1) == SC_INVALID);
+        assert(life_operation.phase == SC_NATIVE_OPERATION_RUNNING && !life_operation.queued);
+        life_terminal = armed;
+    }
+    life_witness.drains++; life_witness.revokes++; life_witness.retires++;
+    assert(sc_native_terminal_drain(&life_terminal, &life_operation, &life.loop.backing, 0, 1) == SC_OK);
+    assert(!life_terminal.armed && life_operation.pending.outcome == SC_LOSS);
     assert(op_clean() && life_operation.queued);
     settled = ui.state; before = resumes; submitted = submissions;
     write_error = 99;
@@ -811,6 +839,7 @@ static void operation_loop(void) {
     }
     assert(ui.state.defeated_mask == settled.defeated_mask && !ui.state.learn_mask);
     assert(sc_native_operation_drain(&life_operation, &life.loop.backing, SC_LOSS) == SC_INVALID);
+    assert(sc_native_terminal_drain(&life_terminal, &life_operation, &life.loop.backing, 0, 1) == SC_INVALID);
     snapshots_ok = sc_native_operation_observe(&life_operation, &life.loop.backing, party, 0, 0, 0);
     assert(snapshots_ok == SC_INVALID && op_clean());
     before_writes = writes;
@@ -825,7 +854,7 @@ static void operation_loop(void) {
     assert(life_operation.phase == SC_NATIVE_OPERATION_FAILED && life.memory.failed);
     assert(life.loop.event_serial == 3);
     choose_loop = &loop;
-    puts("Owner loop: actual ScNativeLoop -> sc_native_operation queued OBSERVE/LEARNING delivery, held resume, owner DRAINED loss finished once across save-error retry frames with no replay/XP/resume/resubmit, clean output, all-byte queued injection and replay refusal; HOST only; OK");
+    puts("Owner loop: actual ScNativeLoop -> sc_native_operation queued OBSERVE/LEARNING delivery, held resume, witnessed-retirement terminal authority, owner DRAINED loss finished once across save-error retry frames with no replay/XP/resume/resubmit, clean output, all-byte queued injection and replay refusal; HOST only; OK");
 }
 
 int main(void) {

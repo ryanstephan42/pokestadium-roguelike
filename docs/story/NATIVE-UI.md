@@ -238,6 +238,24 @@ are not checked against party HP, because Stadium allows forfeit and draw.
 Drain does not check worker/service/permit retirement or the BATL scope pop
 itself, so its caller must already hold that retirement authority.
 
+`sc_native_terminal` (candidate builds only) is that retirement authority.
+`sc_native_terminal_arm(t, op)` must run before the `RLBT` pool push. It
+requires a RUNNING, non-queued operation and a quiet witness: service not
+active/pending/failed, the BATL scope idle, a non-null pool state, and equal
+service starts/drains/revokes/retires. It records the pool state and the retire
+count. `sc_native_terminal_drain` must run after the `RLBT` pop. It requires the
+same operation, RUNNING or HELD, a quiet witness with exactly one more retire
+and the recorded pool state, which proves that `BATL` and `RLBT` were popped.
+It maps the raw fragment-62 player/enemy flags the same way `rl_battle.c` does
+(equal → DRAW, player set → WIN, else LOSS) and then calls the drain. PENDING
+keeps the authority armed; OK disarms it; any refusal or operation failure
+stops it without mutating the operation. The native witness
+(`sc_native_terminal_witness.c`) reads `gScServiceLifecycle`,
+`sc_batl_scope_map_change()` and `main_pool_get_pool()->mainState`; HOST
+injects the witness. Both modules are cold SC residents. The arm and drain
+call sites, the cold-map admission at those sites, and a campaign-active
+predicate are not wired yet.
+
 Lifetime validation is injected in HOST, which is explicitly not a target ABI
 fixture; actual IDO compilation uses the production lifetime header. This unit
 does not launch native combat or call drain from the actual retirement path.
