@@ -8,7 +8,38 @@ mkdir -p "$out"
 baseline=.local/rltest/story-six-selector-prototype-stage2-fit-blocked/pokestadium-rl.elf
 bash tools/rltest/compile_story_ai_prototype.sh "$baseline" "$out/selector" \
     > "$out/ido-build.log" 2>&1
-bash host_tests/run_story_restore_faults.sh "$out/selector" generate
+# Restore-fault bank and disabled-move comparison inputs required by the selector harness.
+python3 - "$out/selector" <<'PY'
+import re
+import sys
+from pathlib import Path
+out = Path(sys.argv[1])
+source = Path("src/story/sc_ai_bank.c").read_text()
+source = source.replace('#include "sc_ai_bank.h"', '#include "src/story/sc_ai_bank.h"')
+definition = "int sc_ai_bank_restore(const ScAiBank *bank) {"
+assert source.count(definition) == 1
+source = source.replace(definition, "int host_real_bank_restore(const ScAiBank *bank) {")
+source += """
+extern unsigned host_restore_fail_on;
+int sc_ai_bank_restore(const ScAiBank *bank) {
+    if (host_restore_fail_on && --host_restore_fail_on == 0)
+        return SC_AI_INVALID;
+    return host_real_bank_restore(bank);
+}
+"""
+(out / "fault-bank.c").write_text(source)
+native = Path("src/fragments/62/fragment62_2F74E0.c").read_text()
+start = native.index("s32 func_8430D8C4(")
+end = native.index("\ns32 func_8430D9EC(", start)
+predicate = Path("src/story/sc_ai_select.c").read_text()
+expression = re.search(r"if \((live->unk_1F\[i\].*?)\)\s*usable\+\+;",
+                       predicate, re.S).group(1)
+(out / "disabled-comparison.inc").write_text(
+    native[start:end].replace("func_8430D8C4", "host_native_d8c4") +
+    "\nstatic int host_candidate_usable(unk_D_800FCB18 *live) {\n"
+    "unsigned i, usable = 0;\nfor (i = 0; i < 4; i++)\nif (" +
+    expression + ") usable++;\nreturn usable != 0;\n}\n")
+PY
 python3 - "$out/selector" <<'PY'
 import sys
 from pathlib import Path
