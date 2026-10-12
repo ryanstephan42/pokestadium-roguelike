@@ -143,9 +143,13 @@ not overlap the callable image allocation. It zeros only controls, not pixel
 storage. The native path writes back then invalidates the newly exclusive,
 64-byte-aligned pixel range before publishing it, preventing old dirty CPU
 lines from later overwriting RDP output; this is not scheduler/VI admission.
-Exact tuple validation refuses
-changed pointers, sizes, seed, ticket and stale lifetimes. Acquisition OOM or
-ticket exhaustion publishes a completely zero output tuple.
+Exact tuple validation refuses changed pointers, sizes, seed, ticket and stale
+lifetimes, and binds the release allocation handle to the held lease before
+and after the retirement callback. Acquisition OOM or ticket exhaustion
+publishes a completely zero output tuple. Actual IDO rounds the value/control
+storage to 49,664 bytes; the data allocation charges 1,278,528 bytes including
+both pixel spans and 64 bytes of alignment slack. The external memory control
+is 64 bytes. These are target layout charges, not whole-campaign peak proof.
 
 Loop/display and retirement controls stay outside the freed allocation:
 `sc_native_loop_close` still accesses its control after the owner release
