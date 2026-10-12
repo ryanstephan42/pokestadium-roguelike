@@ -363,16 +363,23 @@ Admission and exclusion:
   admission.
 * Pins (`HOOK`, `SERVICE`, `LIFETIME`, `RETIREMENT`) can only be taken while
   `PUBLISHED` and dropped while `PUBLISHED`/`DRAINING`. `sc_persist_call` runs an
-  entry with a depth count, so a re-entrant unpublish cannot release.
+  entry with a depth count, so a re-entrant unpublish cannot release. It is
+  admitted only while `PUBLISHED`. `sc_persist_call_pinned(kind, ...)` is the
+  retirement entry: admitted while `PUBLISHED` or `DRAINING`, and only while
+  `pins[kind]` is held. An owner that pinned before unpublication can therefore
+  finish SC-side retirement after admission closed, but no new owner can enter.
 
 Enforced teardown order (`unpublish` → drain → `release`):
 
 1. `sc_persist_unpublish` moves to `DRAINING`: no new pins, `code`/`owns` refuse,
    so no new hook or callback can be admitted.
 2. Owners finish worker/service/UI graphics retirement and pop every pool scope
-   while SC is still mapped, then drop their pins. The `RETIREMENT` pin is held
-   until the DP retirement token's final release, so post-free token retries never
-   call into unloaded SC.
+   while SC is still mapped, then drop their pins. The DP retirement token's
+   control and callbacks (`retirement_validate`, `crash_validate`,
+   `retire_backing`) are all resident (`sc_native_lifetime.c`). A PENDING token
+   keeps lifetime release, loop close and campaign close PENDING under the
+   `LIFETIME` pin. Post-free token retries therefore never reach SC code, and the
+   `RETIREMENT` pin kind currently has no holder.
 3. `sc_persist_release` returns `0` (pending, nothing changed) unless depth and all
    pins are zero, the native predicate is quiescent (launch hook unset, no
    `gRlBattleActive`, service lifecycle neither active nor pending, no cold load, and
@@ -391,17 +398,91 @@ edge (pins, depth, quiescence, outstanding resources, pool func/arg in image and
 in the link window), release, post-release refusals and generation-2 reacquire.
 It runs normal, strict ASan/UBSan and IDO compile/disassembly. The backend's
 pool walk, DMA, relocation and cache operations are HOST stubs; this is not
-native evidence. Nothing calls `sc_persist_acquire` yet: the installer,
-dispatcher and campaign predicate are still to be wired.
+native evidence.
 
-Fixed-point relink (authority/rights v20 = v21), ELF
-`5948ded98fc1310e993070ffeeaf26c9a560faa95d5ad28c391d75d303e1777f`:
-`.fragmentSC 0x33a70` (text end `0xe9c0`, data end `0x28f20`, rodata end
-`0x33a70`), `.fragmentSC_bss 0x1fa0`, relocs `0x2720`; RAM 219,664, ROM
-221,584 (+176/+208 versus `222f963`, from alignment padding). All 2,505
-`.rel.fragmentSC` entries were audited: 610/893/391/393 R26/R32/HI16/LO16 target SC,
-139/38/38 R26/HI16/LO16 target resident KSEG0, and 3 are absolute header symbols.
-**No target is in any other fragment.** AI is unchanged at 75,616.
+### Campaign installer and owner adapter
+
+`src/story/sc_campaign.c` is the resident installer. Its controls (lifetime,
+operation, terminal, terminal binding) live in resident BSS, never in the image
+or the DATA lease. `src/story/sc_native_campaign.c` (in `SC_COLD_NAMES`) is the
+image-side production owner adapter. The installer never imports image symbols.
+It enters only through `sc_persist_call*(SC_CAMPAIGN_ENTRY, command)`, and
+`sc_cold_entry` dispatches that selector (`cold_invoke` always passes 0). The
+adapter reaches the controls through resident `sc_campaign_bound()`, which is
+non-NULL only during an installer entry.
+
+* `sc_campaign_open(arena, seed)`: `sc_persist_acquire` → `LIFETIME` pin → OPEN
+  entry (`sc_native_loop_open` on the lifetime's loop/display with the adapter
+  vtable, then `sc_native_operation_bind`). A refused open unpublishes and enters
+  `CLOSING`. A refused or failed acquire leaves 4 MiB/ordinary RL unchanged; it
+  retains everything if persist failed.
+* OPEN `acquire` uses the image-local `sc_catalog`. `validate`, `retire_display`
+  and `release` are the lifetime callbacks; `poll` and `resume` are the operation
+  callbacks.
+* `submit` installs the launch hook (callbacks proven in the published text,
+  `HOOK` pin) **before** `sc_native_operation_submit`. A refused install
+  therefore owns no request, and a refused submit uninstalls the unarmed hook.
+* `poll` first settles the hook. A PENDING raw-flag drain is retried with the
+  recorded flags. A drained OK uninstalls the hook (`HOOK` unpin). A refused
+  arm/drain/abort is returned and the hook stays installed, so its pin retains
+  the image. Each drain is attempted once per poll; settled hooks are never
+  replayed.
+* `release` settles and uninstalls an unarmed hook before
+  `sc_native_lifetime_release`. It returns PENDING while armed.
+* `sc_campaign_step` (`ACTIVE` only) runs one loop frame. `sc_campaign_active()`
+  is the campaign predicate.
+* `sc_campaign_close`:
+  * While the UI is unexited, a held/queued/drained event is outstanding, or the
+    terminal is armed, it returns PENDING without changing anything.
+  * Otherwise it unpublishes **first**, then drives CLOSE (`sc_native_loop_close`:
+    display retirement, resource/Pak/display release, lifetime release) through
+    `sc_persist_call_pinned(LIFETIME)` while the image stays mapped.
+  * Only after CLOSE returns OK with the hook uninstalled and the loop released
+    does it unpin `LIFETIME`. `RELEASING` then calls only `sc_persist_release` and
+    never re-enters the image.
+  * Any refusal calls `sc_persist_fail` (mapping and backing retained,
+    `FAILED`).
+  * Reopen resets only the operation/terminal/binding. The lifetime is never
+    zeroed, because its retirement token may be externally referenced; its own
+    acquire refuses unsafe reuse.
+
+`bash host_tests/run_story_campaign.sh <out>` links the actual installer,
+adapter, `sc_persist.c` and arena with recorded loop/lifetime/operation/terminal
+stubs (injected lifetime view `host_tests/story_campaign_stubs.h`). Five forked
+scenarios:
+
+* lifecycle and ordering;
+* teardown with an installed hook;
+* refused acquire/bind;
+* load-failure retention;
+* refused-drain retention.
+
+It runs normal, strict ASan/UBSan and IDO compile/disassembly of `sc_campaign`,
+`sc_native_campaign`, `sc_persist` and `sc_cold`. Not yet wired: the menu entry
+and state-machine battle launch that call these. This is source/HOST/IDO only,
+with no native evidence.
+
+Fixed-point relink (authority/rights v23 = v24), ELF
+`31ba1b68916e4878f051a72bd76b2dadf0cd56029db8f757cf8012c2d9e12fc8`:
+
+* `.fragmentSC 0x33fb0`: text end `0xef00`, data end `0x29460`, rodata end
+  `0x33fb0`.
+* `.fragmentSC_bss 0x1fa0`; relocs `0x27d0`.
+* RAM 221,008; ROM 223,104.
+
+All 2,549 `.rel.fragmentSC` entries were audited:
+
+* 632/893/399/401 R26/R32/HI16/LO16 target SC.
+* 145/38/38 R26/HI16/LO16 target resident KSEG0.
+* 3 are absolute header symbols.
+
+**No target is in any other fragment.** Resident additions: `sc_campaign`
+`.text` 1,296 and `.bss` 1,120.
+
+Prior loader-only relink (`63172d7`, v20 = v21), ELF
+`5948ded98fc1310e993070ffeeaf26c9a560faa95d5ad28c391d75d303e1777f`: RAM
+219,664, ROM 221,584, with 2,505 relocations and none into another fragment.
+AI is unchanged at 75,616.
 
 ### Simultaneous fit ledger (source/link values, not native peak)
 
@@ -410,16 +491,16 @@ Upper arena (`0x80400000`, capacity `0x3da7e0` = 4,040,672 bytes; 8 slots;
 
 | consumer | lifetime | bytes |
 |---|---|---|
-| persistent SC block `ALIGN32(max(221,584, 219,664))` | campaign | 221,600 |
+| persistent SC block `ALIGN32(max(223,104, 221,008))` | campaign | 223,104 |
 | campaign memory (controls 49,664 + two pixel spans 1,228,800 + 64 slack) | campaign | 1,278,528 |
 | AI service module (`AI_RAM`) | per battle | 75,616 |
-| **simultaneous total** (all sizes are 32-multiples, no placement gaps) | | **1,575,744** |
-| remaining | | 2,464,928 |
+| **simultaneous total** (all sizes are 32-multiples, no placement gaps) | | **1,577,248** |
+| remaining | | 2,463,424 |
 
 That uses 3 of 8 slots. Each staging lease is taken on its owner's own
 allocation (AI ROM 63,616 ≤ `AI_RAM`; SC ROM ≤ its block).
 
-Lower pool (ceiling `0x80400000 − heap_BSS_START 0x8012a950` = 2,971,312):
+Lower pool (ceiling `0x80400000 − heap_BSS_START 0x8012b370` = 2,968,720; was `0x8012a950` before the resident installer):
 
 | consumer | bytes |
 |---|---|
@@ -428,7 +509,7 @@ Lower pool (ceiling `0x80400000 − heap_BSS_START 0x8012a950` = 2,971,312):
 | BATL display lists `2 × 0x20000` + four 320×240×16 images | 876,544 |
 | SC image | 0 (now upper and persistent; `cold_invoke` refused while held) |
 | **listed total** | **1,823,056** |
-| upper bound left for everything unlisted | 1,148,256 |
+| upper bound left for everything unlisted | 1,145,664 |
 
 The listed values no longer refuse on a lower bound. Still unmeasured and
 excluded: pool headers/scopes for the BATL payloads, fonts, icons, text and
