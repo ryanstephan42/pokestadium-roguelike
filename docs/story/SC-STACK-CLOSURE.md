@@ -158,3 +158,14 @@ Static arithmetic: battle hook 336 + 3200 = 3536 of 6352 callable; resident clos
 3048. These are not margin claims: the 336 prefix is a concrete chain (lower bound on worst
 prefix), and interrupt/exception accounting is not qualified. Geometry BD04/`unk_10` residuals
 remain open. No fit/native/gate claim.
+
+**N3 refresh** (`0b7a4da`, ELF sha256 `8fc62e8b…f7df`, see GEOMETRY-STACK-SUPPLEMENT v6).
+- `resolve-SC-N3.txt` is the N2 list remapped to N3.
+- `sc_cold_entry` is 2832 over 591 functions; the extra four are helpers from `c5f4bb0`. 0 UNRESOLVED.
+- `func_84300E88` is 3200. Display and hint entries are unchanged.
+- The unreferenced `sc_campaign_state` composer is now 3040 (24 + `sc_campaign_state_poll` 40 → close). The per-build frame
+  check fails if anything calls it.
+- `main_pool_free` resolves to 13 destructor targets. All 13 are re-derived from the N3 registrar sites.
+- The `.fragmentSC` image and the cold RAM extent (225840) are unchanged, so the persistent-arena charge stays +2368.
+- `gPool` moved +0x120. As a result the main pool is 288 bytes smaller than on N.
+- The exception path charges 0 bytes to the interrupted stack. This is a routine audit (`irqcheck.py`), not a runtime claim.

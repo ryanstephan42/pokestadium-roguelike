@@ -343,6 +343,89 @@ exceeds the stack. It is reported only and not changed here.
 - N2 is a new ELF. The same-N evidence (SC closure, arena ledger, cmd8/geometry seals) must be re-derived or
   qualified for it.
 
+## v6 probe-route fix and N3 refresh (static)
+
+**Correction to v5.** v5 omitted the native-probe launch route. The candidate defines `STORY_SERVICE_CANDIDATE`,
+which forces `STORY_SIX_PROBE`, so `sc_runtime_probe_poll` is linked. When `gScProbe.command` is 2, 3, 5 or 6 it
+launches real `SC_COLD_PREPARE` opponents.
+- On N2 the route was Game_Thread 32 → `rl_main_state_roguelike` 32 → `sc_runtime_probe_poll` 144 → `rl_start_battle` 56.
+- Total 264 + 32 + 248 + 632 + 5208 = **6384**, which is **32 over** callable.
+- v5 also called the ordinary roguelike pending-battle route "out of scope". It is an open obligation of this task.
+
+**Fix** (commit `0b7a4da`). `sc_runtime_probe_poll` keeps its cold request in a `static` buffer, zeroed byte-wise on
+each poll after the `!command` early return, and its rules in a `static const`. The frame drops from 144 to 88.
+The harness, its budgets and its models are unchanged.
+
+**Per-build guard.** `tools/rl/check_story_frames.py` runs from `tools/rl/rl.mk` on every story build. It fails the
+build unless all of these hold:
+- Frame caps: Game_Thread 32, `rl_main_state_roguelike` 32, `sc_runtime_probe_poll` 88, `sc_campaign_state_launch` 64,
+  `sc_campaign_state_poll` 40, `rl_start_battle` 56, `func_80029008` 32, `func_800078D4` 56.
+- `rl_start_battle` calls exactly one local helper (frame ≤ 96) before its first `func_80029008` call.
+- The `func_800078D4` story helpers are frameless leaves.
+- Nothing calls the unreferenced `sc_campaign_state` composer.
+
+IDO has no `noinline`, so non-inlining is checked per build rather than assumed.
+
+**Candidate N3** = `.local/rltest/story-service-ui-native-stackfix-v1/pokestadium-rl.elf`.
+- ELF sha256 `8fc62e8b8f5799c55c00286ae3e8806486f2f32cdb2a2ec3cd4064c592aff7df`.
+- ROM sha256 `fb5d182066fe49a61ebeb4fb08fe6ee9e3a61189ec02572a535c5d38a899932b`.
+- Build fixed point: v65 == v66.
+
+Prefixes at `func_80029008` entry (`outputs/prefix-*-N3.txt`, 0 UNRESOLVED; the resolve files are N2 lists remapped to N3):
+
+| Route | Prefix | Total (+32 +248 +632 +5208) | Margin vs 6352 |
+|---|---:|---:|---:|
+| story: Game_Thread 32 + `sc_campaign_state_launch` 120 | 152 | 6272 | 80 |
+| probe: Game_Thread 32 + `rl_main_state_roguelike` 32 + `sc_runtime_probe_poll` 144 | 208 | **6328** | **24** |
+| ordinary roguelike: Game_Thread prefix 1048 (`anon_80069ad0` frame 928) | 1048 | 7168 | **−816 (open)** |
+
+Notes on the table:
+- The `sc_runtime_probe_poll` row includes `rl_start_battle`.
+- The only callers, found by `jal` and whole-word scans over all PROGBITS, are:
+  - `sc_runtime_probe_poll` ← `rl_main_state_roguelike` @80069ee0;
+  - `rl_main_state_roguelike` ← Game_Thread @8002c280;
+  - `sc_campaign_state_launch` ← Game_Thread @8002c2b0, and the unreferenced composer.
+- The frag62 prefix to `func_80015094` stays 248.
+- The ordinary route is not yet fixed. A same-ELF Ekans path and a narrow frame reduction follow as a separate commit.
+- The candidate as a whole has **no** accepted stack clearance while it remains open.
+
+**Address-keyed refresh on N3.** N3 differs from N in `.text` +240 and `.text_bss` +48, so `gPool` moves +0x120
+(`0x8012dc10` → `0x8012dd30`). Fragment, `.fragmentSC` and archive section sizes are unchanged. Reproduced:
+
+| Artifact | Result on N3 |
+|---|---|
+| `renderrec.py` | Handler table `0x8008b454` (N `0x8008b344`). Output equals N's after masking addresses. Frame R 40, Pmax 176, NRmax 480, CBmax 1144. |
+| `cmd8depth` (`stackdepth-v3.py`, 56 roots) | ROOT lines identical to N. Maximum 1144. |
+| `cmd8weight.py` | Wmax **5208** (0x920000:22). Stadium archive (`0x595800` in N3) 648. Byte-identical to N apart from the archive offset. |
+| `scenechain.py` (new) | **632** from the ELF alone. Path: three fragment62 scene layouts → graft of hosts `D_800AC840`/`D_800AC858` → instance type 0x16. Breakdown 24 + 216 + 72 + 88 + 72 + 160. N and vanilla also give 632. |
+| `cmd8domain.py` | 56 operands, 0 anomalies, rows identical to N. |
+| `cmd8scan-v2.py` | Range `[0x80015ec0, 0x80015fdc)`, gPool `0x8012dd30`, 4 and 8 MiB: 622335 candidates, **0 hits** (N had 622400). |
+| `refscan2.py` | Only the self `jal` @80015f8c, plus the same asset DATA words at the same ROM offsets as N. |
+| `yay0scan.py` | 4 hits, all in unaligned streams or non-4-aligned values. |
+| SC closure (`resolve-SC-N3.txt`) | `sc_cold_entry` **2832** over 591 functions (+4 helpers), 0 UNRESOLVED. `func_84300E88` 3200. The unreferenced `sc_campaign_state` is 3040 (+24, via poll). All other entries unchanged. |
+| `main_pool_free` destructors (`dtor_sites.py`) | 18 registrar sites. Their 13 materialized targets equal the 13 resolve entries exactly. The anonymous SC targets moved by +0x120. |
+| TAILJR (`switchcheck.py`, every site reached in N3 outputs) | 177 sites. 176 validate against switch tables with 0 outside targets. The remaining one, `__LeoBootGame3` `jr a0`, is a terminal transfer to a booted image. |
+| IRQ (`irqcheck.py`) | See below. |
+| Arena | Persistent-arena block unchanged: cold RAM 225840 → aligned 225856, still **+2368** versus C. New charge: the main pool (`POOL_END − gPool`) is **288 bytes smaller** than on N. |
+
+`irqcheck.py` result in full:
+- `__osExceptionPreamble`, `__osException`, `send_mesg`, `handle_CpU`, `__osEnqueueAndYield`, `__osEnqueueThread`,
+  `__osPopThread` and `__osDispatchThread` make **no** stack-memory accesses.
+- Their only `sp` writes are:
+  - the handler-stack load `lw sp,4(t1)` in the `jalr` delay slot;
+  - the scheduler restore `ld sp,240(k0)`.
+- The only `__osSetHWIntrRoutine` call installs `(1, __osLeoInterrupt, leoDiskStack)`.
+- `__osHwIntTable` is initially zero.
+- So the exception path charges 0 bytes to the interrupted Game-thread stack.
+
+**Still open after v6.**
+- Ordinary roguelike route: 816 over.
+- 25 INDIRECT sites (frag62 prefix) and 20 (Game_Thread prefix) are listed but not classified.
+  - Reverse closures are unchanged from N2: `func_80029008` 423 functions, 37 address-taken; `func_80015094` 253 / 13.
+- Renderer co-occurrence beyond the single-layout bound.
+- The 0x820000/0x898000/stadium-model static layouts are scan-only.
+- Synthesised runtime layouts.
+
 ## Not claimed
 
 - After v3, BD04 is bounded as a 0-byte leaf.
@@ -350,7 +433,8 @@ exceeds the stack. It is reported only and not changed here.
   model stated in v4 and is not a proof against layouts synthesised at runtime.
 - The 56 cmd8 callbacks have per-callback static bounds (maximum 1144). Renderer recursion, co-occurrence
   and the unparsed layout sources are not bounded.
-- Thread-stack budgets, interrupt/exception frames and concurrent-thread interleavings are not assessed.
+- Thread-stack budgets other than the Game thread, and concurrent-thread interleavings, are not assessed.
+  Interrupt/exception frames are covered only to the extent of the v6 `irqcheck.py` routine audit.
 - Data-indexed tables assume well-formed indices.
 - The v5 stack totals are static arithmetic over the stated paths, not a runtime high-water measurement.
 - No fit, contiguity, native or gate claim.
