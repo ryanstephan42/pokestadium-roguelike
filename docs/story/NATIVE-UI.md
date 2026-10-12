@@ -167,6 +167,41 @@ or visible-campaign acceptance are included.
 
 ## Reproducible current image authority
 
+The frozen v9 production candidate has 57,312 payload bytes plus 18,304 BSS
+bytes: 75,616 RAM bytes, as bound by its authority and module-rights manifests.
+The standalone selector fixture compiled from that ELF has its own output ELF
+and layout: 57,280 payload plus the same BSS, or 75,584 RAM bytes. Its
+`image-audit.json` `base_elf_sha256` identifies the input production ELF, not
+the selector output. Never transplant the standalone allocation extent into
+production rights or fit accounting.
+
+## Owner observation and learning transaction
+
+`sc_native_operation.[ch]` is the cold-code operation producer, using the
+retained external lifetime control and its admitted DATA value storage.
+Submission compares the entire request to a freshly derived canonical UI
+request before accepting copied values. Observations project the same pure
+combat transition the UI consumes, retain a private full-event copy, and
+establish the learning hold before delivery or presentation. Serial exhaustion,
+altered queued events, invalid progression, and altered settlements retain an
+explicit failed transaction. Pending observations cannot be overwritten.
+
+Resume requires exact operation/held serial and the admitted loop's completed
+presentation marker. It replays each pending member's actual accept/reject and
+selected move-slot transition, then compares the complete settled state; it
+cannot accept an unrelated state mutation or replay an already consumed hold.
+Repeated raw zero-HP observations carry current party values but award XP only
+on the first KO. The direct KO award API still rejects duplicate awards.
+
+The focused runner `bash host_tests/run_story_native_operation.sh OUT` checks
+actual producer/pure UI and combat code with injected lifetime validation.
+Its lifetime view is explicitly not a target ABI fixture; actual IDO compilation
+uses the production lifetime header. This unit does not launch native combat,
+publish DRAINED, or authorize release. Actual callback/dispatcher wiring,
+service/BATL retirement, complete stack/fit, and native validation remain required.
+
+## Current build authority inputs
+
 The default-off `STORY_SERVICE_CANDIDATE` build requires explicit
 `SC_AI_BASE` (closure input ELF), `SC_SERVICE_AUTH_DIR` (generated authority),
 and `SC_SERVICE_SPAN_DIR` (generated module rights). It no longer silently
