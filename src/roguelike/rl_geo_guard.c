@@ -25,20 +25,24 @@ int rl_geo_admit(const unsigned char* cmd, const unsigned char* mem_lo, const un
     if (size == 0 || hi - at < size) {
         return 0;
     }
-    switch (op) {
-        case 0x00:
-            return stack + 2 <= RL_GEO_STACK_WORDS;
-        case 0x01:
-            return ret >= 2;
-        case 0x03:
-            return stack + 1 <= RL_GEO_STACK_WORDS;
-        case 0x04:
-            return stack >= 1;
-        case 0x05:
-            return node + 1 < RL_GEO_NODES;
-        case 0x06:
-            return node >= 1;
-        default:
-            return 1;
+    /* if-chain rather than switch: no compiler jump table on the guarded parser path */
+    if (op == 0x00) {
+        return stack + 2 <= RL_GEO_STACK_WORDS;
     }
+    if (op == 0x01) {
+        return ret >= 2;
+    }
+    if (op == 0x03) {
+        return stack + 1 <= RL_GEO_STACK_WORDS;
+    }
+    if (op == 0x04) {
+        return stack >= 1;
+    }
+    if (op == 0x05) {
+        return node + 1 < RL_GEO_NODES;
+    }
+    if (op == 0x06) {
+        return node >= 1;
+    }
+    return 1;
 }
