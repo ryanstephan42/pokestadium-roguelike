@@ -507,6 +507,120 @@ validator's 192-byte handler closure includes the parser) are conditional and ar
   synthesised runtime layouts.
 - Full resource fit (the UI reviewer owns the phase ledger).
 
+## v8 lifetime, effect-index and geo-parser fixes; N5 refresh (static)
+
+Each fix has its own commit and host regression. None of them raises a stack size.
+
+**Story font binding** (`8defdac`). The retained story font is bound around each story frame. After a nested child or
+battle replaces `D_800AC870`, or leaves it NULL, the font is re-bound and restored. Crash-retention guards are kept.
+
+**Masked host runners** (`0a8a474`). These runners test the documented idle-handoff contract of `func_800078D4`:
+display, lifetime, crash, retirement and campaign-lifetime. They had stopped running because an earlier assertion
+aborted.
+
+**Prepared-close driver retirement** (`5e4485f`). `sc_ui_driver_retire` clears `driver.bound`. It is identity-checked
+(driver, UI and request), and only refuses when the exit has not drained (launch pending, request ready or save
+pending). `sc_native_loop_close` calls it:
+- after `sc_native_ui_release`'s bound-identity check;
+- before the Pak, display and backing release.
+
+A loop-owned `driver_bound` flag prevents a release retry from touching backing that was already freed. Crash paths
+fail earlier and keep the binding. As a result, a normal exit now frees the backing, the DP token, the LIFETIME pin and
+the SC image, and the campaign can be reopened.
+
+**Effect-index refusal** (`bbc202d`). `func_8437670C` indexes `D_8438AE54[idx-1]` using the *current actor's* move
+effect. Under `ROGUELIKE`, an index outside 1..87 is now refused instead of being called through the table. In a story
+battle this also latches the existing invalid-observation policy through `sc_campaign_battle_fault`. Vanilla behaviour
+is unchanged.
+
+The UI reviewer showed that the `D_843C5238` predicates do not bind the current actor (confusion swap at
+`359F90.c:1431-35`). That actor selection is **not** changed here and remains an open audit.
+
+**Geo-layout admission** (`76bb9fd`, `54fddbf`). Under `ROGUELIKE`, `process_geo_layout` calls the non-inlined
+`rl_geo_layout_check` before and after every table dispatch. The pure `rl_geo_admit` (host-tested, normal and ASan/UBSan)
+checks, in order:
+- the state is valid;
+- the command is 4-aligned and its exact `sizeof` extent lies within `[0x80000000, 0x80000000+osMemSize)`;
+- the opcode is below 39;
+- the size is non-zero, which rejects the non-advancing `0x12` handler.
+
+It then applies per-opcode limits: branch-stack push ≤ 16 words (op 0: +2; op 3: +1), op 1 return index ≥ 2,
+op 4 pop ≥ 1, and node list open < 32 (op 5) / close ≥ 1 (op 6). The post-dispatch check keeps the restored
+stack/return/node indices within range.
+
+A violation prints and calls `osStopThread(NULL)`, the same pattern as the unsupported archive import in `func_80019128`.
+
+In N5 the size table `sRlGeoCommandSizes` is at `0x800984a0` (bytes equal the host fixture). The `switch` was rewritten
+as an if-chain so `rl_geo_admit` has no jump table: no new TAILJR.
+
+Stack effects:
+- The parser frame is **40 → 32**.
+- The guard chain beneath the parser is check 40 + admit 24 + `rl_geo_state_ok` 0 (normal path). On the halting path it
+  is check 40 + `osStopThread` 56 + `__osDequeueThread` 8 = 104 (`geodepth-N5.txt` worst 136 including the parser).
+  Either way this is below the validator's 192-byte handler closure, so it adds nothing to the dispatch-live maximum.
+- The UI reviewer's conditional dispatch-live figures therefore drop by 8 (792/904 → 784/896 under the same
+  handler-closure premise).
+
+The guard does **not** bind handler payload pointers: cmd7 data, cmd8 callbacks, BD9C objects or the stadium leaves.
+Those remain under the cmd8/model domain obligations below.
+
+**Candidate N5** = N4 + the six commits above, same build profile.
+- ELF sha256 `738518bc9ffcafff8ad018ce37fa610d95d23e8627f3b58ddc526d5b611963c6`.
+- ROM sha256 `dd8c0d96ba7978b5f85d575b9c207c9fa65234ca76fcdf3d007ac3016348fca6`.
+- Map `ec999661…352a`.
+- Rights/authority fixed point: the build consumed v81 and regenerated v82 identically; both bind the N5 ELF and map.
+
+**Address-keyed refresh on N5.** Compared with N4, `.text` grew by +992 (`0xa41a0` → `0xa4580`), and `gPool` moved
+`0x8012db90` → `0x8012df70`.
+
+Stage resolves, prefix/SC resolves and the 20 Game_Thread sites were remapped from N4 by `remapres2.py`. It maps by
+section + symbol offset and requires a masked 8-instruction match. Where the same offset mismatches, it accepts only
+a *unique* 16-instruction match within ±0x100. Four SHIFTs were accepted:
+- `sc_native_loop_open` +0xc;
+- `sc_ui_driver_bind` +0xc0;
+- `sc_native_resources_acquire_upper` +0xc;
+- site `sc_campaign_menu_hook` +0x8.
+
+| Artifact | Result on N5 |
+|---|---|
+| `check_story_frames.py` | OK. `func_80029008`=32, runner@`80069d20`=48, `rl_start_battle`=56, probe 88. All 10 negative fixtures are rejected. |
+| Route totals | Unchanged: story **6272**, probe **6328**, ordinary **6288** of callable 6352. |
+| `renderrec.py` | Handler table `0x8008b614` (N4 `0x8008b2b4`). CBmax 1144. |
+| `cmd8weight.py` | Wmax **5208**. Stadium archive `0x595a60`: Wmax 648 (18 layouts). |
+| `scenechain.py` | **632**. |
+| `cmd8domain.py` | 56 operands, 0 anomalies. |
+| `cmd8scan-v2.py` | 622118 candidates, **0 hits** (4 and 8 MiB). |
+| SC closure | `sc_cold_entry` **2832** over 594 functions (+3: driver retirement). |
+| `indirect20.py` | Per-site P+D maximum **5248**. The two fragment43 sites stay OPEN; the predecessor prefix at `func_83400020` is unchanged (496). |
+| TAILJR, destructors, IRQ | Same disposition as N4. Switch tables: 0 outside targets. |
+
+After stripping addresses, the renderer, weight, scene and depth outputs are identical to N4.
+
+**Lower-pool static key 1** (`poolkey1.py`, which reproduces the validator's N4 values exactly):
+
+| | N4 | N5 |
+|---|---|---|
+| gPool | `0x8012db90` | `0x8012df70` |
+| Pool | capacity 2958416 | `[0x8012df80, 0x803ffff0)`, capacity **2957424** (−992) |
+| fragment62 | charge 815616 | PROGBITS `0x8f4d0` + BSS `0x37d40`, charge **815648** (+32) |
+| fragment62 ROM | | `[0x310520, 0x39f9f0)` |
+| Header | | raw `FRAGMENT` magic, so the uncompressed loader branch |
+
+Applying these deltas to the validator's corrected arithmetic-only N4 remainder (549120) gives 549120 − 992 − 32 =
+**548096**. This is still arithmetic only.
+
+**Still open after v8** (the successor must carry these concretely):
+- **Geo handler payload pointers.** Cmd7/cmd8 data and callbacks; runtime-synthesised streams; the static
+  0x820000/0x898000 layouts are scan-only.
+- **Effect actor.** The actual-actor effect history and the confusion-callback actor selection (`359F90.c:1431-35`).
+  The index is now refused fail-closed, but the whole-history domain is unproven.
+- **Model domains.** The stadium-models leaves (live 144 each) and the BD9C conditional 592 (from the UI reviewer's
+  `n3-model-domain-review.txt`, `511fe91b…0689`). These are conditional and not added to W.
+- **fragment43.** The two fragment43 INDIRECT sites. Other callers of `func_80029008` remain caller-specific.
+- **Lower ledger keys 2–6.** Push/pop phase traces, phase-addressed heads, model/graph measurement, fr31/menu/battle_ui
+  payloads, per-phase occupancy and contiguous spans. These need owner traces or native runs.
+- **Clearance.** Renderer co-occurrence, full fit/contiguity, and native/gate. This is not clearance.
+
 ## Not claimed
 
 - After v3, BD04 is bounded as a 0-byte leaf.
