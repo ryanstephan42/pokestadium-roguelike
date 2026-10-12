@@ -94,6 +94,11 @@ int sc_native_lifetime_acquire(ScNativeLifetime *owner, ScMaArena *arena,
     status = sc_native_memory_acquire(&owner->memory, arena, catalog, seed,
         &owner->loop, &owner->display, backing);
     if (status == SC_OK) {
+        /* A released retirement describes the previous DATA generation. */
+        owner->retirement.backing_retired = 0;
+        owner->retirement.snapshot_valid = 0;
+        owner->retirement.fallback_completed = 0;
+        owner->retirement.pending = 0;
         owner->binding = *backing;
         owner->live = 1;
     }

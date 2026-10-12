@@ -113,6 +113,16 @@ int SC_LIFETIME_FIXTURE_MAIN(void) {
     assert(!owner.live && !owner.loop.acquired && !owner.retirement.acquired);
     assert(sc_native_loop_close(&owner.loop) == SC_INVALID);
     assert(mprotect(pixels, 0xc000U, PROT_READ | PROT_WRITE) == 0);
+    defer_release = 0;
+    assert(owner.retirement.backing_retired && owner.retirement.snapshot_valid);
+    assert(sc_native_lifetime_acquire(&owner, &arena, &catalog, 43,
+        &owner.loop.backing) == SC_OK);
+    assert(!owner.retirement.backing_retired && !owner.retirement.snapshot_valid &&
+        !owner.retirement.fallback_completed && !owner.retirement.pending);
+    assert(sc_native_lifetime_validate(&owner, &owner.loop.backing) == SC_OK);
+    assert(sc_dp_quiescent(&copied) == SC_INVALID);
+    assert(sc_native_lifetime_release(&owner, &owner.loop.backing) == SC_OK);
+    assert(!owner.live && !owner.memory.live);
     assert(sc_ma_shutdown(&arena));
     assert(munmap(pixels, 0x3da7e0U) == 0);
     puts("NATIVE LIFETIME JOINED HOST PASSED: actual owner/memory/DP/crash/loop cleanup; protected freed controls; simulated OS/VI");
