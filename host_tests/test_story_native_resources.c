@@ -200,6 +200,19 @@ int rl_ui_story_init(ScMaArena *arena) {
     return rl_ui_init();
 }
 int __wrap_sc_native_resources_retire(int retired) { return retired != 0; }
+/* Lower-pool fixture: the font binding is modelled here; the actual upper
+   descriptor bind/restore runs in test_story_upper_resources. */
+static unk_D_800AC870 fixture_story_font;
+static int font_unavailable, font_bound;
+int __wrap_sc_native_resources_font_bind(unk_D_800AC870 **saved) {
+    if (font_unavailable || font_bound) return 0;
+    *saved = D_800AC870; D_800AC870 = &fixture_story_font; font_bound = 1;
+    return 1;
+}
+void __wrap_sc_native_resources_font_restore(unk_D_800AC870 *saved) {
+    assert(font_bound && D_800AC870 == &fixture_story_font);
+    D_800AC870 = saved; font_bound = 0;
+}
 s32 func_80000E80(s32 a, void *b, s32 c, s32 d, s32 e, s32 f) {
     (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; assert(0); return 1;
 }
@@ -210,7 +223,9 @@ void osCreateMesgQueue(OSMesgQueue *queue, OSMesg *message, s32 count) {
     (void)queue; (void)message; (void)count; assert(0);
 }
 void func_80003890(u8 *a, u8 *b) { (void)a; (void)b; assert(0); }
-void sc_scene_draw(const ScUi *controller_ui) { assert(controller_ui == &ui); frames++; }
+void sc_scene_draw(const ScUi *controller_ui) {
+    assert(controller_ui == &ui && font_bound && D_800AC870 == &fixture_story_font); frames++;
+}
 int rl_ui_story_icon_cached(unsigned mon) { return sc_native_icon_cached(icons, mon); }
 int rl_ui_story_icon_prefetch(unsigned mon) { return sc_native_icon_prefetch(icons, mon); }
 static int launch(void *p, const ScUiBattleRequest *r) {
@@ -441,6 +456,21 @@ static void child_learning(void) {
     for (i = 0; i < 4; i++) party[0].pp[i] = ui.state.party[0].pp[i];
     assert(sc_ui_driver_observe(&driver, request.operation_id, party, 0, 0, 0) == SC_OK);
     assert(ui.screen == SC_UI_LEARN && sc_native_ui_draw(&native, &ui) == SC_OK);
+    {
+        /* Battle child descriptor: the frame binds the story font and
+           restores the child's, including after the child pop NULLs it. */
+        unk_D_800AC870 child_font, *native_font = D_800AC870;
+        unsigned drawn = frames;
+        D_800AC870 = &child_font;
+        assert(sc_native_ui_draw(&native, &ui) == SC_OK && D_800AC870 == &child_font);
+        D_800AC870 = NULL;
+        assert(sc_native_ui_draw(&native, &ui) == SC_OK && !D_800AC870);
+        font_unavailable = 1;
+        assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE && !D_800AC870);
+        font_unavailable = 0;
+        assert(frames == drawn + 2 && !font_bound);
+        D_800AC870 = native_font;
+    }
     files = (BinArchiveFile *)((u8 *)icons + sizeof(*icons));
     pixels = files[0].unk_08; files[0].unk_08 = NULL;
     assert(sc_native_ui_draw(&native, &ui) == SC_UNAVAILABLE);

@@ -55,7 +55,7 @@ int sc_native_resources_acquire(BinArchive **icons, char ***moves, char ***speci
 
 typedef struct ScUpperRestore {
     ScUiResourceRestore slots;
-    unk_D_800AC870 *font;
+    unk_D_800AC870 *font, *installed;
     ScResourceArena storage;
     int acquired;
 } ScUpperRestore;
@@ -124,6 +124,21 @@ static void restore_upper(MainPoolBlock *block, u32 arg) {
     }
     if (upper == restore) upper = NULL;
     if (outstanding) --outstanding;
+}
+
+/* Battle children replace D_800AC870 with a descriptor lacking index 3 and
+   NULL it on pop, so each story frame binds the retained upper descriptor
+   and restores whatever native font was current. */
+int sc_native_resources_font_bind(unk_D_800AC870 **saved) {
+    if (!saved || !upper || !upper->acquired || !upper->installed ||
+        !upper->storage.active || sc_crash_active) return 0;
+    *saved = D_800AC870;
+    D_800AC870 = upper->installed;
+    return 1;
+}
+
+void sc_native_resources_font_restore(unk_D_800AC870 *saved) {
+    if (upper && D_800AC870 == upper->installed) D_800AC870 = saved;
 }
 
 int sc_native_resources_retire(int tasks_retired) {
@@ -226,6 +241,7 @@ int sc_native_resources_acquire_upper(ScMaArena *arena, BinArchive **icons,
         if (!upper_file(&restore->storage, *icons, i, pokemon_icons_ROM_START,
                          pokemon_icons_ROM_END, 3200, 0, scratch)) return 0;
     if (!sc_native_font_install(font, fonts, glyphs)) return 0;
+    restore->installed = font;
     restore->acquired = 1;
     return 1;
 }

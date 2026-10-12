@@ -168,6 +168,26 @@ int main(void) {
     }
     assert(reads == old_reads && allocations == 3);
     assert(!sc_native_icon_prefetch(icons, 0) && !sc_native_icon_prefetch(icons, 152));
+    {
+        /* Battle child replaces then NULLs the native font; story frames
+           bind the retained upper descriptor and restore the native one. */
+        unk_D_800AC870 child, *upper_font = D_800AC870, *was = NULL;
+        memset(&child, 0, sizeof(child));
+        assert(!sc_native_resources_font_bind(NULL));
+        D_800AC870 = &child;
+        assert(sc_native_resources_font_bind(&was) && was == &child);
+        assert(D_800AC870 == upper_font && D_800AC870->unk_00[3].unk_04);
+        sc_native_resources_font_restore(was);
+        assert(D_800AC870 == &child && !child.unk_00[3].unk_04);
+        D_800AC870 = NULL;
+        assert(sc_native_resources_font_bind(&was) && !was && D_800AC870 == upper_font);
+        sc_native_resources_font_restore(was);
+        assert(!D_800AC870);
+        sc_crash_active = 1; was = &child;
+        assert(!sc_native_resources_font_bind(&was) && was == &child && !D_800AC870);
+        sc_crash_active = 0;
+        D_800AC870 = upper_font;
+    }
     assert(!sc_native_resources_retire(0));
     assert(!sc_ma_shutdown(&arena));
     assert(!sc_ma_module(&arena, (ScMaHandle){0, arena.blocks[0].generation}, &unused));
@@ -186,6 +206,10 @@ int main(void) {
     assert(D_800AC870 == &borrowed && icons == (BinArchive *)1);
     assert(moves == (char **)2 && species == (char **)3);
     assert(!arena.blocks[0].live);
+    {
+        unk_D_800AC870 *was = NULL;
+        assert(!sc_native_resources_font_bind(&was) && D_800AC870 == &borrowed);
+    }
     pop();
     assert(!sc_native_resources_outstanding());
     for (i = 0; i < 4; ++i) {

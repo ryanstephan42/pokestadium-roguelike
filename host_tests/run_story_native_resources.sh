@@ -19,7 +19,8 @@ sources=(
 )
 flags=(-DSTORY_NATIVE_UI -DSTORY_NATIVE_PROBE -DSTORY_SERVICE_CANDIDATE -DROGUELIKE -std=gnu89 -Wall -Wextra -Werror
        -Wno-endif-labels -I. -iquote include -I"$arena_dir" -I"$arena_dir/../.." -Ilib/ultralib/include
-       -include host_tests/story_native_operation_stubs.h -Wl,--wrap=sc_native_resources_retire)
+       -include host_tests/story_native_operation_stubs.h -Wl,--wrap=sc_native_resources_retire
+       -Wl,--wrap=sc_native_resources_font_bind -Wl,--wrap=sc_native_resources_font_restore)
 # Untouched native formatting uses 32-bit pointer arithmetic and decomp artifacts.
 text_flags=(-Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-int-conversion
     -Wno-pointer-sign -Wno-format -Wno-unused-but-set-variable -Wno-uninitialized)

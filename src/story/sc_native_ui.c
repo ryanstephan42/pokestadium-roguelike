@@ -83,6 +83,7 @@ int sc_native_ui_prepare(ScNativeUi *native, ScUi *backing, const ScCatalog *cat
 }
 
 int sc_native_ui_draw(ScNativeUi *native, const ScUi *ui) {
+    unk_D_800AC870 *font;
     if (!descendant(native) || !ui || ui != native->prepared || !rl_ui_list_valid(&ui->list) ||
         !native->driver || !native->driver->bound || native->driver->ui != ui ||
         ui->device != &native->pak->device ||
@@ -91,7 +92,10 @@ int sc_native_ui_draw(ScNativeUi *native, const ScUi *ui) {
         return report(NULL, SC_UNAVAILABLE, "Story native UI: drawing resources unavailable");
     if (!icons_ready(ui, ready(native)))
         return report(NULL, SC_UNAVAILABLE, "Story native UI: retained icon cache unavailable");
+    if (!sc_native_resources_font_bind(&font))
+        return report(NULL, SC_UNAVAILABLE, "Story native UI: retained story font unavailable");
     sc_scene_draw(ui);
+    sc_native_resources_font_restore(font);
     return SC_OK;
 }
 
