@@ -185,6 +185,32 @@ Historical/default and isolated-corrected paths keep their frozen historical
 ELF/import checks. Generated image/header/manifests stay in ignored evidence
 directories; regenerate and relink to a header fixed point after layout changes.
 
+## Retained crash-screen reference
+
+Native scheduler `func_800015A8` publishes a non-NULL image to
+`gCrashScreen.frameBuf`. Its NULL/repeated-line fallback does not replace that
+reference; the fault thread can later draw into and swap the retained buffer.
+Consequently scheduler/VI fallback alone cannot authorize upper-pixel reuse.
+
+`sc_native_crash_restore` restores the actual startup-reserved 320x240 RGBA16
+crash buffer at uncached `0xa07da800` on an 8 MiB machine. This is the existing
+`crash_screen_init` tail `[0x7da800,0x800000)`, outside the arena ending at
+`0x7da7e0`; it is not an allocation or the 640x1 scheduler fallback. The existing
+crash draw-info height field remains 16. An exact authenticated scheduler token,
+quiescent worker, empty request/DONE queues and retired task/frame references
+are required under one interrupt exclusion. A bounded owner callback must
+authenticate pins, fallback and native mode without blocking or allocating.
+The helper restores/readbacks crash draw info, does not submit or change VI,
+and does not authorize freeing. Actual retirement must be checked again.
+
+`bash host_tests/run_story_native_crash.sh OUTPUT` covers refusal, task/frame
+states, nested interrupt restoration and corrupt/readback failure, then joins
+the helper to the actual extracted DP token/scheduler code. It reproduces the
+retained crash alias after real NULL transitions and restores it without an
+extra submission before the retirement check succeeds. OS/VI remain simulated;
+the runner also compiles the actual crash helper with target IDO. These are
+source/HOST/target-compilation checks, not native crash/scanout acceptance.
+
 ## Coordinated presentation loop and checked display
 
 `sc_native_loop.[ch]` consumes the owner ABI imported from exact `08766a8` and

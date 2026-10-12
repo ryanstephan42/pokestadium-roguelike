@@ -59,7 +59,10 @@ static void worker_done(int swap) {
     D_80083CA0.unk_A04.validCount = 1; D_80083CA0.unk_A8A = 1;
     if (swap) vi_current = vi_next;
 }
-int main(void) {
+#ifndef SC_RETIREMENT_FIXTURE_MAIN
+#define SC_RETIREMENT_FIXTURE_MAIN main
+#endif
+int SC_RETIREMENT_FIXTURE_MAIN(void) {
     ScNativeRetirement retirement, copied;
     ScNativeFramebufferSpan spans[2];
     unk_D_80068BB0 images[2], fallback;

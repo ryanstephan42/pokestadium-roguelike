@@ -122,7 +122,7 @@ static struct {
 static int D_80068B70;
 static void *vi_current, *vi_next;
 static int repeat_line;
-static struct { void *frameBuf; } gCrashScreen;
+static struct { void *frameBuf; unsigned width, height; } gCrashScreen;
 #define THREAD5_END 0
 void func_800049AC(void *p) { (void)p; }
 void func_80001444(void *p, void *q, int n) { (void)p; (void)q; (void)n; }
@@ -133,7 +133,8 @@ void osViRepeatLine(int n) { repeat_line = n; }
 void osViBlack(unsigned n) { (void)n; }
 void func_80001474(s8 a, s8 b) { (void)a; (void)b; }
 void crash_screen_set_draw_info(u16 *p, unsigned n, unsigned b) {
-    (void)n; (void)b; gCrashScreen.frameBuf = (void *)((uintptr_t)p | 0xA0000000U);
+    gCrashScreen.frameBuf = (void *)((uintptr_t)p | 0xA0000000U);
+    gCrashScreen.width = n; gCrashScreen.height = b;
 }
 void profiler_log_thread5_time(int n) { (void)n; }
 #include "../build/story/native-display-review-v1/scheduler-body.inc"
