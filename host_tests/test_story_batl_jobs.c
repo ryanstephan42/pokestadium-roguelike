@@ -447,7 +447,27 @@ static void model_cases(int c) {
         bad_root = c - 15;
     }
     loader();
-    if ((c >= 3 && c <= 7) || c == 19 || c == 21 || c == 28) {
+    if (c == 31 || c == 32 || c == 33) {
+        int q = box(&workers[0].unk_30);
+        sp18_func_800198E4* job;
+        CHECK(boxes[q].n == 1);
+        job = (sp18_func_800198E4*)boxes[q].m[0];
+        if (c == 33) {
+            /* a second load recorded for the same worker before admission, even with identical values */
+            __osRunningThread = &D_800ABE10.unk_000;
+            sc_batl_model_loaded(&workers[0].unk_30, job, job->unk_02,
+                                 (void*)*(u32*)((u8*)job->unk_08 + 0x14), (void*)job->unk_08);
+            __osRunningThread = &game_thread;
+        } else if (c == 31) {
+            /* loaded index 24 (request 25), job now claims request 31 */
+            job->unk_02 = 30;
+        } else {
+            /* identical, fully valid header copy elsewhere in the buffer: only provenance differs */
+            memcpy(model_buf[0] + 0x180, (void*)job->unk_08, 0x18);
+            job->unk_08 = (s32)(model_buf[0] + 0x180);
+        }
+    }
+    if ((c >= 3 && c <= 7) || c == 19 || c == 21 || c == 28 || c == 31 || c == 32 || c == 33) {
         CHECK(model_ready(0));
         CHECK(!(regs[0].unk_00 & 0x10) && regs[0].unk_14 == NULL && workers[0].unk_24 == NULL);
         CHECK(workers[0].unk_01 & 1);
@@ -636,7 +656,7 @@ int main(int argc, char** argv) {
         model_buf[0] = aligned_alloc(64, 0x3C000);
         workers[0].unk_04[0] = (s32)model_buf[0];
     }
-    if (c < 10 || (c >= 19 && c <= 21) || (c >= 27 && c <= 29)) {
+    if (c < 10 || (c >= 19 && c <= 21) || (c >= 27 && c <= 29) || c >= 31) {
         model_cases(c);
     } else {
         fx_cases(c);
