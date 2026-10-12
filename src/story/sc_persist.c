@@ -150,15 +150,26 @@ int sc_persist_holds_fragment(void) {
     return persist.phase != SC_PERSIST_IDLE;
 }
 
-int sc_persist_call(int arg0, unsigned arg1, int *result) {
-    if (!result || persist.phase != SC_PERSIST_PUBLISHED ||
-        persist.depth == 0xffffffffU ||
+static int enter(int arg0, unsigned arg1, int *result) {
+    if (persist.depth == 0xffffffffU ||
         sc_ma_map(persist.arena, &persist.lease, 0, 8, SC_MA_READ | SC_MA_EXEC) != persist.image)
         return 0;
     ++persist.depth;
     *result = sc_persist_native_enter(persist.image, arg0, arg1);
     --persist.depth;
     return persist.phase == SC_PERSIST_PUBLISHED || persist.phase == SC_PERSIST_DRAINING;
+}
+
+int sc_persist_call(int arg0, unsigned arg1, int *result) {
+    if (!result || persist.phase != SC_PERSIST_PUBLISHED) return 0;
+    return enter(arg0, arg1, result);
+}
+
+int sc_persist_call_pinned(unsigned kind, int arg0, unsigned arg1, int *result) {
+    if (!result || kind >= SC_PERSIST_PIN_KINDS || !persist.pins[kind] ||
+        (persist.phase != SC_PERSIST_PUBLISHED && persist.phase != SC_PERSIST_DRAINING))
+        return 0;
+    return enter(arg0, arg1, result);
 }
 
 const ScPersist *sc_persist_state(void) { return &persist; }

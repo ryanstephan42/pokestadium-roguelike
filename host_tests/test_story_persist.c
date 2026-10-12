@@ -136,6 +136,12 @@ static void lifecycle(void) {
     assert(!sc_persist_code(at(0x40)) && !sc_persist_owns(image, 1));
     assert(!sc_persist_pin(SC_PERSIST_PIN_SERVICE) && !sc_persist_call(1, 1, &result));
     assert(enters == 1);
+    /* pinned retirement entry: only an existing pin of that kind may enter */
+    assert(!sc_persist_call_pinned(SC_PERSIST_PIN_SERVICE, 1, 1, &result) && enters == 1);
+    assert(!sc_persist_call_pinned(SC_PERSIST_PIN_KINDS, 1, 1, &result));
+    assert(!sc_persist_call_pinned(SC_PERSIST_PIN_HOOK, 1, 1, NULL) && enters == 1);
+    assert(sc_persist_call_pinned(SC_PERSIST_PIN_HOOK, 2, 3, &result) == 1 &&
+           result == 5 && enters == 2 && !p->depth);
     assert(sc_persist_release() == 0 && mapped && !unmaps);
     /* hook uninstall; the DP retirement token is still outstanding */
     assert(sc_persist_unpin(SC_PERSIST_PIN_HOOK) && !sc_persist_unpin(SC_PERSIST_PIN_HOOK));
@@ -164,13 +170,14 @@ static void lifecycle(void) {
     assert(!sc_persist_code((ScPersistFn)((unsigned long)image + 0x40)));
     assert(!sc_persist_owns(image, 1) && !sc_persist_pin(SC_PERSIST_PIN_RETIREMENT));
     assert(!sc_persist_unpin(SC_PERSIST_PIN_RETIREMENT) && !sc_persist_call(1, 1, &result));
-    assert(sc_persist_release() == 0 && enters == 1 && unmaps == 1);
+    assert(!sc_persist_call_pinned(SC_PERSIST_PIN_RETIREMENT, 1, 1, &result));
+    assert(sc_persist_release() == 0 && enters == 2 && unmaps == 1);
     /* reacquire: new generation, fresh block lease */
     acquire_published(2);
     assert(loads == 2);
     /* a callee cannot release the image beneath its own frame */
     reentry = 1;
-    assert(sc_persist_call(1, 2, &result) == 1 && result == 3 && enters == 2);
+    assert(sc_persist_call(1, 2, &result) == 1 && result == 3 && enters == 3);
     reentry = 0;
     assert(p->phase == SC_PERSIST_DRAINING && mapped && !p->depth);
     assert(sc_persist_release() == 1 && !mapped && unmaps == 2);

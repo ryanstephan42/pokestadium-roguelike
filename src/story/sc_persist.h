@@ -52,6 +52,10 @@ int sc_persist_owns(const void *p, ScMaU32 n);
 /* True from acquire start until a successful release, including failure. */
 int sc_persist_holds_fragment(void);
 int sc_persist_call(int arg0, unsigned arg1, int *result);
+/* Retirement entry for an existing pinned owner: allowed while published or
+   draining only while pins[kind] is held, so unpublish closes admission without
+   stranding owners that must run SC code to retire before they unpin. */
+int sc_persist_call_pinned(unsigned kind, int arg0, unsigned arg1, int *result);
 const ScPersist *sc_persist_state(void);
 
 /* Native backend (sc_persist_native.c); HOST tests supply their own. */
