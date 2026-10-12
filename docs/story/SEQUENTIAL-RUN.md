@@ -400,3 +400,15 @@ admission error at frame931. Per-frame diagnostics now retain the raw
 40-byte runner record and both sides' controls/live mon/selected-party
 records, bounded to six records and 8 MiB RDRAM. This is read-only evidence
 to identify the rejected invariant without weakening the fail-closed gate.
+
+The validator's matching rebuild on 2026-10-12 changed only the consumed
+reference map's textual representation: the vanilla ROM still matches
+`ed1378bc12115f71209a77844965ba50`, and the ELF is byte-identical to the
+previous seal. Every map-derived anchor, linker symbol script and native
+header matched the sealed outputs after build-directory normalization.
+The coordinator authorized a new rebaseline record; historical seals were
+not rewritten. Subsequent story builds must pass
+`VANILLA_BUILD_DIR=build/story/reference-vanilla`, whose private immutable
+map/ELF/ROM copies and `rebaseline.json` are pinned by the new seal. Without
+the old map bytes, this is equality of all consumed facts, not a claimed
+raw-map diff.
