@@ -84,6 +84,7 @@ void sc_ko_ledger_discard(ScKoLedger *ledger) {
 int sc_ko_ledger_bind(ScKoLedger *ledger, const ScCombat *combat, RlU32 operation_id) {
     unsigned i;
     if (!ledger || !combat || combat->ready != 1 || !operation_id ||
+        operation_id != combat->operation_id ||
         ledger->bound || ledger->count || ledger->next || ledger->enemy_count ||
         ledger->party_count || ledger->operation_id || !combat->team.count ||
         combat->team.count > SC_KO_LEDGER_CAPACITY || !combat->party_ids[0])
@@ -154,7 +155,8 @@ int sc_combat_capture_ko(ScBridge *bridge, ScKoLedger *ledger,
                          const ScCombat *combat, const ScBattleSnapshot party[6],
                          unsigned active_slot, unsigned enemy_slot, unsigned enemy_hp) {
     RlU8 participants, recipients = 0;
-    unsigned i;
+    ScKoLedger next;
+    unsigned i, count = 0;
     int status;
     if (!bridge || !ledger || !combat || combat->ready != 1 || !party ||
         !combat->team.count || combat->team.count > 6 ||
@@ -164,19 +166,33 @@ int sc_combat_capture_ko(ScBridge *bridge, ScKoLedger *ledger,
         !ledger->bound || !ledger->operation_id ||
         ledger->operation_id != combat->operation_id ||
         ledger->encounter != combat->encounter || ledger->variant != combat->variant ||
-        ledger->enemy_count != combat->team.count)
+        ledger->enemy_count != combat->team.count || ledger->next ||
+        ledger->count > ledger->enemy_count)
+        return SC_INVALID;
+    for (i = 0; i < 6; i++) {
+        if (ledger->party_ids[i] != combat->party_ids[i]) return SC_INVALID;
+        if (combat->party_ids[i]) count++;
+    }
+    if (count != ledger->party_count || active_slot >= count)
         return SC_INVALID;
     participants = bridge->participants[enemy_slot] | (RlU8)(1U << active_slot);
-    bridge->participants[enemy_slot] = participants;
-    if (enemy_hp) return SC_OK;
-    for (i = 0; i < 6; i++) {
-        if (!combat->party_ids[i]) break;
+    if (!participants || (participants >> count)) return SC_INVALID;
+    if (enemy_hp) {
+        bridge->participants[enemy_slot] = participants;
+        return SC_OK;
+    }
+    for (i = 0; i < count; i++) {
         if (party[i].hp) recipients |= (RlU8)(1U << i);
     }
     recipients &= participants;
-    status = sc_ko_ledger_record(ledger, enemy_slot, combat->team.count, i,
+    next = *ledger;
+    status = sc_ko_ledger_record(&next, enemy_slot, combat->team.count, count,
                                  participants, recipients);
-    return status == SC_DUPLICATE ? SC_OK : status;
+    if (status == SC_DUPLICATE) return SC_OK;
+    if (status != SC_OK) return status;
+    *ledger = next;
+    bridge->participants[enemy_slot] = participants;
+    return SC_OK;
 }
 
 int sc_ko_ledger_apply_next(ScKoLedger *ledger, ScState *state,
@@ -190,7 +206,8 @@ int sc_ko_ledger_apply_next(ScKoLedger *ledger, ScState *state,
         ledger->count > SC_KO_LEDGER_CAPACITY || ledger->next > ledger->count ||
         state->encounter != combat->encounter ||
         state->encounter_variant != combat->variant ||
-        ledger->party_count != state->party_count)
+        ledger->party_count != state->party_count ||
+        ledger->enemy_count != combat->team.count)
         return SC_INVALID;
     {
         unsigned i;
@@ -201,8 +218,7 @@ int sc_ko_ledger_apply_next(ScKoLedger *ledger, ScState *state,
                 return SC_INVALID;
     }
     if (!ledger->count)
-        return ledger->next || ledger->enemy_count ||
-            state->phase != SC_BATTLE ? SC_INVALID : SC_OK;
+        return state->phase != SC_BATTLE ? SC_INVALID : SC_OK;
     if (ledger->enemy_count != combat->team.count ||
         ledger->party_count != state->party_count)
         return SC_INVALID;

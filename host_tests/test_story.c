@@ -301,12 +301,50 @@ static void test_postbattle_ko_ledger(void) {
     assert(sc_combat_prepare(&combat, &state, &catalog) == SC_OK);
     combat.operation_id = 77;
     sc_ko_ledger_init(&ledger);
+    assert(sc_ko_ledger_bind(&ledger, &combat, combat.operation_id + 1) == SC_INVALID);
+    assert(!ledger.bound && !ledger.count && !ledger.party_count);
     assert(sc_ko_ledger_bind(&ledger, &combat, combat.operation_id) == SC_OK);
+    captured = state;
+    assert(sc_ko_ledger_apply_next(&ledger, &state, &combat) == SC_OK);
+    assert(!memcmp(&state, &captured, sizeof(state)) && ledger.next == 0);
     memset(&bridge, 0, sizeof(bridge));
     memset(party, 0, sizeof(party));
     bridge.enemy_count = combat.team.count;
     party[0].hp = state.party[0].cur_hp;
     party[1].hp = 0;
+    {
+        ScCombat distinct = combat, wrong;
+        ScKoLedger bound, saved_ledger;
+        ScBridge saved_bridge;
+        unsigned mutation, hp;
+        distinct.party_ids[1] = 4;
+        sc_ko_ledger_init(&bound);
+        assert(sc_ko_ledger_bind(&bound, &distinct, distinct.operation_id) == SC_OK);
+        saved_ledger = bound;
+        saved_bridge = bridge;
+        for (mutation = 0; mutation < 7; mutation++) {
+            wrong = distinct;
+            if (mutation == 0) wrong.party_ids[0] = 2;
+            if (mutation == 1) { wrong.party_ids[0] = 4; wrong.party_ids[1] = 1; }
+            if (mutation == 2) wrong.party_ids[1] = 0;
+            if (mutation == 3) wrong.party_ids[2] = 7;
+            if (mutation == 4) wrong.operation_id++;
+            if (mutation == 5) wrong.encounter++;
+            if (mutation == 6) wrong.variant++;
+            for (hp = 0; hp < 2; hp++) {
+                assert(sc_combat_capture_ko(&bridge, &bound, &wrong, party, 0, 0, hp)
+                       == SC_INVALID);
+                assert(!memcmp(&bridge, &saved_bridge, sizeof(bridge)));
+                assert(!memcmp(&bound, &saved_ledger, sizeof(bound)));
+            }
+        }
+        bound.next = 1;
+        saved_ledger = bound;
+        assert(sc_combat_capture_ko(&bridge, &bound, &distinct, party, 0, 0, 1)
+               == SC_INVALID);
+        assert(!memcmp(&bridge, &saved_bridge, sizeof(bridge)));
+        assert(!memcmp(&bound, &saved_ledger, sizeof(bound)));
+    }
     captured = state;
     assert(sc_combat_capture_ko(&bridge, &ledger, &combat, party, 0, 0, 0) == SC_OK);
     assert(sc_combat_capture_ko(&bridge, &ledger, &combat, party, 0, 0, 0) == SC_OK);
