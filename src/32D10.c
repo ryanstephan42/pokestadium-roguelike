@@ -156,6 +156,12 @@ void func_80032670(u32 arg0, u32 arg1) {
     s32 (*func)(void);
 
     D_800AF7B0[arg0 & 1] = 0;
+#ifdef ROGUELIKE
+    {
+        extern void rl_shadow_slot_reset(u32 row);
+        rl_shadow_slot_reset(arg0);
+    }
+#endif
     func = Util_ConvertAddrToVirtAddr(func_810007F8);
     func();
 

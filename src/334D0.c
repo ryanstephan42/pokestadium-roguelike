@@ -55,11 +55,26 @@ static unk_D_800B2EA8 D_800B2EA8[1];
  * only reset on the func_80032670 draw path, so nothing bounds it to the three slots of
  * D_800AFFC8[row]. A slot is populated only by func_80033B2C, which sets modelSegment to the
  * slot's own unkSegment. Refuse out-of-range counters, and unpopulated slots for consumers.
+ * An out-of-range counter latches the row dead until the func_80032670 reset (rl_shadow_slot_reset),
+ * so the s16 counter wrapping back to 0..2 cannot re-admit a slot from before the refusal.
  */
+static u8 rl_shadow_dead[2];
+
+void rl_shadow_slot_reset(u32 row) {
+    rl_shadow_dead[row & 1] = 0;
+}
+
 static StadiumModel* rl_shadow_slot(s32 row, s16 counter, s32 requirePopulated) {
     StadiumModel* model;
 
-    if (((u32)row >= 2) || ((u16)counter >= 3)) {
+    if ((u32)row >= 2) {
+        return NULL;
+    }
+    if ((u16)counter >= 3) {
+        rl_shadow_dead[row] = 1;
+        return NULL;
+    }
+    if (rl_shadow_dead[row]) {
         return NULL;
     }
     model = &D_800AFFC8[row][counter].model;

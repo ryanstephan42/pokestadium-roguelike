@@ -17,6 +17,11 @@ ROGUELIKE (fixed) and without (vanilla) against labelled seams:
   - vanilla reproduces UBSan's index-3 bounds fault for D_800AFFC8[0][3] (in-object alias of
     D_800AFFC8[1][0]) and for D_800AFFC8[1][3] (past the array), proving the fixture
     observes what the guard changes.
+  - an out-of-range counter latches its row dead (rl_shadow_dead) until the real func_80032670
+    reset (extracted from src/32D10.c) clears it: 65533 refusals from 3 wrap the s16 counter back to
+    0, where vanilla re-admits the stale self-marked slot 0 but the fixed build keeps refusing; after
+    the reset the row repopulates and draws again, and the other row is unaffected. Mutants that
+    drop the latch or the reset clear are rejected.
 No canonical reachability of an out-of-range counter is asserted.
 """
 import pathlib
@@ -43,8 +48,14 @@ hstart = text.index("#ifdef ROGUELIKE\n/*\n * D_800AF7B0[row]")
 helper = text[hstart:text.index("#endif\n", hstart) + len("#endif\n")]
 assert "static StadiumModel* rl_shadow_slot(s32 row, s16 counter, s32 requirePopulated)" in helper
 assert text.count("rl_shadow_slot(") == 5
+assert "rl_shadow_dead[row] = 1;" in helper and "rl_shadow_dead[row & 1] = 0;" in helper
+t32 = (ROOT / "src/32D10.c").read_text()
+r0 = t32.index("void func_80032670(u32 arg0, u32 arg1) {")
+r1 = t32.index("\n}\n", r0) + 3
+reset_fn = t32[r0:r1]
+assert "rl_shadow_slot_reset(arg0);" in reset_fn and "D_800AF7B0[arg0 & 1] = 0;" in reset_fn
 body = (helper + function("void func_80032BD4(void) {") + function("void func_80032D28(void) {")
-        + function("Gfx* func_80032F94(Gfx* gfx) {"))
+        + function("Gfx* func_80032F94(Gfx* gfx) {") + reset_fn)
 
 PREFIX = r"""
 #include <assert.h>
@@ -98,6 +109,11 @@ s32 D_80076270[16];
 Gfx D_800762B0[6];
 u32 D_800777A8[8], D_80077950[8];
 
+static void func_810007F8(void) { }
+static void* Util_ConvertAddrToVirtAddr(void* f) { return f; }
+#ifndef ROGUELIKE
+void rl_shadow_slot_reset(u32 row) { (void)row; }
+#endif
 static u8 g_mode;
 static int g_alloc_fail;
 static u8 g_vtx_arena[0x1000];
@@ -175,7 +191,9 @@ static void call(const char* tag) {
 }
 static void reset(void) {
     memset(D_800AFFC8, 0, sizeof(D_800AFFC8));
-    D_800AF7B0[0] = D_800AF7B0[1] = 0;
+    func_80032670(0, 0);
+    func_80032670(1, 0);
+    assert(D_800AF7B0[0] == 0 && D_800AF7B0[1] == 0);
     memset(D_800AF7C0, 0, sizeof(D_800AF7C0));
     g_vtx_top = 0;
     g_alloc_fail = 0;
@@ -241,6 +259,42 @@ int main(int argc, char** argv) {
         D_800AF7C0[0] = 3; D_800AF7B0[0] = 0; g_mode = 0; call("no-vtx");
         return 0;
     }
+    if (!strcmp(which, "wrap")) {
+        /* populate row r's three slots, then refuse from counter 3 until the s16 wraps to 0 */
+        for (int r = 0; r < 2; r++)
+            for (int path = 0; path < 2; path++) {
+                reset();
+                D_800AF7C0[r] = 1;
+                for (int i = 0; i < 3; i++) { g_mode = r; call("fill"); }
+                assert(D_800AF7B0[r] == 3);
+                D_800AF7C0[r] = 2;
+#ifndef ROGUELIKE
+                /* vanilla faults on the first out-of-range index (see alias/overflow), so model
+                   the post-wrap state directly: same slots, counter back at 0 */
+                D_800AF7B0[r] = 0;
+#else
+                for (long i = 0; i < 65533; i++) {
+                    g_mode = path ? r + 2 : r;
+                    g_vtx_top = 0;
+                    Gfx* end = func_80032F94(out);
+                    assert(end == out);
+                }
+#endif
+                assert(D_800AF7B0[r] == 0);
+                g_mode = path ? r + 2 : r;
+                func_80032D28();
+                call("after-wrap");
+                /* the other row is never latched */
+                D_800AF7C0[r ^ 1] = 1; D_800AF7B0[r ^ 1] = 0; g_mode = r ^ 1; call("other-fill");
+                D_800AF7C0[r ^ 1] = 2; D_800AF7B0[r ^ 1] = 0; g_mode = r ^ 1; func_80032D28(); call("other-draw");
+                /* vanilla reset re-arms the row: repopulate slot 0, then draw it */
+                func_80032670(r, 0);
+                D_800AF7C0[r] = 1; g_mode = r; call("refill");
+                func_80032670(r, 0);
+                D_800AF7C0[r] = 2; g_mode = path ? r + 2 : r; func_80032D28(); call("reacquire");
+            }
+        return 0;
+    }
     if (!strcmp(which, "alias")) {
         reset();
         D_800AF7C0[0] = 1; D_800AF7B0[0] = 3; g_mode = 0; call("alias03");
@@ -300,8 +354,34 @@ with tempfile.TemporaryDirectory(prefix="shadow-slot-", dir=str(OUT)) as tmp:
     assert ovf.returncode != 0 and "index 3 out of bounds" in ovf.stderr, ovf.stderr[-2000:]
     assert run(fixed, "overflow").returncode == 0
 
+    # sticky refusal across the s16 wrap, row independence, reset re-arm
+    wrap = run(fixed, "wrap").stdout.splitlines()
+    aw = [l for l in wrap if l.startswith("after-wrap")]
+    assert len(aw) == 4 and all(l.endswith("gfx 0") for l in aw), aw
+    od = [l for l in wrap if l.startswith("other-draw")]
+    assert len(od) == 4 and all(not l.endswith("gfx 0") for l in od), od
+    rq = [l for l in wrap if l.startswith("reacquire")]
+    assert len(rq) == 4 and all(not l.endswith("gfx 0") for l in rq), rq
+    assert rq == [l for l in run(vanilla, "wrap").stdout.splitlines() if l.startswith("reacquire")]
+    vaw = [l for l in run(vanilla, "wrap").stdout.splitlines() if l.startswith("after-wrap")]
+    assert len(vaw) == 4 and all(not l.endswith("gfx 0") for l in vaw), vaw
+
+    for name, a, b in (("no-latch", "rl_shadow_dead[row] = 1;", ";"),
+                       ("no-reset-clear", "rl_shadow_dead[row & 1] = 0;", ";")):
+        assert a in helper
+        mbin = pathlib.Path(tmp) / name
+        (pathlib.Path(tmp) / (name + ".c")).write_text(PREFIX + body.replace(a, b) + SUFFIX)
+        subprocess.run(CFLAGS + ["-DROGUELIKE", str(pathlib.Path(tmp) / (name + ".c")), "-o", str(mbin)], check=True)
+        mw = run(mbin, "wrap", check=False).stdout.splitlines()
+        maw = [l for l in mw if l.startswith("after-wrap")]
+        mrq = [l for l in mw if l.startswith("reacquire")]
+        caught = any(not l.endswith("gfx 0") for l in maw) or any(l.endswith("gfx 0") for l in mrq) or len(mrq) != 4
+        assert caught, "mutant %s not rejected" % name
+
     n = len(fdom.splitlines())
     print("shadow slot: in-domain trace %d lines identical; %d refusals; vanilla alias+overflow reproduced"
           % (n, len(bad_lines) + 6))
+    print("shadow slot: 4 wrap histories refused after 65533 refusals (vanilla re-admits), reset re-arms,"
+          " other row unaffected; 2 latch mutants rejected")
 print("334D0 shadow slot counter: OK")
 sys.exit(0)
