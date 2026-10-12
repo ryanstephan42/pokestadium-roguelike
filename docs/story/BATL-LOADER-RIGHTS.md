@@ -64,9 +64,11 @@ Archive facts, checked over all entries:
   in 0x8430xxxx..0x843Fxxxx through the generated exact-function table
   (`tools/rl/gen_archive_imports.py`, vanilla ELF `func_*` → linked symbol) and
   halts the loader thread on any unmapped target. All 32 retail targets are in
-  the candidate table (2,055 rows), e.g. 0x81000028: `func_84343D24`
-  0x84343D24 → 0x84344894. See docs/roguelike/BUILD.md, "Original animation
-  archive imports". Static evidence only; no native witness.
+  the candidate table (2,055 rows). The linked address depends on the
+  candidate layout; in the combined candidate `e051361`, 0x81000028:
+  `func_84343D24` 0x84343D24 → 0x843448D4. The successor seal carries all 32
+  rows, emulated from the linked table bytes. See docs/roguelike/BUILD.md,
+  "Original animation archive imports". Static evidence only; no native witness.
 
 ### Graphics retirement of A and S
 
@@ -81,6 +83,28 @@ Archive facts, checked over all entries:
 - Crash retention, per-chunk PI completion (worker waits per chunk; the PI
   consumers use `osVirtualToPhysical`, no lower-only mask) and cache handling
   are unchanged.
+
+### Aliases into A and S after release (static trace, combined candidate)
+
+Who can still hold an A or S address once `sc_batl_loader_unbind` returns the
+span to the campaign lease:
+
+| Alias | Storage | Written by | Read by | Ends |
+|-------|---------|------------|---------|------|
+| Controller `unk_18` (A base), `unk_28`/`unk_20` (last A table/size) | `func_80019760` block, lower `main_pool` (19840.c) | 19840.c `func_80019760`, `func_80019B48` case 2 | worker jobs from `func_80019A7C`; `func_8001C248`/`func_8001C2D8` (1C720.c:222-240) | The block is freed by the BATL pop. Its only owner, `D_8438E798[i].unk_10` (fragment62_2EA8E0.c:602-603), is fragment62 storage. |
+| `D_843924E0[]` (A table pointers) | fragment62 BSS | worker `func_80019514` through `func_80019A7C(…, D_843924C0, D_843924E0)` (`func_8432C958`) | `func_8432CA48` (fragment62_315D50.c:4908-4920) | Unmapped with fragment62 at the BATL pop. |
+| `D_843920C0[256]` (A and lower addresses) | fragment62 BSS (`fragment62.h:1036`) | `func_8432C830` from `func_80019EA0(0)` (a lower `func_8000484C` block) and from `func_8432CA48` (A) | fragment62 only: `func_8432C86C` clears it on entry; CPU/RCP users at 315D50.c:5023-5040 and 31AA30.c:11-50 | No reader outside fragment62. |
+| `D_800ABE10.unk_A04.unk_08` (S) | main BSS (19840.c:27) | `func_8001987C` | the worker (`func_80019484`/`func_80019514`) only | **Stays stale after the pop** (vanilla also leaves a freed lower pointer). Every other fragment that creates controllers (`func_80019760`) also calls `func_8001987C`, which rewrites it before any worker job. Campaign jobs are refused after scope close (`sc_batl_worker_admit`). |
+| `D_800ABE10.unk_A04.unk_00/04` (archive handles) | main BSS; the handles are lower `main_pool` blocks (`func_800044F4`) | `func_8001987C` | `func_80019204`, `func_8000484C` users | Same stale-after-pop behaviour as vanilla. The handles never point into A or S, and opener flag 4 (`arg3 == 1`, 3FB0.c:601-603) bypasses the per-file `unk_08` cache that `func_80019204` writes. |
+| `gFragments[0xEF]` (last model or animation fragment; both archives are id 0xEF) | memmap.c:13 | `Memmap_RelocateFragment` from `func_80019128` (no destructor registered) | `Memmap_GetFragmentVaddr` for 0x8FFxxxxx and `func_80004364` (compare only) | **Stays stale after the pop**, as in vanilla (a freed lower M/A block). Every 0xEF load sets the entry before it relocates (memmap.c:127), and the shared id means deferred resolution would already be wrong in vanilla. No new reader is added. |
+| `gFragments[0]` (fragment31 thunks, the 72 callback targets) | memmap.c:13 | `func_80004454(0, …)` at fragment62_2EA8E0.c:621 | `Util_ConvertAddrToVirtAddr` from `func_80010FDC` | Lower block; destructor `func_80004364` clears id 0 at the pop (3FB0.c:504-517). It never points into A. |
+
+The only post-release references to the upper span are therefore the two stale
+main-BSS words (`unk_A04.unk_08` and, after an animation load, `gFragments[0xEF]`).
+Both have the same lifetime as vanilla's freed-lower equivalents, and both are
+overwritten before their next use. No fragment62 or controller alias outlives
+the pop, and release waits for graphics idle after that pop. Static only: no VI
+or native witness.
 
 ## Per-load phases of one M buffer (worker thread, priority 10)
 
