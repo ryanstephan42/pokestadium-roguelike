@@ -5,6 +5,7 @@
 #endif
 #ifdef ROGUELIKE
 #include "src/roguelike/rl_native_relics.h"
+#include "src/roguelike/rl_geo_guard.h"
 #endif
 #ifdef ROGUELIKE
 #include "include/rl_battle.h"
@@ -619,7 +620,25 @@ void func_84301430(unk_func_80007444* arg0) {
     D_8438E77C = D_8438E794->img_p;
 
     FRAGMENT_LOAD(fragment31);
+#ifdef ROGUELIKE
+    {
+        /* the segment-1 shadow DLs need this battle's load, not a stale earlier registration */
+        u32 seg1 = (u32)ASSET_LOAD(D_1000000, common_menu1_ui, 0);
+
+        if (!rl_geo_seg_load_ok(seg1, Memmap_GetSegmentBaseVaddr(1), Memmap_GetSegmentSize(1), 0x2590)) {
+            Memmap_ClearSegmentMemmap(1);
+#ifdef STORY_SERVICE_CANDIDATE
+            sc_batl_scope_fail();
+#endif
+            osSyncPrintf("battle segment 1 load refused\n");
+            for (;;) {
+                osStopThread(NULL);
+            }
+        }
+    }
+#else
     ASSET_LOAD(D_1000000, common_menu1_ui, 0);
+#endif
     ASSET_LOAD(D_3000000, battle_ui, 0);
 
     if ((D_800AE540.unk_0000 == 0x10) || (D_800AE540.unk_0000 == 0xA)) {

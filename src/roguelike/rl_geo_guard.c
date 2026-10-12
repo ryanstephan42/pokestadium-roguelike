@@ -122,3 +122,7 @@ int rl_geo_recolor_ok(const RlGeoTexDesc* tex, int ntex, const RlGeoPalDesc* pal
     }
     return 1;
 }
+
+int rl_geo_seg_load_ok(unsigned int ret, unsigned int base, unsigned int size, unsigned int need) {
+    return ret != 0 && ret == base && need != 0 && size >= need && ret <= 0xFFFFFFFFu - need;
+}

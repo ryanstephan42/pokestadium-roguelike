@@ -231,6 +231,32 @@ int main(void) {
         CHECK(rl_geo_recolor_ok(tex, 0, pal, 0, lo, hi));
     }
 
+    {
+        /* func_80004258 contract: success registers (vaddr, block size); NULL leaves the prior map */
+        unsigned int base = 0, size = 0, ret;
+        int k;
+
+        for (k = 0; k < 2; k++) { /* valid load and battle re-entry */
+            ret = 0x80300000u + 0x10000u * k;
+            base = ret;
+            size = 0x3F20;
+            CHECK(rl_geo_seg_load_ok(ret, base, size, 0x2590));
+        }
+        base = 0x80200000u; /* prior, larger registration survives a failed load */
+        size = 0x8000;
+        ret = 0;
+        CHECK(!rl_geo_seg_load_ok(ret, base, size, 0x2590));
+        base = 0;
+        size = 0; /* refusal cleanup: shadow resident predicate now off */
+        CHECK(!(base != 0 && size >= 0x2590));
+        CHECK(!rl_geo_seg_load_ok(0x80300000u, 0x80200000u, 0x8000, 0x2590)); /* foreign base */
+        CHECK(!rl_geo_seg_load_ok(0x80300000u, 0x80300000u, 0x258F, 0x2590)); /* short extent */
+        CHECK(rl_geo_seg_load_ok(0x80300000u, 0x80300000u, 0x2590, 0x2590));
+        CHECK(!rl_geo_seg_load_ok(0xFFFFF000u, 0xFFFFF000u, 0x3F20, 0x2590)); /* wraps */
+        CHECK(!rl_geo_seg_load_ok(0x80300000u, 0x80300000u, 0x3F20, 0));
+        CHECK(!rl_geo_seg_load_ok(0, 0, 0x8000, 0x2590)); /* NULL return with stale NULL base */
+    }
+
     if (failures) {
         return 1;
     }

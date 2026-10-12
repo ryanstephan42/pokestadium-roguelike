@@ -41,5 +41,7 @@ int rl_geo_image_cmd_ok(const unsigned char* cmd, unsigned int at, unsigned int 
 /* every span func_80018C40 would write lies inside the image */
 int rl_geo_recolor_ok(const RlGeoTexDesc* tex, int ntex, const RlGeoPalDesc* pal, int npal, unsigned int lo,
                       unsigned int hi);
+/* a segment ASSET_LOAD returned a block that is now the registered segment and covers need bytes */
+int rl_geo_seg_load_ok(unsigned int ret, unsigned int base, unsigned int size, unsigned int need);
 
 #endif
