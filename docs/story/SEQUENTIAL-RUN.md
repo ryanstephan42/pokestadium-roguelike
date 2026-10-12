@@ -372,3 +372,10 @@ not state4 alone, still gates R campaign entry.
 Verified button pulses hold six counted frames and release for two, matching
 the successful normal harness's short press duration. One VI-frame pulses
 can miss Stadium's asynchronous controller polling.
+Run6 reached the actual six-party native battle with an interrupted Pak
+checkpoint and retained bound ledger, then its process exited before the
+first action returned. Exit status is now persisted. Optional `--debug-exit`
+wraps only that scenario in a process-local GDB syscall-exit catch, retaining
+host registers/thread backtraces in private output. It neither writes game
+RAM nor changes core options; debugger overhead remains in the same watchdog,
+and a missing native report still fails. No external debug-symbol download.

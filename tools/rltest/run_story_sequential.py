@@ -85,6 +85,7 @@ def main():
     parser.add_argument("--seal-sha256", required=True)
     parser.add_argument("--core-sha256", required=True)
     parser.add_argument("--control", type=pathlib.Path)
+    parser.add_argument("--debug-exit", action="store_true")
     args = parser.parse_args()
     seal, _, _ = verify_candidate(args.seal, args.package, args.binding, args.seal_sha256)
     if args.control:
@@ -101,6 +102,8 @@ def main():
     command += ["--core-sha256", args.core_sha256]
     if args.control:
         command += ["--control", str(args.control.resolve())]
+    if args.debug_exit:
+        command += ["--debug-exit"]
 
     def report(budget, elapsed, reaped):
         write_json(args.out.with_suffix(".report.json"), collect(args.out, budget, elapsed, reaped))

@@ -930,9 +930,23 @@ def run_children(args, command_factory=None):
                 command += ["--control", str(args.control)]
         else:
             command = command_factory(args)
-        result = subprocess.run(command + ["--scenario", name], stdin=sys.stdin,
+        child = command + ["--scenario", name]
+        if getattr(args, "debug_exit", False) and name == "win":
+            child = ["gdb", "--quiet", "--batch",
+                     "-ex", "set debuginfod enabled off",
+                     "-ex", f"set logging file {args.out.resolve() / 'win-host-exit.txt'}",
+                     "-ex", "set logging redirect on", "-ex", "set logging enabled on",
+                     "-ex", "catch syscall exit_group", "-ex", "run",
+                     "-ex", "info registers", "-ex", "thread apply all bt",
+                     "-ex", "continue", "--args"] + child
+        result = subprocess.run(child, stdin=sys.stdin,
                                 stdout=sys.stdout, stderr=sys.stderr, cwd=ROOT)
-        require(result.returncode == 0, f"Scenario worker refused: {name}")
+        write_json(args.out / (name + ".exit.json"),
+                   dict(returncode=result.returncode, host_debugger=child[0] == "gdb"))
+        require(result.returncode == 0,
+                f"Scenario worker refused: {name}, returncode={result.returncode}")
+        require((args.out / name / "report.json").is_file(),
+                f"Scenario process exited without final report: {name}")
         if name == "loss-terminal-reload":
             write_json(args.out / (name + ".terminal-attempted.json"), dict(scenario=name))
             result = subprocess.run(command + ["--scenario", name, "--terminal-reload"],
@@ -951,6 +965,7 @@ def main():
     parser.add_argument("--core-sha256", required=True)
     parser.add_argument("--terminal-reload", action="store_true")
     parser.add_argument("--control", type=pathlib.Path)
+    parser.add_argument("--debug-exit", action="store_true")
     args = parser.parse_args()
     if args.scenario:
         require(not args.terminal_reload or args.scenario == "loss-terminal-reload",
