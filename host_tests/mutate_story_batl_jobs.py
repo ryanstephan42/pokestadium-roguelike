@@ -7,9 +7,11 @@ run_story_batl_scope.sh fails (CHECK abort, sanitizer report, unexpected stop) o
 hang). Usage: host_tests/mutate_story_batl_jobs.py <fresh-output-dir> [mutant-name ...]
 """
 import os
+import signal
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 JOBS = "src/story/sc_batl_jobs.c"
@@ -31,6 +33,11 @@ MUTANTS = [
     ("typeE-extent-before-owner", SCOPE,
      "            (root[0] == 0xE && !sc_job_in(v.buffer, SC_JOB_MODEL_BYTES, (u32)root, SC_JOB_ROOT_BYTES)) ||\n",
      "", "reintroduces the b0df9e8 read-before-extent order"),
+    ("model-ticket", SCOPE, "    if (loader.live &&\n        !sc_job_ticket_take(", "    if (0 &&\n        !sc_job_ticket_take(",
+     "jobs cases 31/32"),
+    ("ticket-index", JOBS, " && t->index == index", "", "jobs case 31"),
+    ("ticket-header", JOBS, " && t->header == header", "", "jobs case 32"),
+    ("ticket-second-load", JOBS, "    if (t->state != 0) {\n        t->state = 2;\n        return;\n    }\n", "", "jobs case 33"),
     ("model-admit-bypass", SCOPE, "if (job->unk_00 == 1) return model_done(worker, job);",
      "if (job->unk_00 == 1) return 1;", ""),
     ("size0", JOBS, "    if (v->size == 0) {\n        return SC_JOB_FAILED;\n    }\n", "",
@@ -84,20 +91,51 @@ def tree(root, out, name):
     return t
 
 
+TIMEOUT = int(os.environ.get("MUTANT_TIMEOUT", "300"))
+
+
+def group_alive(pgid):
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def reap_group(p):
+    """SIGKILL the runner's own process group (pgid == bash pid), reap the leader and wait until the
+    group is empty (an unreaped zombie leader would still count as a member)."""
+    pgid = p.pid
+    if group_alive(pgid):
+        os.killpg(pgid, signal.SIGKILL)
+    p.wait()
+    for _ in range(500):
+        if not group_alive(pgid):
+            return
+        time.sleep(0.01)
+    raise SystemExit("process group %d survived SIGKILL" % pgid)
+
+
 def run(t, out, name):
     for suite, script in SUITES:
         log = out / ("%s-%s.log" % (name, suite))
-        try:
-            with open(log, "w") as f:
-                r = subprocess.run(["bash", script, str(out / "runs" / name / suite)], cwd=t, stdout=f,
-                                   stderr=subprocess.STDOUT, timeout=300)
-        except subprocess.TimeoutExpired:
-            return "KILLED", "%s timeout (hang)" % suite
-        if r.returncode != 0:
+        with open(log, "w") as f:
+            # own session/process group so a hang is reaped with every descendant (test binary, tee)
+            p = subprocess.Popen(["bash", script, str(out / "runs" / name / suite)], cwd=t, stdout=f,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                rc = p.wait(timeout=TIMEOUT)
+                hung = False
+            except subprocess.TimeoutExpired:
+                hung = True
+            reap_group(p)
+            if hung:
+                return "KILLED", "%s timeout (hang)" % suite
+        if rc != 0:
             text = log.read_text().splitlines()
             keys = ("CHECK FAILED", "runtime error", "ERROR:", "assertion failed", "error:")
             hits = [l.strip() for l in text if any(k in l for k in keys)]
-            return "KILLED", "%s: %s" % (suite, hits[0][:160] if hits else "rc %d" % r.returncode)
+            return "KILLED", "%s: %s" % (suite, hits[0][:160] if hits else "rc %d" % rc)
     return "SURVIVED", ""
 
 
