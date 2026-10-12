@@ -52,11 +52,27 @@ typedef struct ScNativeCampaignBacking {
    addressing must use the admitted mapping and its actual cache/alignment
    rules, never a silently substituted buffer.
    Successful task completion/worker drain alone does not retire scanout.
-   After fenced display closure and borrowed-stage restoration, release SC_OK
-   additionally requires no queued scheduler descriptor/work references to the
-   lease and actual VI current/next buffers outside both physical spans.
-   Until then retain pixels, descriptors and controls unchanged; no successor
-   acquisition, reuse or unwinding their backing storage is permitted. */
+   Before popping graphics/resource/display scopes, the loop closes admission
+   to new display frames, fences submitted work and restores the borrowed
+   stage without freeing display storage, then calls retire_display outside
+   the Pak session. images must be the exact two embedded descriptors in the
+   owner-bound external display control, referencing these exact spans.
+   The callback validates this identity and drives a bounded real handoff to
+   an owner-admitted live previous or native safe fallback framebuffer.
+   No previous stage is not proof of safety: admit the actual fallback
+   descriptor/mapping and its presentation mode, then submit/drive its swap;
+   a NULL desired-context pointer alone is insufficient.
+   Merely selecting the previous context does not submit/swap a restored
+   frame. SC_OK requires no A8C/A9C/AAC or queued scheduler descriptor/work
+   references to the lease, retired RSP/RDP work and actual VI current/next
+   buffers outside both physical spans. PENDING retains every scope, pixel
+   span, descriptor and control; retries do not resubmit display closure or
+   reopen input. Refusal cannot authorize scope cleanup.
+   After retire_display SC_OK, final cleanup may pop resource/display scopes
+   without issuing another task or swap referencing the lease. release SC_OK
+   additionally validates that this retirement remains true. Until release
+   succeeds, no successor acquisition, reuse or unwinding external backing
+   storage is permitted. */
 
 /* All callbacks validate the exact live lease/backing tuple and return SC_OK,
    SC_PENDING or an explicit ScStatus refusal, never a Boolean.
@@ -86,6 +102,8 @@ typedef struct ScNativeCampaignOwner {
     int (*resume)(void *context, const ScNativeCampaignBacking *backing,
                   RlU32 operation_id, RlU32 generation, const ScState *settled,
                   const ScCombat *progression);
+    int (*retire_display)(void *context, const ScNativeCampaignBacking *backing,
+                          const unk_D_80068BB0 *images);
     int (*release)(void *context, const ScNativeCampaignBacking *backing);
 } ScNativeCampaignOwner;
 #endif
