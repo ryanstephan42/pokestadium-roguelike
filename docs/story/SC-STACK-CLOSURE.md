@@ -108,10 +108,12 @@ sets it, runs the body, and clears it on every return (the body has the only exi
 | sc_ui_input | `input_loaded` | `report(ui, SC_INVALID)` (NULL ui → `SC_UI_STAY`) |
 
 Each buffer is owned by exactly one function: only that function's body writes it, and a nested
-call of the same function is refused rather than overwriting a live snapshot. Buffers may be
-passed down as read-only arguments (e.g. the `sc_state_valid` body passes `valid_expected` to
-`sc_new`, which builds into its own separate `new_next`); no callee stores the pointer or uses a
-caller's buffer as its own scratch, so there is no aliasing between distinct owners. `host_tests/test_story_scratch.c` (normal + ASan/UBSan,
+call of the same function is refused rather than overwriting a live snapshot. A buffer may be
+passed to a callee as that callee's writable output: the `sc_state_valid` body passes
+`valid_expected` as `sc_new`'s output `state`; `sc_new` computes in its own distinct `new_next`
+and only on success commits `*state = new_next` (src/story/sc_core.c:192) into the caller-owned
+`valid_expected`. No callee stores the pointer, uses a caller's buffer as its own scratch, or
+overwrites any other live caller state. `host_tests/test_story_scratch.c` (normal + ASan/UBSan,
 `-DSC_SCRATCH_TEST` seams) covers held refusal for each guard with outputs unchanged, held
 `sc_new` failing `sc_state_valid` closed, release+retry after bad options/invalid state/bad
 CRC/wrong variant/write failure (`SC_PENDING` then OK), nested `sc_bridge_begin` from the device
