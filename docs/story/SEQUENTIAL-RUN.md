@@ -527,3 +527,19 @@ is also retained in `transform-observed.json` before the next step, without
 overwriting it on later frames. Reports expose this as diagnostic evidence;
 it cannot turn a capped/incomplete scenario into PASS. HOST regressions cover
 missed/retried/delayed edges and retained evidence after a cap.
+
+Run22 still capped at 18,000 frames/399.949 seconds, with exact reap/no orphans.
+The first persisted Transform is frame 1,643: Ditto copied Geodude's moves
+`[33,111,0,0]` with five PP each. Overall scenario remains FAIL, not restoration
+acceptance. The final PP in both run21 and run22 is `[0,4,0,0]`: the earlier
+retained PP interpretation was reversed. Run22 aggregate report SHA is
+`a28d420caab1467678a68339711655f955037a06350bb5b4c3213c3025b27440`.
+
+Source inspection identifies `side+0x8C4` as the input-dismissable native error
+dialog, not an animation lock. `func_8430EF4C`/`func_8430E8E8` dismiss it on
+ordinary buttons; `func_8430EBA8` also uses A to confirm native Struggle when
+all PP is exhausted. The worker previously sent no input while that field
+was set. It now presses calibrated A only at actual move/party dialog modes,
+without setting an accepted move marker. Read-only diagnostics retain the
+bounded 0x8C-byte dialog record. This is a source-derived stall hypothesis
+until a new run verifies the boundary; no historical report is rewritten.

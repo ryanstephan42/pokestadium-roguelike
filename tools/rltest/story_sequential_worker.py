@@ -90,6 +90,7 @@ def native_observation(emu):
         require(1 <= count <= 6, "Native observation team count invalid")
         rows.append(dict(side=side, team=team, count=count,
                          controls=emu.read(side + 0x654, 0x20).hex(),
+                         dialog=emu.read(side + 0x8C4, 0x8C).hex(),
                          live=emu.read(side + 0x68C, 0x7C).hex(),
                          party=emu.read(team + 0x1C, count * 0x54).hex()))
     return rows
@@ -683,7 +684,12 @@ class Scenario:
 
     def battle_action(self):
         menu = read_menu(self.emu, self.abi["native_run_address"])
-        if menu["locked"] or menu["mode"] == 3:
+        if menu["mode"] == 3:
+            return
+        if menu["locked"]:
+            # EF4C/E8E8 dismiss move/party errors; EBA8 also confirms Struggle.
+            if (menu["action"], menu["mode"]) in ((1, 1), (2, 2)):
+                self.press("N64_A")
             return
         desired = self.mapping.index(0) if 0 in self.mapping else None
         switching = (desired is not None and menu["hp"][desired] and

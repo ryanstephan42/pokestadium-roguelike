@@ -132,6 +132,7 @@ class BootThreadTests(unittest.TestCase):
         rows = worker.native_observation(emu)
         self.assertEqual([row["count"] for row in rows], [2, 2])
         self.assertEqual(len(rows[0]["party"]), 2 * 0x54 * 2)
+        self.assertEqual(len(rows[0]["dialog"]), 0x8C * 2)
         self.assertLessEqual(max(reads), 6 * 0x54)
         emu.read_u8 = lambda _: 7
         with self.assertRaisesRegex(HarnessError, "count invalid"):
@@ -168,6 +169,23 @@ class BootThreadTests(unittest.TestCase):
         self.assertEqual(frames, [1])
         self.assertEqual(scenario.acknowledgements,
                          [dict(frame=18, kind="move", slot=0, button="C_UP")])
+
+    def test_native_error_dialog_uses_button_not_infinite_neutral_wait(self):
+        scenario = object.__new__(worker.Scenario)
+        scenario.emu = types.SimpleNamespace()
+        scenario.abi = {"native_run_address": 0x80010000}
+        presses = []
+        scenario.press = presses.append
+        for action, mode in ((1, 1), (2, 2)):
+            with patch.object(worker, "read_menu",
+                              return_value=dict(action=action, mode=mode, locked=True)):
+                scenario.battle_action()
+        self.assertEqual(presses, ["N64_A", "N64_A"])
+        for action, mode in ((0, 0), (1, 3)):
+            with patch.object(worker, "read_menu",
+                              return_value=dict(action=action, mode=mode, locked=True)):
+                scenario.battle_action()
+        self.assertEqual(presses, ["N64_A", "N64_A"])
 
     def test_first_transform_witness_survives_cap_without_claiming_completion(self):
         with tempfile.TemporaryDirectory() as directory:
