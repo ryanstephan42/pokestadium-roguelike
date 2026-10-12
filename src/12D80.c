@@ -943,6 +943,20 @@ void func_80014D50(GraphNode* arg0) {
     func_80013330(arg0);
 }
 
+#ifdef ROGUELIKE
+/*
+ * func_80014D70 branches into the segment-1 shadow DLs D_1002480/D_1002508. Each loads a 512-byte IA16
+ * texture at 0x2000/0x2200 and 4 vertices at 0x2400, and the second DL ends at 0x258F, so the shadow
+ * needs a resident segment 1 of at least 0x2590 bytes (the installed asset is 0x3F20). It also writes
+ * through an unchecked func_80005F5C(16) result. Refuse like the flag-off path otherwise.
+ */
+#define RL_SHADOW_SEG1_END 0x2590
+
+static s32 rl_shadow_node_ok(Gfx* dl) {
+    return (dl != NULL) && (Memmap_GetSegmentBaseVaddr(1) != 0) && (Memmap_GetSegmentSize(1) >= RL_SHADOW_SEG1_END);
+}
+#endif
+
 void func_80014D70(GraphNode* arg0) {
     Vec3f sp9C;
     Vec3f sp90;
@@ -963,7 +977,11 @@ void func_80014D70(GraphNode* arg0) {
     func_8000E88C(&sp9C, sp3C->mf[3][0], sp3C->mf[3][1] + arg->unk_1E, sp3C->mf[3][2]);
     sp9C.y = 0.0f;
 
+#ifdef ROGUELIKE
+    if ((D_8006F09C->unk_000.unk_02 & 0x40) && rl_shadow_node_ok(temp_s1)) {
+#else
     if (D_8006F09C->unk_000.unk_02 & 0x40) {
+#endif
         func_8000E88C(&sp90, 0.0f, 1.0f, 0.0f);
         func_8000FF04(sp3C, &sp84);
 

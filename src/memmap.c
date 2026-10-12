@@ -40,6 +40,11 @@ void Memmap_SetSegmentMap(u32 id, uintptr_t vaddr, size_t size) {
 uintptr_t Memmap_GetSegmentBaseVaddr(u32 id) {
     return gSegments[id].vaddr;
 }
+#ifdef ROGUELIKE
+size_t Memmap_GetSegmentSize(u32 id) {
+    return gSegments[id].size;
+}
+#endif
 
 /*
  * Return the current virtual address of a given offset into a segment. This is

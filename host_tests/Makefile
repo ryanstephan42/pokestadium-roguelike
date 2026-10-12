@@ -12,7 +12,7 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test confusion-effect29-test phase0-actor-getter-test ci8-strip-test shadow-slot-test native-relic-test story-test clean
+.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test confusion-effect29-test phase0-actor-getter-test ci8-strip-test shadow-slot-test shadow-seg1-test native-relic-test story-test clean
 
 STORY_UI_SOURCES = test_story_ui.c ../src/story/sc_ui.c \
 	../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
@@ -132,7 +132,7 @@ story-test:
 		../src/story/sc_combat.c -o ../build/story/sc_combat.o
 	cd .. && bash host_tests/run_story_native.sh
 
-test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test confusion-effect29-test phase0-actor-getter-test ci8-strip-test shadow-slot-test native-relic-test nodes-test scene-nodes-test
+test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test confusion-effect29-test phase0-actor-getter-test ci8-strip-test shadow-slot-test shadow-seg1-test native-relic-test nodes-test scene-nodes-test
 	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance host_tests.test_progression_probes
 
 ido-test:
@@ -220,6 +220,9 @@ ci8-strip-test:
 	python3 test_ci8_strip.py
 shadow-slot-test:
 	python3 test_shadow_slot.py
+
+shadow-seg1-test:
+	python3 test_shadow_seg1.py
 
 geo-guard-test:
 	mkdir -p ../build/host_tests
