@@ -427,3 +427,18 @@ waited forever for that missed edge. The worker now rechecks the actual
 mode after at most 60 counted neutral frames, then returns to its normal
 input policy, allowing another fresh edge when the menu is ready. It
 does not write native state or extend any scenario/watchdog cap.
+
+Run13 (`6e78171`, v34) accepted four genuine Ember selections: the last
+read-only witness retained moves `[10,45,52,0]`, PP `[35,40,21,0]`,
+Charmander HP 18/32 and Geodude HP 15/33. The viewed frame at 5,143
+shows the ordinary battle animation (Charmander 18/32, Geodude 20/33).
+No KO had occurred when the win scenario exhausted its 5,500-frame cap;
+the reservation used 7,000 frames including control and 160.365 seconds.
+Control passed; win failed at the cap, and carry/loss/Transform remained
+untested. The supervisor confirmed exact tree reap and no orphans.
+The report is `build/story/sequential-6e78171-standing-run13.report.json`,
+SHA `57c882b239946e3c1964b564bb55d83d6712dee17ab9b02cb59dd24a0db80c19`.
+The checkpoint's Ember-versus-Rock matchup now appears too slow for
+the bounded reservation, rather than input readiness being the blocker.
+A new legal sequential-only checkpoint or easier authenticated target
+has been referred to the coordinator; neither is approved by this report.

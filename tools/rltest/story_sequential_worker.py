@@ -693,7 +693,6 @@ class Scenario:
                     break
                 self.emu.step(1)
             return
-            return
         if menu["mode"] == 2:
             slots = [i for i, hp in enumerate(menu["hp"]) if hp and i != menu["active"]]
             require(slots, "Party menu has no living replacement")

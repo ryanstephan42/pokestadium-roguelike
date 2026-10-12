@@ -62,8 +62,16 @@ class BootThreadTests(unittest.TestCase):
         menu = dict(mode=0, action=0, locked=False, hp=[32], active=0)
         with patch.object(worker, "read_menu", return_value=menu):
             scenario.battle_action()
+            scenario.battle_action()
+        self.assertEqual(presses, ["N64_A", "N64_A"])
+        self.assertEqual(frames, [1] * 120)
+        frames.clear()
+        presses.clear()
+        with patch.object(worker, "read_menu", side_effect=[
+                menu, menu, menu, {**menu, "mode": 1}]):
+            scenario.battle_action()
         self.assertEqual(presses, ["N64_A"])
-        self.assertEqual(frames, [1] * 60)
+        self.assertEqual(frames, [1, 1])
 
     def test_native_observation_is_read_only_and_bounded(self):
         reads = []
