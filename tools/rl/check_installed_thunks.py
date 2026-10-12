@@ -11,7 +11,9 @@ operand given with --operands), it:
   3. derives the expected target from the vanilla ROM word at the same offset: vanilla function
      name at the raw target -> linked map address of that name;
   4. requires the repaired target to equal it, to be a linked function start, and the opcode
-     to be unchanged.
+     to be unchanged;
+  5. requires the delay slot after each checked thunk to be nop in both ROMs, with no loader
+     relocation entry there.
 Memmap_RelocateFragment then only rebases the 0x81 segment; offsets are not changed.
 The entry path is gated positively as well: the header magic/headerSize and its inst[0..1]
 (j to the stub at BASE+0x20; nop) must equal vanilla, the header jump's loader R26 entry must
@@ -115,6 +117,11 @@ def main():
             continue
         if word >> 26 != vword >> 26 or word >> 26 not in (2, 3):
             failures.append(f"{BASE + off:08X}: opcode {word:08X} vs vanilla {vword:08X}")
+            continue
+        slot, = struct.unpack_from(">I", rom, start + off + 4)
+        vslot, = struct.unpack_from(">I", vrom, vstart + off + 4)
+        if slot != 0 or vslot != 0 or (off + 4) in loader:
+            failures.append(f"{BASE + off + 4:08X}: delay slot {slot:08X} vs vanilla {vslot:08X} (want nop)")
             continue
         raw_t, vt = target(word), target(vword)
         repaired = raw_t
