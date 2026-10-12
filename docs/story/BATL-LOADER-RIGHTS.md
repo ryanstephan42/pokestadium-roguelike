@@ -112,14 +112,14 @@ Safety after close rests instead on the producer exclusion below.
    - Only `func_80019B48` clears it, also on the main thread. It runs after the worker thread has finished `func_80019484`/`func_80019514` and posted completion (19840.c:281-296).
    - The fast path at 19840.c:378 posts directly to the worker's own queue and never reaches the worker thread.
    - `sc_batl_scope_close` refuses unless both captured workers have `unk_01 & 3 == 0`.
-   - So every job on those workers has finished, and the worker thread is idle in `osRecvMesg`.
+   - So every job on those two workers has finished. The worker thread is idle only if no other controller has queued a job; item 2 bounds that case.
 2. *No other controller exists in the story battle.*
    - The story rules have `show_intro = 0` (sc_campaign_run.c:169), so fragment63's `func_80019760(5)` controllers are never created.
    - fragment62's only controller sites are 2EA8E0.c:602-603, inside the armed window.
    - There is no `func_80019760` site in fragment34, `src/roguelike` or `src/story`.
 3. *No producer is reachable after close.* These are the calls that run after close, in order:
    1. In the linked fragment62 entry (`func_84301A2C`), after `sc_batl_scope_close` at 0x843020F4: `rl_native_relics_end`, `func_800077B4(2)` (fill-rect blank frames, no frame callback), `func_800076C0`, `func_80005EAC`, then the BATL `main_pool_pop_state`.
-   2. `rl_start_battle` then runs the hook `drain` (`hook_drain` → `sc_native_terminal_drain`), `sc_runtime_probe_terminal`, `sc_native_return_identity`, `rl_from_native` and the RLBT pop.
+   2. `rl_start_battle` then runs `sc_runtime_probe_terminal` and the RLBT pop. In the canonical path (`!gScProbeActive`) the pop comes first, before the hook `drain` (`hook_drain` → `sc_native_terminal_drain`), `rl_from_native` and `sc_native_return_identity`. In the probe-active branch the RLBT pop is deferred. Both orders run the same callees.
    3. `sc_campaign_run.c:191` calls `sc_batl_loader_unbind`.
 
    The forward closures show none of them reaches a producer:
