@@ -14,8 +14,29 @@ current absolute path.
 At title press Start, acknowledge any Game Pak prompt, then press N64 R on
 the top-level mode menu (`R: STORY CAMPAIGN`). Select **New campaign**, set
 version/healing/starter/seed and choose **Create**. Later choose **Continue
-campaign**. Keyboard equivalents are Enter for Start, W for R, X for A,
-Z for B, arrows for navigation and I/L/K/J for C-Up/Right/Down/Left.
+campaign**. Keyboard equivalents match `scripts/rl-preview.sh`: Enter for
+Start, E for R, Z for A, X for B, Q for L, A for the Z trigger, arrows for
+navigation and I/L/K/J for C-Up/Right/Down/Left.
+
+After the user's controller/flicker report, the private launcher now matches
+the working preview: explicit Xbox controller 0 via SDL2 (no autodetection),
+left stick for movement/menus, D-pad for C buttons, preview button/axis mappings
+and disabled hotkeys. Rendering uses Angrylion plus **parallel RSP**, default
+Angrylion thread/sync values (no explicit four-thread or Low override),
+4:3/640x480, non-threaded GL/GLX, SDL X11, unset `WAYLAND_DISPLAY` and a private
+`XDG_CONFIG_HOME`. Story-specific 8 MiB and memory Pak settings remain.
+
+One isolated boot check ran exactly 1,500 frames in 14.076 seconds. Actual
+`osMemSize` was 8,388,608 and title state was 2; the registered core negotiation
+accepted parallel RSP. Viewed frames 600, 1490 and 1500 show the complete
+clean title image. This is headless framebuffer evidence, not a claim that
+the user's live GLX presentation or physical Xbox input has been exercised.
+The worker completed successfully, but buffered core stdout after its completion
+message caused a supervisor JSON parse error during shutdown; exact tree reap
+was still recorded. No extra run was performed. Evidence:
+`build/story/playtest-parallel-boot-check/`; worker-report SHA
+`db441b949015777ea0182741106804c92093342fb1440795b465eef1b88b8df8`.
+User save/state directories were not used by the boot check.
 
 Defeat ends a campaign; reset/quit after battle launch also loads terminal
 on Continue, preserving prebattle progression with no retry. Wait for game

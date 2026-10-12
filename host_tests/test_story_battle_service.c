@@ -241,12 +241,28 @@ int main(int argc, char **argv) {
         }
     }
     reset_fixture();
+    {
+    static unk_D_86002F58_004_000_010_024 live_header[2];
+    static s16 empty_request[2] = {-1, -1};
+    static u32 empty_results[2];
+    static u8 fx_span[2][16];
     for (i = 0; i < 2; ++i) {
         workers[i].unk_01 = 3;
+        live_header[i].unk_00 = 25;
+        workers[i].unk_24 = &live_header[i];
+        workers[i].unk_18 = (uintptr_t)fx_span[i];
         for (j = 0; j < 2; ++j) {
             jobs[i][j].unk_00 = j + 1;
             jobs[i][j].unk_04 = (uintptr_t)(j ? &workers[i].unk_50 : &workers[i].unk_30);
+            jobs[i][j].unk_14 = j ? 0x18000 : 0x3C000;
         }
+        jobs[i][0].unk_02 = 24;
+        jobs[i][0].unk_0C = (uintptr_t)&live_header[i];
+        jobs[i][0].unk_18 = workers[i].unk_2C;
+        jobs[i][1].unk_08 = (uintptr_t)empty_results;
+        jobs[i][1].unk_0C = (uintptr_t)empty_request;
+        jobs[i][1].unk_10 = workers[i].unk_18;
+    }
     }
     assert(sc_service_stop_poll() == 0 && service.permit.ticket &&
            service.lease.ticket && !freed_jobs);
