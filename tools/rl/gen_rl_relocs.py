@@ -25,7 +25,18 @@ SUPPORTED = {2, 4, 5, 6}  # R_MIPS_32, R_MIPS_26, R_MIPS_HI16, R_MIPS_LO16
 FRAG_SECTION = b".fragmentRL"
 
 
-def read_relocs(elf_path, section=FRAG_SECTION, original=None, anchors=None, map_path=None, patch=False):
+def map_functions(path):
+    found = {}
+    with open(path) as f:
+        for line in f:
+            match = re.fullmatch(r"\s+0x([0-9a-f]+)\s+(func_[0-9A-Fa-f_]+)\s*", line)
+            if match:
+                found.setdefault(match[2], int(match[1], 16))
+    return found
+
+
+def read_relocs(elf_path, section=FRAG_SECTION, original=None, anchors=None, map_path=None, patch=False,
+                vanilla_map=None):
     with open(elf_path, "rb") as f:
         data = f.read()
     if data[:4] != b"\x7fELF" or data[4] != 1 or data[5] != 2:
@@ -75,6 +86,7 @@ def read_relocs(elf_path, section=FRAG_SECTION, original=None, anchors=None, map
             sys.exit("gen_rl_relocs: native tables require --anchors and --map")
         mappings = []
         symbols = {}
+        blobs = []
         with open(map_path) as f:
             for line in f:
                 match = re.match(r"^\s+0x([0-9a-f]+)\s+(__rla_\d+) = ", line)
@@ -82,8 +94,10 @@ def read_relocs(elf_path, section=FRAG_SECTION, original=None, anchors=None, map
                     symbols[match[2]] = int(match[1], 16)
         with open(anchors) as f:
             for line in f:
-                symbol, addr, size, *_ = line.split()
+                symbol, addr, size, *rest = line.split()
                 mappings.append((int(addr, 16), int(size, 16), symbols[symbol]))
+                if rest and "/asm/" in rest[0]:
+                    blobs.append((symbols[symbol], int(size, 16)))
         mappings.sort()
         starts = [item[0] for item in mappings]
 
@@ -104,14 +118,30 @@ def read_relocs(elf_path, section=FRAG_SECTION, original=None, anchors=None, map
         # Keep those entries, moving their locations and values with input sections.
         known = set(out)
         image = bytearray(data)
+        frag_lo, frag_hi = target_addr, target_addr + shdrs[target_idx][5]
+        if vanilla_map is not None:
+            # Raw jump words (textbin thunk tables) carry no ELF relocation. Keep their R_MIPS_26
+            # entries; retarget same-fragment jumps by exact function symbol, because functions
+            # move within a modified input section. Foreign targets stay original: the archive
+            # import repair (rl_native_imports.c) maps fragment62 originals at load time.
+            old_funcs = {addr: name for name, addr in map_functions(vanilla_map).items()}
+            new_funcs = map_functions(map_path)
+            covered = {entry & 0xFFFFFF for entry in out}
         for word in struct.unpack_from(f">{count}I", raw, 4):
             word &= 0x7FFFFFFF  # Native tables also carry a loader-ignored flag.
             kind, offset = word >> 24, word & 0xFFFFFF
             if kind not in SUPPORTED:
                 sys.exit(f"gen_rl_relocs: unsupported original relocation {word:08X}")
-            if kind != 2 and offset != 0:
-                continue
             location = remap(target_addr + offset)
+            raw_jump = False
+            if vanilla_map is not None and kind == 4 and offset != 0:
+                if not any(start <= location < start + size for start, size in blobs):
+                    continue
+                if location - target_addr in covered:
+                    sys.exit(f"gen_rl_relocs: raw jump at 0x{location:08X} also has an ELF relocation")
+                raw_jump = True
+            elif kind != 2 and offset != 0:
+                continue
             entry = (kind << 24) | (location - target_addr)
             if entry in known:
                 continue
@@ -120,7 +150,19 @@ def read_relocs(elf_path, section=FRAG_SECTION, original=None, anchors=None, map
             if patch:
                 file_offset = shdrs[target_idx][4] + location - target_addr
                 value, = struct.unpack_from(">I", image, file_offset)
-                if kind == 4:
+                if raw_jump:
+                    if value >> 26 not in (2, 3):
+                        sys.exit(f"gen_rl_relocs: raw jump at 0x{location:08X} is {value:08X}")
+                    old = 0x80000000 | ((value & 0x03FFFFFF) << 2)
+                    if frag_lo <= old < frag_hi:
+                        name = old_funcs.get(old)
+                        if name is None or name not in new_funcs:
+                            sys.exit(f"gen_rl_relocs: raw jump target {old:08X} is not a function start")
+                        target = new_funcs[name]
+                        if not frag_lo <= target < frag_hi:
+                            sys.exit(f"gen_rl_relocs: {name} left the fragment")
+                        value = (value & 0xFC000000) | ((target & 0x0FFFFFFF) >> 2)
+                elif kind == 4:
                     target = remap(0x80000000 | ((value & 0x03FFFFFF) << 2))
                     value = (value & 0xFC000000) | ((target & 0x0FFFFFFF) >> 2)
                 else:
@@ -141,9 +183,11 @@ def main():
     parser.add_argument("--anchors")
     parser.add_argument("--map")
     parser.add_argument("--patch-data", action="store_true")
+    parser.add_argument("--vanilla-map")
     args = parser.parse_args()
     relocs = [] if args.elf == "-" else read_relocs(
-        args.elf, args.section.encode(), args.original, args.anchors, args.map, args.patch_data)
+        args.elf, args.section.encode(), args.original, args.anchors, args.map, args.patch_data,
+        args.vanilla_map)
     with open(args.out, "w") as f:
         f.write("/* generated by tools/rl/gen_rl_relocs.py */\n")
         f.write('.section .rodata, "a"\n')

@@ -16,7 +16,8 @@ RL_FRAG_O       := $(filter-out $(RL_HEADER_O),$(filter $(BUILD_DIR)/$(RL_FRAG_D
 RL_RELOCS_O     := $(RL_DIR)/fragmentRL_relocs.o
 RL_RELOCS0_O    := $(RL_DIR)/fragmentRL_relocs_pass1.o
 RL_ELF_PASS1    := $(RL_DIR)/pass1.elf
-RL_REGEN_FRAGMENTS ?= 62
+# fragment31 holds ROGUELIKE-guarded edits (shadow/CI/callback fixes) that move its functions.
+RL_REGEN_FRAGMENTS ?= 62 31
 RL_NATIVE_HEADERS := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_header.o)
 RL_NATIVE_RELOCS := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_relocs.o)
 RL_NATIVE_RELOCS0 := $(foreach n,$(RL_REGEN_FRAGMENTS),$(RL_DIR)/fragment$(n)_relocs_pass1.o)
@@ -57,8 +58,8 @@ $(RL_DIR)/fragment$(1)_header.s: assets/$(VERSION)/fragments/$(1)/fragment$(1)_h
 	$$(V)$$(PYTHON) tools/rl/gen_native_header.py $(1) $$< $$@ --vanilla-map $$(VANILLA_MAP)
 $(RL_DIR)/fragment$(1)_relocs_pass1.s: tools/rl/gen_rl_relocs.py
 	$$(V)$$(PYTHON) tools/rl/gen_rl_relocs.py - $$@ --section .fragment$(1)
-$(RL_DIR)/fragment$(1)_relocs.s: $(RL_ELF_PASS1) tools/rl/gen_rl_relocs.py assets/$(VERSION)/fragments/$(1)/fragment$(1)_reloc.rodatabin.bin
-	$$(V)$$(PYTHON) tools/rl/gen_rl_relocs.py $$< $$@ --section .fragment$(1) --original assets/$$(VERSION)/fragments/$(1)/fragment$(1)_reloc.rodatabin.bin --anchors $$(RL_DIR)/anchors.txt --map $$(RL_DIR)/pass1.map
+$(RL_DIR)/fragment$(1)_relocs.s: $(RL_ELF_PASS1) tools/rl/gen_rl_relocs.py $(VANILLA_MAP) assets/$(VERSION)/fragments/$(1)/fragment$(1)_reloc.rodatabin.bin
+	$$(V)$$(PYTHON) tools/rl/gen_rl_relocs.py $$< $$@ --section .fragment$(1) --original assets/$$(VERSION)/fragments/$(1)/fragment$(1)_reloc.rodatabin.bin --anchors $$(RL_DIR)/anchors.txt --map $$(RL_DIR)/pass1.map --vanilla-map $$(VANILLA_MAP)
 endef
 $(foreach n,$(RL_REGEN_FRAGMENTS),$(eval $(call RL_NATIVE_RULES,$(n))))
 
@@ -74,14 +75,15 @@ $(RL_DIR)/fragmentRL_relocs.s: $(RL_ELF_PASS1) tools/rl/gen_rl_relocs.py
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $< $@
 
 # Pass 2: final link with the real reloc table, then check the table is stable.
-$(ELF): $(RL_ELF_PASS1) $(RL_RELOCS_O) $(SC_RELOCS_O) $(SC_AI_RELOCS) $(RL_NATIVE_RELOCS) tools/rl/check_rl_anchors.py $(if $(SC_RELOCS_O),tools/rl/check_story_residency.py tools/rl/check_story_frames.py)
+$(ELF): $(RL_ELF_PASS1) $(RL_RELOCS_O) $(SC_RELOCS_O) $(SC_AI_RELOCS) $(RL_NATIVE_RELOCS) tools/rl/check_rl_anchors.py tools/rl/check_native_thunks.py $(if $(SC_RELOCS_O),tools/rl/check_story_residency.py tools/rl/check_story_frames.py)
 	@$(PRINT) "$(GREEN)Linking RL ELF file:  $(BLUE)$@ $(NO_COL)\n"
 	$(V)$(call RL_LINK,$(LDSCRIPT),$(MAP),$@)
 	$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragmentRL_relocs_check.s >/dev/null
 	$(V)cmp -s $(RL_DIR)/fragmentRL_relocs.s $(RL_DIR)/fragmentRL_relocs_check.s || (echo "rl: fragment relocs changed between passes" && false)
 	$(if $(SC_RELOCS_O),$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragmentSC_relocs_check.s --section .fragmentSC && cmp $(RL_DIR)/fragmentSC_relocs.s $(RL_DIR)/fragmentSC_relocs_check.s)
 	$(if $(SC_AI_RELOCS),$(V)$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragmentAI_relocs_check.s --section .fragmentAI && cmp $(RL_DIR)/fragmentAI_relocs.s $(RL_DIR)/fragmentAI_relocs_check.s)
-	$(V)$(foreach n,$(RL_REGEN_FRAGMENTS),$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragment$(n)_relocs_check.s --section .fragment$(n) --original assets/$(VERSION)/fragments/$(n)/fragment$(n)_reloc.rodatabin.bin --anchors $(RL_DIR)/anchors.txt --map $(MAP) --patch-data && cmp $(RL_DIR)/fragment$(n)_relocs.s $(RL_DIR)/fragment$(n)_relocs_check.s && ) true
+	$(V)$(foreach n,$(RL_REGEN_FRAGMENTS),$(PYTHON) tools/rl/gen_rl_relocs.py $@ $(RL_DIR)/fragment$(n)_relocs_check.s --section .fragment$(n) --original assets/$(VERSION)/fragments/$(n)/fragment$(n)_reloc.rodatabin.bin --anchors $(RL_DIR)/anchors.txt --map $(MAP) --patch-data --vanilla-map $(VANILLA_MAP) && cmp $(RL_DIR)/fragment$(n)_relocs.s $(RL_DIR)/fragment$(n)_relocs_check.s && ) true
+	$(V)$(foreach n,$(RL_REGEN_FRAGMENTS),$(PYTHON) tools/rl/check_native_thunks.py $@ $(MAP) $(VANILLA_MAP:.map=.elf) $(VANILLA_MAP) $(n) assets/$(VERSION)/fragments/$(n)/fragment$(n)_reloc.rodatabin.bin && ) true
 	$(V)$(PYTHON) tools/rl/check_rl_anchors.py $(RL_DIR)/anchors.txt $(MAP)
 	$(if $(SC_RELOCS_O),$(V)$(PYTHON) tools/rl/check_story_residency.py $@)
 	$(if $(SC_RELOCS_O),$(V)$(PYTHON) tools/rl/check_story_frames.py $@)

@@ -27,12 +27,18 @@ def main():
         if match and int(match[1], 16) == target:
             entry = match[2]
             break
-    if entry is None:
-        raise ValueError(f"native entry symbol not found at {target:08X}")
     name = f"fragment{args.fragment}"
+    if entry is None:
+        # fragment31 enters its raw thunk table directly after the 0x20-byte header. That table is
+        # a fixed-size blob, so the header-relative jump keeps its original word and relocation.
+        if target & 0xFFFFF != 0x20:
+            raise ValueError(f"native entry symbol not found at {target:08X}")
+        jump = f".word 0x{instruction:08X}"
+    else:
+        jump = f"j {entry}"
     Path(args.output).write_text(
         '.set noreorder\n.section .text, "ax"\n'
-        f"j {entry}\nnop\n.ascii \"FRAGMENT\"\n.word 0x20\n"
+        f"{jump}\nnop\n.ascii \"FRAGMENT\"\n.word 0x20\n"
         f".word {name}_HDR_RELOC_OFFSET\n.word {name}_HDR_SIZE_IN_ROM\n"
         f".word {name}_HDR_SIZE_IN_RAM\n")
 

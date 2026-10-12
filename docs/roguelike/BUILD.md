@@ -88,8 +88,12 @@ Its sources are `src/fragments/rl/*.c`/`.s`;
 Fragment bss is re-zeroed on every load. Persistent state belongs in resident `src/roguelike/`.
 
 **Editing an existing native fragment** changes its layout. Set `RL_REGEN_FRAGMENTS` to the
-space-separated fragment numbers that need regenerated headers and relocations (default: `62`):
-`make rl RL_REGEN_FRAGMENTS="62 63"`. Empty disables native regeneration.
+space-separated fragment numbers that need regenerated headers and relocations (default: `62 31`;
+fragment31 is included because its `/asm/` thunk table jumps into C functions that move):
+`make rl RL_REGEN_FRAGMENTS="62 63"`. Empty disables native regeneration. After linking, `tools/rl/check_native_thunks.py` verifies
+every vanilla raw `j` thunk: local targets must equal the moved function's new address, `0x843`
+imports must stay original (repaired once at load by `rl_relocate_archive_imports`), foreign
+targets must be unmoved, and the loader table must cover all ELF relocations plus raw thunks.
 
 The generated header preserves the jump/nop/`FRAGMENT` format, but resolves the entry function
 through its vanilla map symbol: a literal jump would become stale if code before the entry grows.
