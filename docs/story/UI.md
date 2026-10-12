@@ -24,7 +24,10 @@ the exact pending choice and require retry with the original Pak; they do not
 silently discard a reward, heal or evolution. `sc_bridge_begin` journals the
 pre-battle route checkpoint with `interrupted=1` before issuing a request.
 Continue of that checkpoint terminates the interrupted campaign instead of
-granting a battle retry. In sequential battles, KO-time participants, eligible
+granting a battle retry. **Quitting or resetting after starting a battle counts
+as a loss**, by explicit user decision: unfinished battles reload as terminal
+to prevent save-scumming, with the prebattle party/progression unchanged.
+In sequential battles, KO-time participants, eligible
 recipients, operation identity and encounter identity are captured without
 changing progression. A win applies XP, stat experience, level gains, learning
 and level-up evolution in KO order after the battle; a loss discards the ledger

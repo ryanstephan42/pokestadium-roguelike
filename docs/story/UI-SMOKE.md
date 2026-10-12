@@ -36,6 +36,7 @@ and page movement clamps rather than wrapping outside a list.
 | Save failure and retry | `SC_UI_SAVE_ERROR`; committed state unchanged, exact pending result retained; original Pak retry required |
 | Save/menu/fresh Continue | Decoded full party, options, completion/retirement ledger and pending reward retained; v1 upgrade message when applicable |
 | Native loss/draw or interrupted Continue | `SC_UI_TERMINAL`, `SC_LOST`; no heal/retry to resurrect campaign |
+| Quit/reset after battle START, before result | Counts as a loss by user decision; fresh Continue is terminal with exact prebattle party/progression and no retry |
 | Champion terminal | Completion available after Champion; explicit close preserves optional postgame until chosen; `SC_FINISHED` reload remains terminal |
 
 Expected refusal: wrong operation/encounter/variant/party identity, duplicate KO

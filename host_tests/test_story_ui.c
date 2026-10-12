@@ -300,14 +300,27 @@ static void test_healing(unsigned difficulty) {
 
 static void test_loss_and_interruption(void) {
     RlU32 ticket;
+    RlU8 durable[SC_SAVE_NOTE_SIZE];
+    ScState checkpoint;
     unsigned lab = find_node("OaksLab/rival-lab");
     reset(0, SC_STANDARD);
     enter_node(lab);
     assert(sc_ui_battle_request(&ui, &request) == SC_OK);
     ticket = request.operation_id;
+    checkpoint = ui.state;
+    memcpy(durable, note, sizeof(note));
+    /* Quit/reset after START, before any result: no retry or earned carry. */
     assert(sc_ui_init(&cold, &sc_catalog, &device, 55) == SC_OK);
     sc_ui_input(&cold, RL_UI_A);
     assert(cold.state.phase == SC_LOST && cold.screen == SC_UI_TERMINAL);
+    assert(!memcmp(cold.state.party, checkpoint.party, sizeof(checkpoint.party)));
+    assert(!memcmp(cold.state.completed, checkpoint.completed, SC_BITS));
+    assert(!memcmp(note, durable, sizeof(note)));
+    assert(sc_ui_battle_request(&cold, &request) == SC_INVALID);
+    assert(sc_ui_init(&cold, &sc_catalog, &device, 55) == SC_OK);
+    sc_ui_input(&cold, RL_UI_A);
+    assert(cold.state.phase == SC_LOST && cold.screen == SC_UI_TERMINAL);
+    assert(!memcmp(note, durable, sizeof(note)));
     fail_write = 1;
     assert(sc_ui_finish(&ui, ticket, SC_DRAW) == SC_PENDING);
     assert(ui.screen == SC_UI_SAVE_ERROR && ui.state.phase == SC_BATTLE);
