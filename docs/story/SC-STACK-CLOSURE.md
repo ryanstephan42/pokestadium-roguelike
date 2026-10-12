@@ -107,9 +107,11 @@ sets it, runs the body, and clears it on every return (the body has the only exi
 | sc_save_decode | `decode_next` | `SC_SAVE_INVALID`, output/generation untouched |
 | sc_ui_input | `input_loaded` | `report(ui, SC_INVALID)` (NULL ui → `SC_UI_STAY`) |
 
-Each buffer is owned by exactly one function and never passed to another guarded function, so
-no cross-function aliasing; a nested call of the same function is refused rather than
-overwriting a live snapshot. `host_tests/test_story_scratch.c` (normal + ASan/UBSan,
+Each buffer is owned by exactly one function: only that function's body writes it, and a nested
+call of the same function is refused rather than overwriting a live snapshot. Buffers may be
+passed down as read-only arguments (e.g. the `sc_state_valid` body passes `valid_expected` to
+`sc_new`, which builds into its own separate `new_next`); no callee stores the pointer or uses a
+caller's buffer as its own scratch, so there is no aliasing between distinct owners. `host_tests/test_story_scratch.c` (normal + ASan/UBSan,
 `-DSC_SCRATCH_TEST` seams) covers held refusal for each guard with outputs unchanged, held
 `sc_new` failing `sc_state_valid` closed, release+retry after bad options/invalid state/bad
 CRC/wrong variant/write failure (`SC_PENDING` then OK), nested `sc_bridge_begin` from the device
@@ -120,8 +122,11 @@ Candidate N = `.local/rltest/story-service-ui-native-scratch-v1/pokestadium-rl.e
 (sha256 `0b4eae423a9a94a26153e602ac6bc87631ed405aef87d7f0cbceae0aeaec142b`), authority/rights
 fixed point v40 == v41. Linked cost vs C: `.fragmentSC` 0x340f0→0x34330 (+576),
 `.fragmentSC_bss` 0x1fa0→0x2f00 (+3936, per object sc_core 0x290, sc_bridge 0x520, sc_save
-0x520, sc_ui 0x290 incl. alignment), relocs +480, cold RAM image 221328→225840 (+4512,
-`check_story_residency.py` OK); AI ROM start +1056. Resident `.text`/fragment code differs only
+0x520, sc_ui 0x290 incl. alignment), relocs +480, cold RAM extent 221328→225840 (+4512,
+`check_story_residency.py` OK); AI ROM start +1056. Actual persistent-arena block:
+`sc_persist_acquire` allocates `align32(max(ROM, RAM))` (src/story/sc_persist.c:53-54). C is
+ROM-bound (223488 > 221328) → 223488; N is RAM-bound (225840 > ROM 224544) → 225856. Upper-arena
+ledger delta is **+2368**, not +4512. Resident `.text`/fragment code differs only
 in SC/AI ROM/size immediates; unchanged SC objects are identical modulo relocated fields
 (sc_cold_header size words). `resolve-SC-N.txt` = resolve-SC-C.txt remapped by object shift
 (no target lies in a changed object); 0 INDIRECT/UNRESOLVED/CROSS/MISSING over 587 functions.
