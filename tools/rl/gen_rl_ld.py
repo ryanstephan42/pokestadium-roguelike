@@ -102,10 +102,12 @@ def fragment_block(header_obj, frag_objs, relocs_obj, name="fragmentRL", vram=RL
         "        fragmentRL_TEXT_START = .;",
     ]
     b += [f"        {o}(.text);" for o in objs]
-    if name == "fragmentAI":
+    if name in ("fragmentAI", "fragmentSC"):
         b += ["        . = ALIGN(32);"]
     b += ["        fragmentRL_TEXT_END = .;", "        fragmentRL_DATA_START = .;"]
     b += [f"        {o}(.data);" for o in objs]
+    if name == "fragmentSC":
+        b += ["        . = ALIGN(16);"]
     b += ["        fragmentRL_DATA_END = .;", "        fragmentRL_RODATA_START = .;"]
     for o in objs:
         b += [f"        {o}(.rodata);", f"        {o}(.rodata.*);"]
@@ -238,6 +240,11 @@ def gen(args):
                 out.extend(fragment_block(args.story_header, args.story_objs, args.story_relocs,
                                           "fragmentSC", 0x8F900000))
                 out.append('    __sc_assert_size = ASSERT(fragmentSC_HDR_SIZE_IN_RAM < 0x100000, "story overlay exceeds fragment address window");')
+                # Absolute image offsets for the resident persistent loader's
+                # rights spans (resident code may not import SC link addresses).
+                out.append("    fragmentSC_HDR_TEXT_SIZE = ABSOLUTE(fragmentSC_TEXT_END - fragmentSC_TEXT_START);")
+                out.append("    fragmentSC_HDR_DATA_END = ABSOLUTE(fragmentSC_DATA_END - fragmentSC_TEXT_START);")
+                out.append("    fragmentSC_HDR_RODATA_END = ABSOLUTE(fragmentSC_RODATA_END - fragmentSC_TEXT_START);")
                 if args.ai_header:
                     out.extend(fragment_block(args.ai_header, args.ai_objs, args.ai_relocs,
                                               "fragmentAI", 0x8F900000))

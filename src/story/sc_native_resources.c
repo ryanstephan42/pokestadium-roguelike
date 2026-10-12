@@ -11,9 +11,16 @@ typedef struct ScUiResourceRestore {
     char ***move_slot, ***species_slot, **moves, **species;
 } ScUiResourceRestore;
 
+/* Restore records hold caller slot pointers, which may lie in the mapped
+   story image; it must stay mapped while any record is outstanding. */
+static u32 outstanding;
+
+u32 sc_native_resources_outstanding(void) { return outstanding; }
+
 static void restore_resources(MainPoolBlock *block, u32 arg) {
     ScUiResourceRestore *restore = (ScUiResourceRestore *)block;
     (void)arg;
+    if (outstanding) --outstanding;
     *restore->icon_slot = restore->icons;
     *restore->move_slot = restore->moves;
     *restore->species_slot = restore->species;
@@ -24,6 +31,7 @@ int sc_native_resources_acquire(BinArchive **icons, char ***moves, char ***speci
     if (!icons || !moves || !species) return 0;
     restore = main_pool_alloc_with_func(sizeof(*restore), 0, 0, restore_resources);
     if (!restore) return 0;
+    ++outstanding;
     restore->icon_slot = icons; restore->icons = *icons;
     restore->move_slot = moves; restore->moves = *moves;
     restore->species_slot = species; restore->species = *species;

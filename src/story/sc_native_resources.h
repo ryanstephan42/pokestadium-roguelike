@@ -3,5 +3,6 @@
 #ifdef STORY_NATIVE_UI
 #include "src/3FB0.h"
 int sc_native_resources_acquire(BinArchive **icons, char ***moves, char ***species);
+u32 sc_native_resources_outstanding(void);
 #endif
 #endif
