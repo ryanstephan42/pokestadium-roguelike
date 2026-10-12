@@ -538,7 +538,12 @@ s32 func_80007820(u32 arg0, s32 (*arg1)(u8)) {
 #ifdef STORY_NATIVE_UI
 /* Story frame handoff: a checked story display frame submitted and fenced
    inside this callback. Valid only for the current callback and only while
-   the native command head is unchanged. */
+   the native command head is unchanged. The bookkeeping lives in callees so
+   that it adds no locals or callee-saved registers to this frame, which is on
+   the battle render chain. The loop leaves the handoff idle on exit; the only
+   nested loop (fragment32's fatal screen, reached from a fragment62 callback)
+   never returns, and were one to return, an outer consume would be refused
+   and the native frame presented. */
 static struct {
     Gfx* head;
     u8 armed, consumed;
@@ -549,20 +554,34 @@ void func_800078D4ConsumeStory(void) {
         sStoryFrame.consumed = 1;
     }
 }
+
+static void story_frame_arm(void) {
+    sStoryFrame.head = gDisplayListHead;
+    sStoryFrame.armed = 1;
+    sStoryFrame.consumed = 0;
+}
+
+/* Disarms; consumed then carries this iteration's skip decision until the
+   next arm or the loop exit. */
+static void story_frame_settle(void) {
+    sStoryFrame.consumed = sStoryFrame.consumed && sStoryFrame.head == gDisplayListHead;
+    sStoryFrame.armed = 0;
+}
+
+static s32 story_frame_present(void) {
+    return !sStoryFrame.consumed;
+}
+
+static void story_frame_idle(void) {
+    sStoryFrame.head = NULL;
+    sStoryFrame.armed = sStoryFrame.consumed = 0;
+}
 #endif
 
 s32 func_800078D4(s32 (*arg0)(u8), s32 arg1, s32 arg2) {
     s32 temp_v0;
     s32 var_s0;
     s32 var_s2;
-#ifdef STORY_NATIVE_UI
-    Gfx* story_head;
-    u8 story_armed = sStoryFrame.armed;
-    u8 story_consumed = sStoryFrame.consumed;
-    u8 story_skip;
-
-    story_head = sStoryFrame.head;
-#endif
 
     var_s2 = 0;
     var_s0 = 1;
@@ -570,14 +589,11 @@ s32 func_800078D4(s32 (*arg0)(u8), s32 arg1, s32 arg2) {
 
     while (var_s0 != 0) {
 #ifdef STORY_NATIVE_UI
-        sStoryFrame.head = gDisplayListHead;
-        sStoryFrame.armed = 1;
-        sStoryFrame.consumed = 0;
+        story_frame_arm();
 #endif
         temp_v0 = arg0(D_800A7464->unk_11);
 #ifdef STORY_NATIVE_UI
-        story_skip = sStoryFrame.consumed && sStoryFrame.head == gDisplayListHead;
-        sStoryFrame.armed = sStoryFrame.consumed = 0;
+        story_frame_settle();
 #endif
         if (var_s2 == 0) {
             if (temp_v0 != 0) {
@@ -588,15 +604,13 @@ s32 func_800078D4(s32 (*arg0)(u8), s32 arg1, s32 arg2) {
             var_s0 = 0;
         }
 #ifdef STORY_NATIVE_UI
-        if (!story_skip)
+        if (story_frame_present())
 #endif
         func_80007778();
     }
 
 #ifdef STORY_NATIVE_UI
-    sStoryFrame.head = story_head;
-    sStoryFrame.armed = story_armed;
-    sStoryFrame.consumed = story_consumed;
+    story_frame_idle();
 #endif
     return var_s2;
 }

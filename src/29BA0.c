@@ -1438,7 +1438,9 @@ void Game_Thread(UNUSED LEODiskID* arg) {
                 break;
 #ifdef SC_CAMPAIGN_BATTLE_WIRED
             case STATE_STORY_CAMPAIGN:
-                sc_campaign_state();
+                if (sc_campaign_state_poll()) {
+                    sc_campaign_state_launch();
+                }
                 break;
 #endif
 #endif

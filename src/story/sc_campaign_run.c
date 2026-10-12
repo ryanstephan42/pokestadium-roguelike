@@ -165,10 +165,98 @@ static int launchable(const ScCampaignControl *c, const ScNativeCampaignBacking 
         b->driver->operation_id == id && b->request->operation_id == id;
 }
 
-static void launch(const ScCampaignControl *c, const ScNativeCampaignBacking *b) {
-    static const RlBattleRules rules = {3, 0, 0x20, 0, 0, 0, 1, 0, 0};
-    const ScUiBattleRequest *request = b->request;
+static void failed(int status) {
+    if (gScCampaignRun.stage != SC_RUN_FAILED)
+        osSyncPrintf("story campaign: fail-stop %d; mapping and backing retained\n", status);
+    gScCampaignRun.error = 1;
+    gScCampaignRun.last_status = status;
+    gScCampaignRun.stage = SC_RUN_FAILED;
+}
+
+/* An armed battle that aborted or whose drain was refused settles to a
+   permanent owner-poll refusal with the hook retained: fail-stop instead of
+   re-polling it every frame. */
+static int settle_refused(const ScCampaignControl *c) {
+    return c->installed && c->binding.drained && c->binding.status != SC_OK &&
+        c->binding.status != SC_PENDING;
+}
+
+static void leave(void) {
+    gScCampaignRun.stage = SC_RUN_ENTRY;
+    gCurrentGameState = STATE_MENU_SELECT;
+}
+
+static void phase_stage(int status) {
+    switch (sc_campaign_phase()) {
+    case SC_CAMPAIGN_ACTIVE: gScCampaignRun.stage = SC_RUN_ACTIVE; break;
+    case SC_CAMPAIGN_CLOSING: case SC_CAMPAIGN_RELEASING:
+        gScCampaignRun.stage = SC_RUN_CLOSING; break;
+    case SC_CAMPAIGN_FAILED: failed(status); break;
+    default: gScCampaignRun.refusals++; leave(); break;
+    }
+}
+
+int sc_campaign_state_poll(void) {
+    const ScCampaignControl *c = sc_campaign_control();
+    const ScNativeCampaignBacking *b;
+    ScMaArena *arena;
     int status;
+    switch (gScCampaignRun.stage) {
+    case SC_RUN_ENTRY:
+        arena = sc_service_native_arena();
+        if (!arena) {
+            osSyncPrintf("story campaign: requires the 8 MiB expansion; not opened\n");
+            gScCampaignRun.refusals++;
+            leave();
+            return 0;
+        }
+        /* Operation ids restart with each admitted lifetime. */
+        gScCampaignRun.launched = 0;
+        status = sc_campaign_open(arena, osGetCount());
+        gScCampaignRun.last_status = status;
+        phase_stage(status);
+        return 0;
+    case SC_RUN_ACTIVE:
+        if (!sc_campaign_active()) { phase_stage(SC_INVALID); return 0; }
+        b = lease();
+        if (launchable(c, b)) return 1;
+        status = sc_campaign_step();
+        gScCampaignRun.last_status = status;
+        if (!sc_campaign_active()) { phase_stage(status); return 0; }
+        if (settle_refused(c)) { sc_campaign_fail_stop(); failed(status); return 0; }
+        if (c->lifetime.loop.exited) gScCampaignRun.stage = SC_RUN_CLOSING;
+        return 0;
+    case SC_RUN_CLOSING:
+        status = sc_campaign_close();
+        gScCampaignRun.last_status = status;
+        if (status == SC_OK) { leave(); return 0; }
+        if (status != SC_PENDING) { failed(status); return 0; }
+        /* Still live while ACTIVE: keep stepping so held/queued/drained work
+           settles; CLOSING/RELEASING retries only the retirement. */
+        if (sc_campaign_active() && !c->lifetime.loop.exited) {
+            status = sc_campaign_step();
+            if (!sc_campaign_active()) phase_stage(status);
+            else if (settle_refused(c)) { sc_campaign_fail_stop(); failed(status); }
+        }
+        return 0;
+    case SC_RUN_FAILED:
+    default:
+        return 0;
+    }
+}
+
+/* Runs the launch that sc_campaign_state_poll found ready. Game_Thread calls
+   it after the poll returns, so the battle (and fragment62's renderer) runs
+   with only this frame beneath rl_start_battle; the launch condition is
+   rechecked. */
+void sc_campaign_state_launch(void) {
+    const ScCampaignControl *c = sc_campaign_control();
+    const ScNativeCampaignBacking *b = lease();
+    static const RlBattleRules rules = {3, 0, 0x20, 0, 0, 0, 1, 0, 0};
+    const ScUiBattleRequest *request;
+    int status;
+    if (gScCampaignRun.stage != SC_RUN_ACTIVE || !sc_campaign_active() || !launchable(c, b)) return;
+    request = b->request;
     gScCampaignRun.launched = c->operation.operation;
     gScCampaignRun.battles++;
     map_count = 0;
@@ -204,84 +292,9 @@ static void launch(const ScCampaignControl *c, const ScNativeCampaignBacking *b)
     }
 }
 
-static void failed(int status) {
-    if (gScCampaignRun.stage != SC_RUN_FAILED)
-        osSyncPrintf("story campaign: fail-stop %d; mapping and backing retained\n", status);
-    gScCampaignRun.error = 1;
-    gScCampaignRun.last_status = status;
-    gScCampaignRun.stage = SC_RUN_FAILED;
-}
-
-/* An armed battle that aborted or whose drain was refused settles to a
-   permanent owner-poll refusal with the hook retained: fail-stop instead of
-   re-polling it every frame. */
-static int settle_refused(const ScCampaignControl *c) {
-    return c->installed && c->binding.drained && c->binding.status != SC_OK &&
-        c->binding.status != SC_PENDING;
-}
-
-static void leave(void) {
-    gScCampaignRun.stage = SC_RUN_ENTRY;
-    gCurrentGameState = STATE_MENU_SELECT;
-}
-
-static void phase_stage(int status) {
-    switch (sc_campaign_phase()) {
-    case SC_CAMPAIGN_ACTIVE: gScCampaignRun.stage = SC_RUN_ACTIVE; break;
-    case SC_CAMPAIGN_CLOSING: case SC_CAMPAIGN_RELEASING:
-        gScCampaignRun.stage = SC_RUN_CLOSING; break;
-    case SC_CAMPAIGN_FAILED: failed(status); break;
-    default: gScCampaignRun.refusals++; leave(); break;
-    }
-}
 
 void sc_campaign_state(void) {
-    const ScCampaignControl *c = sc_campaign_control();
-    const ScNativeCampaignBacking *b;
-    ScMaArena *arena;
-    int status;
-    switch (gScCampaignRun.stage) {
-    case SC_RUN_ENTRY:
-        arena = sc_service_native_arena();
-        if (!arena) {
-            osSyncPrintf("story campaign: requires the 8 MiB expansion; not opened\n");
-            gScCampaignRun.refusals++;
-            leave();
-            return;
-        }
-        /* Operation ids restart with each admitted lifetime. */
-        gScCampaignRun.launched = 0;
-        status = sc_campaign_open(arena, osGetCount());
-        gScCampaignRun.last_status = status;
-        phase_stage(status);
-        return;
-    case SC_RUN_ACTIVE:
-        if (!sc_campaign_active()) { phase_stage(SC_INVALID); return; }
-        b = lease();
-        if (launchable(c, b)) { launch(c, b); return; }
-        status = sc_campaign_step();
-        gScCampaignRun.last_status = status;
-        if (!sc_campaign_active()) { phase_stage(status); return; }
-        if (settle_refused(c)) { sc_campaign_fail_stop(); failed(status); return; }
-        if (c->lifetime.loop.exited) gScCampaignRun.stage = SC_RUN_CLOSING;
-        return;
-    case SC_RUN_CLOSING:
-        status = sc_campaign_close();
-        gScCampaignRun.last_status = status;
-        if (status == SC_OK) { leave(); return; }
-        if (status != SC_PENDING) { failed(status); return; }
-        /* Still live while ACTIVE: keep stepping so held/queued/drained work
-           settles; CLOSING/RELEASING retries only the retirement. */
-        if (sc_campaign_active() && !c->lifetime.loop.exited) {
-            status = sc_campaign_step();
-            if (!sc_campaign_active()) phase_stage(status);
-            else if (settle_refused(c)) { sc_campaign_fail_stop(); failed(status); }
-        }
-        return;
-    case SC_RUN_FAILED:
-    default:
-        return;
-    }
+    if (sc_campaign_state_poll()) sc_campaign_state_launch();
 }
 
 /* Visible Menu Select entry (docs/story/NATIVE-UI.md "Menu Select entry").

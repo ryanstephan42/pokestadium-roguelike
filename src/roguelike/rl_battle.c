@@ -242,11 +242,29 @@ int rl_battle_apply_pp_pouch(RunState* run) {
     return 1;
 }
 
-int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int enemy_n,
-                   const RlBattleRules* rules, int return_state, RlLaunchResult* out) {
+/* The native record is a launch-time temporary: keeping it in this callee
+   keeps it off the Game-thread stack while fragment62 renders the battle. */
+static int rl_add_native(unk_D_800AE540_0004* side, const RlMon* mon, int use_state) {
+    unk_func_80026268_arg0 native;
+
+#ifdef STORY_NATIVE_PROBE
+    if (rl_to_native(mon, &native, use_state) != 0) return -1;
+#else
+    rl_to_native(mon, &native, use_state);
+#endif
+    func_8002B888(side, &native);
+    return 0;
+}
+
+/* Validates the request and builds both native sides. Split from
+   rl_start_battle so that its temporaries are off the Game-thread stack while
+   fragment62 renders the battle; rl_start_battle runs only after it returns. */
+static unk_D_800AE540_0004* sRlLaunchSide[2];
+
+static int rl_prepare_sides(const RlMon* party, int party_n, const RlMon* enemy, int enemy_n,
+                            const RlBattleRules* rules) {
     unk_D_800AE540_0004* player;
     unk_D_800AE540_0004* opponent;
-    unk_func_80026268_arg0 native;
     RlLaunchResult* result = &gRlLastBattleResult;
     int i;
     int count;
@@ -286,21 +304,11 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
         }
         result->player_index[player->unk_002] = i;
         result->player[player->unk_002] = party[i];
-#ifdef STORY_NATIVE_PROBE
-        if (rl_to_native(&party[i], &native, rules->use_state) != 0) return -1;
-#else
-        rl_to_native(&party[i], &native, rules->use_state);
-#endif
-        func_8002B888(player, &native);
+        if (rl_add_native(player, &party[i], rules->use_state) != 0) return -1;
     }
     for (i = 0; i < enemy_n; i++) {
         result->enemy[i] = enemy[i];
-#ifdef STORY_NATIVE_PROBE
-        if (rl_to_native(&enemy[i], &native, 0) != 0) return -1;
-#else
-        rl_to_native(&enemy[i], &native, 0);
-#endif
-        func_8002B888(opponent, &native);
+        if (rl_add_native(opponent, &enemy[i], 0) != 0) return -1;
     }
 #ifdef STORY_SIX_PROBE
     if (gScProbeActive && sc_runtime_probe_mapping(result->player_index, player->unk_002) != SC_OK) {
@@ -327,6 +335,23 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
         return -1;
     }
 #endif
+    sRlLaunchSide[0] = player;
+    sRlLaunchSide[1] = opponent;
+    return 0;
+}
+
+int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int enemy_n,
+                   const RlBattleRules* rules, int return_state, RlLaunchResult* out) {
+    unk_D_800AE540_0004* player;
+    unk_D_800AE540_0004* opponent;
+    RlLaunchResult* result = &gRlLastBattleResult;
+    int i;
+
+    if (rl_prepare_sides(party, party_n, enemy, enemy_n, rules) != 0) {
+        return -1;
+    }
+    player = sRlLaunchSide[0];
+    opponent = sRlLaunchSide[1];
     gRlBattleActive = 1;
     rl_native_relics_reset(rules->relics);
     gRlBattleLaunchStage = 1;

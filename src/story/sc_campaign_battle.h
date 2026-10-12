@@ -20,7 +20,11 @@ int sc_campaign_battle_mapping(const RlU8 indices[6], unsigned count);
 int sc_campaign_battle_gate(RlBattleSide *player, RlBattleSide *enemy, int *result);
 int sc_campaign_battle_after(RlBattleSide *player, RlBattleSide *enemy, int result);
 int sc_campaign_battle_paused(void);
-/* Game_Thread handler for STATE_STORY_CAMPAIGN and the Menu Select hook. */
+/* Handler for STATE_STORY_CAMPAIGN and the Menu Select hook. The poll returns 1
+   when a battle launch is ready; Game_Thread then calls the launch from its own
+   frame (a shallower battle stack). sc_campaign_state composes the two. */
+int sc_campaign_state_poll(void);
+void sc_campaign_state_launch(void);
 void sc_campaign_state(void);
 int sc_campaign_menu_hook(int state);
 /* Fragment57 top-page story entry: R request (1 = accepted) and hint text. */
