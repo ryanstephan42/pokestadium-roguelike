@@ -359,3 +359,8 @@ C-button calibration. State2 precedes title asset loading/fade and its
 30-tick input gate. The worker now adds 120 neutral counted frames before
 calibration and persists each candidate's observed pressed-bit set. This is
 a bounded frontend timing correction, not an assumed C-button mapping.
+Run4 verified all four actual C bits after settling, but title A then began
+the fade before R/D-pad/Start were tested. Non-advancing candidates now come
+first, A next-to-last and Start last; Start has up to 120 counted frames to
+observe its edge across the title-to-menu transition. No mapping is accepted
+without the actual native pressed-bit observation.

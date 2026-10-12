@@ -429,14 +429,18 @@ print(json.dumps(collect(Path(sys.argv[1]), budget, 0, True)))
         class Inputs:
             held = [set(), set()]
             analog = [[0] * 4, [0] * 4]
+            start_frames = 0
             def step(self, n):
-                pass
+                if 3 in self.held[0]:
+                    self.start_frames += n
             def read_u32(self, name):
                 return 0x80001000
             def read_u16(self, address):
                 ids = {0: 0x8000, 1: 0x4000, 10: 0x20, 11: 0x10,
                        4: 0x800, 5: 0x400, 3: 0x1000}
                 if self.held[0]:
+                    if 3 in self.held[0] and self.start_frames < 20:
+                        return 0
                     return ids.get(next(iter(self.held[0])), 0)
                 return {(0, 32767): 8, (32767, 0): 1,
                         (0, -32768): 4, (-32768, 0): 2}.get(tuple(self.analog[0][2:]), 0)
@@ -445,6 +449,9 @@ print(json.dumps(collect(Path(sys.argv[1]), budget, 0, True)))
         core = Inputs()
         calibration = worker.calibrate(core)
         self.assertEqual(calibration["C_LEFT"], dict(kind="right-stick", xy=[-32768, 0]))
+        self.assertEqual(core.start_frames, 20)
+        self.assertEqual(worker.candidate_bindings()[-2:],
+                         [dict(kind="joypad", id=0), dict(kind="joypad", id=3)])
         self.assertFalse(any(core.held))
         with patch.object(worker, "candidate_bindings",
                           return_value=[dict(kind="joypad", id=0)]):

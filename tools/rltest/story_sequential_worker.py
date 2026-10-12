@@ -432,7 +432,7 @@ def candidate_bindings():
     # These are hypotheses only. Actual N64 pressed bits decide every mapping.
     return ([dict(kind="right-stick", xy=xy) for xy in
              ([0, 32767], [32767, 0], [0, -32768], [-32768, 0])] +
-            [dict(kind="joypad", id=i) for i in (8, 9, 12, 13, 14, 15, 0, 1, 10, 11, 4, 5, 3)])
+            [dict(kind="joypad", id=i) for i in (8, 9, 12, 13, 14, 15, 1, 10, 11, 4, 5, 0, 3)])
 
 
 def apply_candidate(emu, binding, down):
@@ -457,7 +457,9 @@ def calibrate(emu):
         apply_candidate(emu, binding, True)
         observed = set()
         try:
-            for _ in range(4):
+            # A can advance title; allow the final Start sample across its fade/load.
+            limit = 120 if binding == dict(kind="joypad", id=3) else 4
+            for frame in range(limit):
                 emu.step(1)
                 pointer = emu.read_u32("gPlayer1Controller")
                 require(0x80000000 <= pointer <= 0x80800000 - 0x24,
@@ -465,6 +467,8 @@ def calibrate(emu):
                 pressed = emu.read_u16(pointer + 8)
                 if pressed:
                     observed.add(pressed)
+                if frame >= 3 and observed:
+                    break
         finally:
             apply_candidate(emu, binding, False)
         emu.step(2)
