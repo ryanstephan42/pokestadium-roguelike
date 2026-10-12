@@ -65,6 +65,24 @@ int sc_campaign_step(void) {
     return status;
 }
 
+int sc_campaign_observe(const ScBattleSnapshot party[6], unsigned active, unsigned enemy,
+                        unsigned hp) {
+    int status;
+    unsigned i;
+    if (phase != SC_CAMPAIGN_ACTIVE || !party) return SC_INVALID;
+    for (i = 0; i < 6; ++i) control.observed[i] = party[i];
+    control.observed_active = active;
+    control.observed_enemy = enemy;
+    control.observed_hp = hp;
+    if (!enter(SC_CAMPAIGN_OBSERVE, &status)) return fail(SC_INVALID);
+    return status;
+}
+
+int sc_campaign_fail_stop(void) {
+    if (phase == SC_CAMPAIGN_IDLE) return SC_INVALID;
+    return fail(SC_INVALID);
+}
+
 static int live(const ScCampaignControl *c) {
     const ScNativeLoop *loop = &c->lifetime.loop;
     return (loop->prepared && (!loop->exited || loop->held_operation || loop->queued ||

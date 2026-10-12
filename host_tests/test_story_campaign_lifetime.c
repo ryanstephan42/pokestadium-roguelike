@@ -71,6 +71,10 @@ int sc_native_operation_resume(ScNativeOperation *o, const ScNativeCampaignBacki
                                 RlU32 id, RlU32 g, const ScState *s, const ScCombat *c) {
     (void)o; (void)b; (void)id; (void)g; (void)s; (void)c; UNREACHED("resume"); return SC_INVALID;
 }
+int sc_native_operation_observe(ScNativeOperation *o, const ScNativeCampaignBacking *b,
+                                const ScBattleSnapshot p[6], unsigned a, unsigned e, unsigned h) {
+    (void)o; (void)b; (void)p; (void)a; (void)e; (void)h; UNREACHED("observe"); return SC_INVALID;
+}
 int sc_native_terminal_install(ScNativeTerminalBinding *b, ScNativeTerminal *t,
                                ScNativeOperation *o, const ScNativeCampaignBacking *k) {
     (void)b; (void)t; (void)o; (void)k; UNREACHED("install"); return SC_INVALID;

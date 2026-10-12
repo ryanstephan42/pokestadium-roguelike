@@ -108,6 +108,8 @@ int sc_native_lifetime_release(void *p, const ScNativeCampaignBacking *b) {
 }
 
 /* ---- operation ---- */
+/* Optional scripting hooks for the connected runner test (null here). */
+static void (*on_submit)(void), (*on_poll)(void), (*on_resume)(void), (*on_observe)(void);
 static int submit_status = SC_OK, bind_status = SC_OK, drain_status = SC_OK;
 int sc_native_operation_bind(ScNativeOperation *o, ScNativeLifetime *l) {
     note("bind");
@@ -120,15 +122,37 @@ int sc_native_operation_submit(ScNativeOperation *o, const ScNativeCampaignBacki
     note("submit");
     /* the hook is already installed when the request is accepted */
     assert(sc_campaign_control()->installed && gScNativeLaunchHook);
+    if (submit_status == SC_OK && on_submit) on_submit();
     return submit_status;
 }
 int sc_native_operation_poll(ScNativeOperation *o, const ScNativeCampaignBacking *b,
                               ScNativeCampaignEvent *e) {
-    (void)o; (void)b; (void)e; note("poll"); return SC_OK;
+    (void)o; (void)b; (void)e; note("poll");
+    if (on_poll) on_poll();
+    return SC_OK;
 }
 int sc_native_operation_resume(ScNativeOperation *o, const ScNativeCampaignBacking *b,
                                 RlU32 id, RlU32 g, const ScState *s, const ScCombat *c) {
-    (void)o; (void)b; (void)id; (void)g; (void)s; (void)c; note("resume"); return SC_OK;
+    (void)o; (void)b; (void)id; (void)g; (void)s; (void)c; note("resume");
+    if (on_resume) on_resume();
+    return SC_OK;
+}
+
+static int observe_status = SC_OK;
+static ScBattleSnapshot observed_party[6];
+static unsigned observed_values[3];
+int sc_native_operation_observe(ScNativeOperation *o, const ScNativeCampaignBacking *b,
+                                const ScBattleSnapshot party[6], unsigned active,
+                                unsigned enemy, unsigned hp) {
+    note("observe");
+    assert(o == &sc_campaign_control()->operation);
+    assert(b == &sc_campaign_control()->lifetime.loop.backing);
+    /* the resident staging is passed through unchanged */
+    assert(party == sc_campaign_control()->observed);
+    memcpy(observed_party, party, sizeof(observed_party));
+    observed_values[0] = active; observed_values[1] = enemy; observed_values[2] = hp;
+    if (observe_status == SC_OK && on_observe) on_observe();
+    return observe_status;
 }
 
 /* ---- terminal ---- */
@@ -166,7 +190,7 @@ static const ScNativeCampaignOwner *owner(void) { return &ctl()->lifetime.loop.o
 static void reset(void) {
     *trace = 0;
     open_status = step_status = close_status = acquire_status = release_status = SC_OK;
-    submit_status = bind_status = drain_status = install_status = SC_OK;
+    submit_status = bind_status = drain_status = install_status = observe_status = SC_OK;
     quiescent = load_ok = 1;
 }
 
@@ -338,6 +362,42 @@ static void refused_load(void) {
     assert(sc_campaign_phase() == SC_CAMPAIGN_FAILED && sc_persist_holds_fragment());
 }
 
+static void observe(void) {
+    ScBattleSnapshot party[6];
+    unsigned i;
+    memset(party, 0, sizeof(party));
+    for (i = 0; i < 6; ++i) party[i].hp = (RlU16)(10 + i);
+    /* not open: refused without entering the image */
+    reset();
+    assert(sc_campaign_observe(party, 0, 0, 5) == SC_INVALID && seen(""));
+    open_ok();
+    /* null party refused before staging */
+    assert(sc_campaign_observe(NULL, 0, 0, 5) == SC_INVALID && seen(""));
+    /* no installed operation hook: the adapter refuses */
+    assert(sc_campaign_observe(party, 1, 2, 5) == SC_INVALID && seen(""));
+    assert(sc_campaign_active());
+    assert(step_with(submit_now) == SC_OK);
+    *trace = 0;
+    assert(sc_campaign_observe(party, 1, 2, 5) == SC_OK && seen("observe"));
+    assert(!memcmp(observed_party, party, sizeof(party)));
+    assert(observed_values[0] == 1 && observed_values[1] == 2 && observed_values[2] == 5);
+    /* an operation refusal is reported; the installer stays active */
+    observe_status = SC_PENDING; *trace = 0;
+    assert(sc_campaign_observe(party, 1, 2, 0) == SC_PENDING && sc_campaign_active());
+    /* launcher fail-stop retains mapping, pins and backing */
+    assert(sc_campaign_fail_stop() == SC_INVALID);
+    assert(sc_campaign_phase() == SC_CAMPAIGN_FAILED && mapped);
+    assert(sc_persist_state()->phase == SC_PERSIST_FAILED && sc_persist_holds_fragment());
+    assert(sc_campaign_observe(party, 1, 2, 5) == SC_INVALID && sc_campaign_step() == SC_INVALID);
+    assert(sc_campaign_close() == SC_INVALID && mapped);
+}
+
+static void fail_stop_idle(void) {
+    reset();
+    assert(sc_campaign_fail_stop() == SC_INVALID && sc_campaign_phase() == SC_CAMPAIGN_IDLE);
+    assert(!sc_persist_holds_fragment());
+}
+
 typedef void (*Scenario)(void);
 static void run(Scenario fn, const char *name) {
     pid_t pid = fork();
@@ -352,12 +412,16 @@ static void run(Scenario fn, const char *name) {
     printf("  %s\n", name);
 }
 
+#ifndef SC_CAMPAIGN_RUN_TEST
 int main(void) {
     run(lifecycle, "lifecycle: open/step, hook-before-submit, held close, drain retry, unpublish-first teardown, reopen");
     run(teardown_with_hook, "teardown: unarmed hook uninstalled before lifetime release");
     run(refused_open, "refused open: acquire/bind refusal retires and releases");
     run(refused_load, "refused load: persist failure retains, campaign failed");
     run(refused_drain, "refused drain: hook stays installed, mapping retained, campaign failed");
+    run(observe, "observe: resident staging through the published entry, installed-only, fail-stop retains");
+    run(fail_stop_idle, "fail-stop while idle: refused, nothing mapped");
     puts("STORY CAMPAIGN HOST PASSED");
     return 0;
 }
+#endif

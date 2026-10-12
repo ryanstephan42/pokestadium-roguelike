@@ -75,6 +75,8 @@ int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy);
 int sc_runtime_probe_gate(RlBattleSide *player, RlBattleSide *enemy, int *result);
 int sc_runtime_probe_after(RlBattleSide *player, RlBattleSide *enemy, int result);
 int sc_runtime_probe_paused(void);
+int sc_story_publish_live(const ScState *state, const RlU8 map[6], RlBattleSide *side);
 
+#include "sc_campaign_battle.h"
 #endif
 #endif

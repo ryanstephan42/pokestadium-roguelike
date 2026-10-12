@@ -115,6 +115,11 @@ int sc_campaign_dispatch(unsigned command) {
         return sc_native_loop_step(loop);
     case SC_CAMPAIGN_CLOSE:
         return loop->acquired ? sc_native_loop_close(loop) : SC_OK;
+    case SC_CAMPAIGN_OBSERVE:
+        if (!loop->acquired || !c->installed) return SC_INVALID;
+        return sc_native_operation_observe(&c->operation, &loop->backing, c->observed,
+                                           c->observed_active, c->observed_enemy,
+                                           c->observed_hp);
     }
     return SC_INVALID;
 }

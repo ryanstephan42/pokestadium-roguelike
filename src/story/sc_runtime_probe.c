@@ -367,28 +367,21 @@ invalid:
 }
 #endif
 
-static int publish_live(RlBattleSide *side) {
-#ifdef STORY_SIX_PROBE
-    RlBattleMon *live;
-    unsigned index, i, value;
-#else
+/* Publishes canonical story values for the native party and the active live
+   mon. Shared by the probe and the installed campaign battle tick. */
+int sc_story_publish_live(const ScState *state, const RlU8 map[6], RlBattleSide *side) {
     RlBattleMon *live = rl_battle_mon(side);
     unsigned index = rl_battle_active_index(side), i, value;
-#endif
     const RlMon *mon;
     RlU16 *base[4], *stats[4];
-#ifdef STORY_SIX_PROBE
-    if (gScSixControl.role != SC_SIX_COMBAT) return SC_INVALID;
-    live = rl_battle_mon(side);
-    index = rl_battle_active_index(side);
-#endif
     if (index >= side->unk_724->unk_002 || index >= 6) return SC_INVALID;
-    mon = &resident.party[mapping[index]];
+    if (map[index] >= state->party_count) return SC_INVALID;
+    mon = &state->party[map[index]];
     if (rl_battle_species(live) != mon->species) return SC_INVALID;
     for (i = 0; i < 4; i++)
         if (rl_battle_stage(live, i) < 1 || rl_battle_stage(live, i) > 13) return SC_INVALID;
-    if (sc_native_publish(&resident, side->unk_724->unk_01C, side->unk_724->unk_002,
-                          mapping) != SC_OK) return SC_INVALID;
+    if (sc_native_publish(state, side->unk_724->unk_01C, side->unk_724->unk_002,
+                          map) != SC_OK) return SC_INVALID;
     rl_battle_level(live) = mon->level;
     rl_battle_hp(live) = mon->cur_hp;
     rl_battle_max_hp(live) = mon->max_hp;
@@ -410,6 +403,13 @@ static int publish_live(RlBattleSide *side) {
         rl_battle_packed_pp(live, i) = mon->pp[i];
     }
     return SC_OK;
+}
+
+static int publish_live(RlBattleSide *side) {
+#ifdef STORY_SIX_PROBE
+    if (gScSixControl.role != SC_SIX_COMBAT) return SC_INVALID;
+#endif
+    return sc_story_publish_live(&resident, mapping, side);
 }
 
 int sc_runtime_probe_tick(RlBattleSide *player, RlBattleSide *enemy) {
