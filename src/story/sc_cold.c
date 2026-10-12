@@ -1,6 +1,9 @@
 #ifdef STORY_NATIVE_PROBE
 #include "sc_cold.h"
 #include "sc_native_probe.h"
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_UI)
+#include "sc_native_campaign.h"
+#endif
 #ifdef STORY_EMBER_PROBE
 #include "tools/rltest/story_ember_fixture.h"
 #endif
@@ -14,6 +17,10 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
     ScState *state;
     unsigned i, lab = SC_NO_ENCOUNTER, count;
     int status;
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_UI)
+    /* Persistent-image campaign entry: the second argument is the command. */
+    if (unused == SC_CAMPAIGN_ENTRY) return sc_campaign_dispatch((unsigned)request);
+#endif
     (void)unused;
     if (!request || !request->state || !sc_catalog_valid(&sc_catalog)) {
         osSyncPrintf("story probe: cold request/catalog validation failed\n");
