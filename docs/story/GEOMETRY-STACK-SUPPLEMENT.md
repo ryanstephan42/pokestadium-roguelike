@@ -175,10 +175,95 @@ self-contained 64-per-level figure.
 
 Seal: `build/story/geometry-residuals-<commit>-v1/`.
 
+## v4 installed-binding domain on candidate N (static)
+
+This section derives the domain of installed `GraphNode.unk_10` values from the installer and relocation
+code. It replaces the v3 "26 distinct targets" estimate.
+
+**Installer path (source).**
+- The only `GraphNode.unk_10` writers are `func_80010FA0`, which writes NULL (11BA0.c:15), and
+  `func_80010FDC` (11BA0.c:27).
+- `func_80010FDC` is called only from geo cmd8, `func_80017B60` (geo_layout.c:150). It receives the raw
+  layout word `cmd->unk_04`, with no segment or offset conversion.
+- The other `unk_10` writers in `src/` act on non-GraphNode types.
+- Therefore every installed value is a cmd8 operand word, as it stands after load-time relocation.
+
+**Load-time translation (source).**
+- `Memmap_RelocateFragment` (memmap.c) applies R_MIPS_32, R_MIPS_26 and HI16/LO16 relocations through
+  `Memmap_GetFragmentVaddr` (memmap.c:216). That function rewrites only addresses in
+  `[0x81000000,0x90000000)`, mapping them to `gFragments[id].vaddr`.
+- Fragment buffers are pool allocations at or above `gPool` (N `0x8012dc10`, vanilla `0x80104bb0`).
+- The ROGUELIKE import relocator `rl_relocate_archive_imports` (rl_native_imports.c) runs only for
+  fragment id 0 (fragment31).
+  - It rewrites R_26 `j`/`jal` targets in `0x843xxxxx` through the generated `rl_archive_imports` table (2055
+    entries) into linked N `0x843xxxxx` addresses.
+  - A missing entry stops the thread.
+- Neither translation can produce a `.text` address such as `0x80015eb0`.
+
+**Exact parsed domain** (`tools/cmd8domain.py`):
+- Archive `0x920000` holds 215 model entries. Archive `0x8CC000` holds 63 record-list entries, loaded through
+  19840.c:263/551 → `func_80019420`.
+  - The record lists are `{s8 type, s16, void*}` at fragment+0x20, terminated by type 0, where type 3 is a
+    geo layout.
+  - Entries 1 and 45 are 64-byte empty stubs.
+- Result: **56 distinct cmd8 operands** and 0 parse anomalies. Maximum open depth is 28 (0x920000) and 15
+  (0x8CC000). Record kinds are `{3:62, 4:49, 2:2, 1:84}`.
+- All 56 operands are fragment31 jump thunks `0x81000028..0x810001f8`:
+  - 30 reach fragment62 through `rl_archive_imports`, for example `84343d24 → 843448d4`. These come from the
+    0x8CC000 models, which v3 had not included. No import is missing.
+  - The rest land in fragment31, fragment3 (`87902f80`, `8790320c`, `87903d64`) or fragment34
+    (`func_81407874`).
+- N and vanilla domains are identical apart from symbol names.
+
+**Over-approximation** (`tools/cmd8scan.py`). This scan does not assume the archive parser above is
+complete:
+- It treats every byte 0x08 at any phase as a candidate cmd8 and reads the operand at +4.
+- It covers every ELF PROGBITS section, the raw ROM, and every decompressed Yay0 stream. Yay0 (PERS-SZP) is
+  the only decompressor; the ROMs contain no MIO0 or Yaz0 streams.
+- The KSEG1 alias is included.
+
+| Build | Candidates | Hits in the `func_80015220` range |
+|---|---:|---:|
+| N | 622,400 | 0 in `[0x80015eb0,0x80015fcc)` |
+| Vanilla | 617,050 | 0 in `[0x80015220,0x8001533c)` |
+
+`refscan2.py` and `yay0scan.py` add register-tracked `lui` and all-phase stream scans. Their only non-self
+hits are unaligned or odd DATA values, or bytes inside compressed streams.
+
+**`func_80015220` status.**
+- Under this installer and relocation model it is **excluded** from the installed `unk_10` domain.
+- Qualification: this assumes geo layouts are not synthesised at runtime by code that stores computed words.
+  That has not been proven exhaustively.
+
+**Callback depth** (`tools/stackdepth-v3.py --resolve=resolve-N-v3.txt` over the 56 runtime targets;
+`outputs/cmd8depth-N-v3.txt`). Values are worst static depth in bytes, callback frame included:
+
+| Callback | Depth | Path |
+|---|---:|---|
+| `func_81001E24` | 1144 | `→81001D80→810010BC(664)→guMtxCatL→guMtxCatF` |
+| `func_81000420` | 1024 | `→81000330→80032F94→80032E00(560)→guMtxCatL→guMtxCatF` |
+| `func_81003D2C` | 752 | `→81003A54→8002D7C0→8002D628→sprintf→_Printf→…→_Ldtob` |
+| `func_84344CE8`, `func_84343D24` (fragment62) | 336 each | |
+
+All other targets are ≤ 248.
+- Cross-section edges into fragment34 are followed.
+- All 9 TAILJR sites in the closure are validated jump-table switches with **0** out-of-function entries
+  (`tools/switchcheck.py`, `outputs/cmd8-switches-N.txt`).
+
+**Still open after v4.**
+- *Renderer recursion.* The per-level renderer cost with co-occurrence weighting is not bounded.
+- *Unparsed layout sources.* Archive 0x820000 and 0x898000, `stadium_models`, and static layouts are covered
+  only by the over-approximation, not by an exact parse.
+- *Battle reachability.* Which models are battle-reachable is not established.
+- *Caller prefix and IRQ chain.* Not bounded.
+
 ## Not claimed
 
-- After v3, BD04 is bounded as a 0-byte leaf. `func_80015220` remains UNRESOLVED in the tool output but has no
-  found caller. Renderer recursion and the cmd8 callback domains of other models are not bounded.
+- After v3, BD04 is bounded as a 0-byte leaf.
+- After v4, `func_80015220` is excluded from the installed `unk_10` domain. This holds only under the installer
+  model stated in v4 and is not a proof against layouts synthesised at runtime.
+- The 56 cmd8 callbacks have per-callback static bounds (maximum 1144). Renderer recursion, co-occurrence
+  and the unparsed layout sources are not bounded.
 - Thread-stack budgets, interrupt/exception frames and concurrent-thread interleavings are not assessed.
 - Data-indexed tables assume well-formed indices.
 - No fit, contiguity, stack, native or gate claim.
