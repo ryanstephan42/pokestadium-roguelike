@@ -364,3 +364,11 @@ the fade before R/D-pad/Start were tested. Non-advancing candidates now come
 first, A next-to-last and Start last; Start has up to 120 counted frames to
 observe its edge across the title-to-menu transition. No mapping is accepted
 without the actual native pressed-bit observation.
+Run5 calibrated every required button, then waited on the first state4
+Game Pak Check screen. Entry now acknowledges it once with calibrated A
+after the normal harness's 60-frame settling interval, only while the
+campaign top-page readiness witness remains false. The readiness witness,
+not state4 alone, still gates R campaign entry.
+Verified button pulses hold six counted frames and release for two, matching
+the successful normal harness's short press duration. One VI-frame pulses
+can miss Stadium's asynchronous controller polling.

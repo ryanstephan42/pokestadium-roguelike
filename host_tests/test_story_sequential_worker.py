@@ -283,6 +283,33 @@ class SequentialWorkerTests(unittest.TestCase):
         self.assertEqual(scenario.emu.frame, 243)
         self.assertFalse(any(scenario.emu.held))
 
+    def test_game_pak_check_acknowledged_before_campaign_entry(self):
+        for already_ready in (False, True):
+            values = {"gCurrentGameState": 4, "gScCampaignMenuReady": int(already_ready),
+                      "gScCampaignRun": worker.ACTIVE}
+            steps, presses = [], []
+            scenario = worker.Scenario.__new__(worker.Scenario)
+            scenario.emu = types.SimpleNamespace(read_u32=values.__getitem__, step=steps.append)
+            scenario.progress, scenario.abi = None, {}
+
+            def press(name):
+                presses.append(name)
+                if name == "N64_A":
+                    values["gScCampaignMenuReady"] = 1
+                elif name == "R":
+                    values["gCurrentGameState"] = worker.STORY_STATE
+
+            def wait(predicate, description):
+                self.assertTrue(predicate(), description)
+
+            scenario.press, scenario.wait = press, wait
+            scenario.select = lambda *args, **kwargs: None
+            scenario.ui = lambda: {"screen": 2}
+            with patch.object(worker, "capture", return_value={"loaded": True}):
+                self.assertEqual(scenario.enter_continue(), {"loaded": True})
+            self.assertEqual(presses, ["R"] if already_ready else ["N64_A", "R"])
+            self.assertEqual(steps, [] if already_ready else [60])
+
     def test_real_frontend_constructor_frame_is_leased_before_run(self):
         events = []
 

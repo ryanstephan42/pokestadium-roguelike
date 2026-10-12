@@ -617,6 +617,14 @@ class Scenario:
         while self.emu.read_u32("gCurrentGameState") == 2:
             self.press("START")
             self.emu.step(30)
+        self.wait(lambda: self.emu.read_u32("gCurrentGameState") == 4,
+                  "Menu Select state entered")
+        if self.emu.read_u32("gScCampaignMenuReady") != 1:
+            self.emu.step(60)
+            if self.emu.read_u32("gScCampaignMenuReady") != 1:
+                if self.progress:
+                    self.progress.mark("Game Pak Check acknowledgement", self.emu)
+                self.press("N64_A")
         self.wait(lambda: self.emu.read_u32("gCurrentGameState") == 4 and
                   self.emu.read_u32("gScCampaignMenuReady") == 1, "Menu Select input-ready top page")
         self.press("R")

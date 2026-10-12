@@ -38,7 +38,7 @@ class SequentialButtonTests(unittest.TestCase):
             press_verified(emu, "C_LEFT", {}, step)
         self.assertFalse(calls)
         press_verified(emu, "N64_A", {"N64_A": {"kind": "joypad", "id": 0}}, step)
-        self.assertEqual(calls, [(1, {0}), (1, set())])
+        self.assertEqual(calls, [(6, {0}), (2, set())])
         emu.analog[0][2] = 1
         with self.assertRaises(HarnessError):
             press_verified(emu, "N64_A", {"N64_A": {"kind": "joypad", "id": 0}}, step)

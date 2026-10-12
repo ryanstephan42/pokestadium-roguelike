@@ -96,16 +96,16 @@ def press_verified(emu, button, calibration, step):
     if binding["kind"] == "joypad" and type(binding["id"]) is int and 0 <= binding["id"] <= 15:
         emu.held[0].add(binding["id"])
         try:
-            step(1)
+            step(6)
         finally:
             emu.held[0].clear()
     elif binding["kind"] == "right-stick" and binding["xy"] in (
             [0, 32767], [0, -32768], [32767, 0], [-32768, 0]):
         emu.stick(*binding["xy"], right=True)
         try:
-            step(1)
+            step(6)
         finally:
             emu.stick(0, 0, right=True)
     else:
         raise HarnessError("Unsupported core-specific button calibration")
-    step(1)
+    step(2)
