@@ -491,7 +491,7 @@ class CanonicalInventoryTests(unittest.TestCase):
                             visiting.remove(identifier)
                         reach("ChampionsRoom/rival-champion")
                         required_rivals = {e["id"] for e in graph["encounters"].values()
-                                           if e["kind"] == "rival"} - {"Route22/rival-early"}
+                                           if e["kind"] == "rival"} - {"Route22/rival-early", "OaksLab/rival-lab"}
                         self.assertTrue(required_rivals <= completed)
                         self.assertIn("CeruleanCity/TEXT_CERULEANCITY_ROCKET", completed)
                         self.assertIn("Route12/snorlax" if coast == "east" else

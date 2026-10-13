@@ -56,8 +56,8 @@ int sc_cold_call(ScColdRequest *request) {
         request->state->party[0].level = 14;
         request->state->party[0].exp = sc_xp(15, request->state->party[0].growth) - 1;
         sc_recalculate(&request->state->party[0], 0);
-        request->state->party[1].level = 14;
-        request->state->party[1].exp = sc_xp(15, request->state->party[1].growth) - 1;
+        request->state->party[1].level = 11;
+        request->state->party[1].exp = sc_xp(12, request->state->party[1].growth) - 1;
         sc_recalculate(&request->state->party[1], 0);
     }
     if (status == SC_OK && request->command == SC_COLD_PREPARE && permute_party) {

@@ -15,7 +15,7 @@ static int record(ScSixTrace trace, void *context, const char *operation,
 static int checkpoint(ScState *output, ScState *state, const ScCatalog *catalog,
                       ScSixTrace trace, void *context, int transform) {
     static const char *ids[] = {
-        "OaksLab/rival-lab",
+        "Route22/rival-early",
         "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER2",
         "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER3",
         "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER4",

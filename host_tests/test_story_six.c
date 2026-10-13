@@ -66,11 +66,11 @@ int main(int argc, char **argv) {
     assert(!memcmp(&state, &team, sizeof(state)) && !memcmp(&state, &nested, sizeof(state)));
     assert(recruits == 5 && learns && rows && state.party_count == 6);
     assert(sc_state_valid(&state, &sc_catalog) && sc_available(&state, &sc_catalog, 58));
-    assert(state.rng == 1441438134U && rows == 37 && learns == 1);
+    assert(state.rng == 1441438134U && rows == 38 && learns == 1);
     {
-        static const unsigned species[6] = {4,7,10,13,13,50};
-        static const unsigned level[6] = {12,5,6,7,9,11};
-        static const RlU32 xp[6] = {1108,135,216,343,729,1331};
+        static const unsigned species[6] = {4,16,10,13,13,50};
+        static const unsigned level[6] = {12,9,6,7,9,11};
+        static const RlU32 xp[6] = {1255,419,216,343,729,1331};
         for (i = 0; i < 6; i++)
             assert(state.party[i].species == species[i] && state.party[i].level == level[i] &&
                    state.party[i].exp == xp[i] && state.party[i].dvs == (i ? 0x8889 : 0x4528));

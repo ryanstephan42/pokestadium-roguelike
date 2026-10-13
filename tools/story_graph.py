@@ -10,7 +10,7 @@ GYMS = {
 }
 REGION_SCOPE = "Optional regional trainers; required rivals, gyms and story battles."
 REVIEWED_HEAD = "973fbd4507e2f104a8c12575207afe6702182316"
-REVIEWED_DIGEST = "42abbcfced4b4e824b8495b0579b0b443d14715001e85d5700588b7a534eb42e"
+REVIEWED_DIGEST = "e76200b4a59d22079fba06707e7322c3b48c62d9651052fc2d67395fc227f436"
 
 
 def reviewed_graph(data):
@@ -45,7 +45,7 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
             areas[area] = [list(clause) for clause in clauses]
 
     region("OaksLab", ())
-    region("ViridianForest PewterGym", ("OaksLab/rival-lab",))
+    region("ViridianForest PewterGym", ())
     region("Route3 Route4 MtMoon1F MtMoonB2F MtMoonPokecenter", (bosses["PewterGym"],))
     region("CeruleanCity CeruleanGym", ("travel:moon-exit",))
     region("Route24 Route25", ("CeruleanCity/rival-bridge",))
@@ -75,7 +75,7 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
     region("CinnabarGym", ("field:surf", "travel:secret-key"))
     first_seven = tuple(bosses[area] for area in GYMS if area != "ViridianGym")
     region("ViridianGym", first_seven)
-    region("Route22", ("OaksLab/rival-lab",))
+    region("Route22", ())
     region("VictoryRoad1F VictoryRoad2F VictoryRoad3F",
            tuple(bosses.values()) + ("field:surf", "field:strength", "Route22/rival-late"))
     region("LoreleisRoom", ("travel:league",))
@@ -193,7 +193,7 @@ def candidate(data, version, rival_branch=0, fossil_choice=0):
 def healing_permissions(data, version, bosses):
     gates = {
         "ViridianPokecenter": (), "RedsHouse1F": (),
-        "PewterPokecenter": ("OaksLab/rival-lab",),
+        "PewterPokecenter": (),
         "MtMoonPokecenter": (bosses["PewterGym"],),
         "CeruleanPokecenter": ("travel:moon-exit",),
         "VermilionPokecenter": ("travel:moon-exit",),

@@ -71,6 +71,9 @@ static int validate_reload(const char *note_path, const char *state_path) {
             from_be(&mon->stat_exp[j], 2);
             from_be(&mon->current_stats[j], 2);
         }
+#ifdef SC_STORY_PACKED_MOVES
+        sc_compact_moves(mon);
+#endif
     }
     status = sc_storage_load(&device, &sc_catalog, &snapshot);
     if (status != SC_SAVE_OK || snapshot.interrupted || snapshot.wire_version != 1 ||
@@ -281,8 +284,8 @@ int main(int argc, char **argv) {
            state.party[0].stat_exp[2] == 160 && state.party[0].stat_exp[3] == 188 &&
            state.party[0].stat_exp[4] == 110);
     assert(sc_learn(&state, &sc_catalog, 0, 3, 1) == SC_OK);
-    assert(state.party[0].moves[3] == 52 && state.party[0].pp[3] == 25 &&
-           state.party[0].max_pp[3] == 25);
+    assert(state.party[0].moves[2] == 52 && state.party[0].pp[2] == 25 &&
+           state.party[0].max_pp[2] == 25);
     assert(sc_finish(&state, &sc_catalog, SC_WIN, 0) == SC_OK);
     assert(state.phase == SC_REWARD && sc_state_valid(&state, &sc_catalog));
     assert(rows == 14);

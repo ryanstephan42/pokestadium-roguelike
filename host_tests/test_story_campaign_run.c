@@ -174,7 +174,15 @@ int rl_start_battle(const RlMon *party, int party_n, const RlMon *enemy, int ene
         assert(sc_campaign_battle_paused());
         return -1;
     }
+    /* Verify party HP is NOT overwritten by live HP on battle gate ticks,
+       preserving native battle HUD interpolation (func_8431FCCC). */
+    teams[0].unk_01C[0].unk_02 = party[0].cur_hp;
+    sides[0].unk_654.unk_38.unk_0C = party[0].cur_hp - 10;
     assert(sc_campaign_battle_gate(&sides[0], &sides[1], &frame_result) == 0);
+    assert(teams[0].unk_01C[0].unk_02 == party[0].cur_hp);
+    assert(sides[0].unk_654.unk_38.unk_0C == party[0].cur_hp - 10);
+    sides[0].unk_654.unk_38.unk_0C = party[0].cur_hp;
+
     sides[1].unk_654.unk_38.unk_0C = 0;
     assert(sc_campaign_battle_after(&sides[0], &sides[1], 7) == 7);
     assert(!sc_campaign_battle_paused());

@@ -247,6 +247,8 @@ static int decode_body(ScSnapshot *snapshot, const ScCatalog *catalog,
         for (i = 0; i < catalog->graph->pickup_count; i++)
             if (done(&next->state, catalog->graph->pickups[i].node)) return SC_SAVE_BAD_DATA;
     }
+    for (i = 0; i < 6; i++) sc_compact_moves(&next->state.party[i]);
+    sc_compact_moves(&next->state.offer);
     for (i = wire.pos; i < size; i++) if (data[i]) return SC_SAVE_BAD_DATA;
     if (!sc_state_valid(&next->state, catalog) ||
         (next->interrupted && next->state.phase != SC_ROUTE)) return SC_SAVE_BAD_DATA;

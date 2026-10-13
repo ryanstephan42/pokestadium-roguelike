@@ -101,7 +101,7 @@ int sc_cold_entry(int unused, ScColdRequest *request) {
             request->command == SC_COLD_PREPARE ?
             "ViridianForest/TEXT_VIRIDIANFOREST_YOUNGSTER4" :
 #endif
-            "OaksLab/rival-lab";
+            "Route22/rival-early";
         while (*a && *a == *b) { a++; b++; }
         if (*a == *b) lab = i;
     }

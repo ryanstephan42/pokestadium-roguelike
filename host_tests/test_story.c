@@ -263,7 +263,11 @@ static void test_ko_and_learning(void) {
     }
     assert(sc_finish(&state, &catalog, SC_WIN, 2) == SC_INVALID);
     assert(sc_learn(&state, &catalog, 0, 3, 1) == SC_OK);
+#ifdef SC_STORY_PACKED_MOVES
+    assert(state.party[0].moves[2] == 73 && state.phase == SC_BATTLE);
+#else
     assert(state.party[0].moves[3] == 73 && state.phase == SC_BATTLE);
+#endif
     before = state;
     assert(sc_on_ko(&state, &catalog, 0, 3, 2) == SC_DUPLICATE);
     assert(memcmp(&before, &state, sizeof(state)) == 0);
@@ -588,7 +592,8 @@ static void test_canonical_activation(void) {
                 options.starter = (RlU8)(starter == 0 ? 1 : starter == 1 ? 4 : 7);
                 assert(sc_new(&state, &sc_catalog, &options, 42) == SC_OK);
                 assert(sc_available(&state, &sc_catalog, find("OaksLab/rival-lab")));
-                assert(!sc_available(&state, &sc_catalog, find("PewterGym/TEXT_PEWTERGYM_BROCK")));
+                assert(sc_available(&state, &sc_catalog, find("PewterGym/TEXT_PEWTERGYM_BROCK")));
+                assert(!sc_available(&state, &sc_catalog, find("Route3/TEXT_ROUTE3_YOUNGSTER1")));
                 canon_reach(sc_catalog.graph->champion, fossil);
                 assert(state.fossil_choice == fossil);
                 assert(sc_location_heal(&state, &sc_catalog, vermilion) == SC_OK);

@@ -9,7 +9,7 @@ from tools.story_data import clean, require
 from tools.story_graph import REVIEWED_DIGEST
 
 # Exact source/catalog review: 59d9e6a6085ea09eae15bdbb5eba9cea1de95e66.
-MOON_REVIEWED_DIGEST = "cc2fc13257f1e82205661a8fb282cddc0257f3f8a261a48a2650e29c45a4ee83"
+MOON_REVIEWED_DIGEST = "5384353f80294ed77b6b4bc3fb2161e84805f01c99a69429e13edec14869bbba"
 
 PICKUPS = (
     ("Route2", 13, 54, False, "field:cut"),

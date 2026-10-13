@@ -97,7 +97,6 @@ static int capture_sequential(RlBattleSide *player, RlBattleSide *enemy) {
         return SC_INVALID;
     live = rl_battle_mon(player);
     foe = rl_battle_mon(enemy);
-    rl_battle_party_hp(rl_battle_party_mon(player, active)) = rl_battle_hp(live);
     rl_battle_party_status(rl_battle_party_mon(player, active)) = rl_battle_status(live);
     if (sc_native_capture(&c->sequential_state, player->unk_724->unk_01C,
             count, battle_map, active, party) != SC_OK) return SC_INVALID;

@@ -4,9 +4,7 @@
 #include "sc_data.h"
 
 #define SC_BITS (SC_ENCOUNTER_CAPACITY / 8)
-#if (!defined(STORY_NATIVE_PROBE) && !defined(STORY_SIX_PROBE)) || defined(STORY_SERVICE_CANDIDATE)
 #define SC_STORY_PACKED_MOVES
-#endif
 
 void sc_compact_moves(RlMon *mon);
 int sc_moves_packed(const RlMon *mon);
