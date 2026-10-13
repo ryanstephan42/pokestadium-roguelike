@@ -23,12 +23,49 @@ static u8 pad_D_81004BA8[0x8];
 static s32 D_81004BB0;
 static char D_81004BB8[0x28];
 
+#ifdef ROGUELIKE
+#include "src/memmap.h"
+
+/* Archive 920000 entry 183 (the only argument of the four CI8 callbacks): texture 8ff0f9d8 is
+   followed by its 512-byte palette at 8ff32c60, so the strip may use at most these bytes. */
+#define RL_CI_STRIP_BYTES 0x23288
+#define RL_CI_FRAME_BYTES 0x800
+
+static void rl_ci_fail(void) {
+    osSyncPrintf("CI8 strip offset outside fragment-8/texture domain\n");
+    for (;;) osStopThread(NULL);
+}
+
+/* Fail-closed replacement for the frame address: the fragment-8 distances must be read from the
+   currently resident fragment 8 (exact relocation binding, first through last byte of the 16-byte
+   table), the palette must sit at the strip end,
+   and the whole 4-frame cycle at the selected distance must stay inside the strip. */
+static u8* rl_ci_frame(u16* palette, u8* texture, s32 index, s32 counter) {
+    u32 travel;
+
+    if ((Memmap_GetLoadedFragmentVaddr((uintptr_t)&D_862082A0[0]) != 0x862082A0U) ||
+        (Memmap_GetLoadedFragmentVaddr((uintptr_t)&D_862082A0[3] + 3) != 0x862082AFU) ||
+        ((uintptr_t)palette - (uintptr_t)texture != RL_CI_STRIP_BYTES)) {
+        rl_ci_fail();
+    }
+    travel = D_862082A0[index];
+    if (travel > (RL_CI_STRIP_BYTES - 4 * RL_CI_FRAME_BYTES) / 4) {
+        rl_ci_fail();
+    }
+    return texture + ((travel * 4) & ~0x1F) + ((counter & 3) << 0xB);
+}
+#endif
+
 void func_81002DC0(Gfx* gfx, u16* arg1, u8* arg2) {
     gDPPipeSync(gfx++);
     gSPTexture(gfx++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
     gDPSetTextureLUT(gfx++, G_TT_RGBA16);
     gDPLoadTLUT_pal256(gfx++, arg1);
+#ifdef ROGUELIKE
+    gDPLoadTextureTile(gfx++, rl_ci_frame(arg1, arg2, 0, D_81004B70), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#else
     gDPLoadTextureTile(gfx++, (arg2 + ((D_862082A0[0] * 4) & ~0x1F) + ((D_81004B70 & 3) << 0xB)), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#endif
     gSPEndDisplayList(gfx++);
 }
 
@@ -55,7 +92,11 @@ void func_81002FC0(Gfx* gfx, u16* arg1, u8* arg2) {
     gSPTexture(gfx++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
     gDPSetTextureLUT(gfx++, G_TT_RGBA16);
     gDPLoadTLUT_pal256(gfx++, arg1);
+#ifdef ROGUELIKE
+    gDPLoadTextureTile(gfx++, rl_ci_frame(arg1, arg2, 1, D_81004B80), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#else
     gDPLoadTextureTile(gfx++, (arg2 + ((D_862082A0[1] * 4) & ~0x1F) + ((D_81004B80 & 3) << 0xB)), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#endif
     gSPEndDisplayList(gfx++);
 }
 
@@ -82,7 +123,11 @@ void func_810031C0(Gfx* gfx, u16* arg1, u8* arg2) {
     gSPTexture(gfx++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
     gDPSetTextureLUT(gfx++, G_TT_RGBA16);
     gDPLoadTLUT_pal256(gfx++, arg1);
+#ifdef ROGUELIKE
+    gDPLoadTextureTile(gfx++, rl_ci_frame(arg1, arg2, 2, D_81004B90), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#else
     gDPLoadTextureTile(gfx++, (arg2 + ((D_862082A0[2] * 4) & ~0x1F) + ((D_81004B90 & 3) << 0xB)), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#endif
     gSPEndDisplayList(gfx++);
 }
 
@@ -109,7 +154,11 @@ void func_810033C0(Gfx* gfx, u16* arg1, u8* arg2) {
     gSPTexture(gfx++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
     gDPSetTextureLUT(gfx++, G_TT_RGBA16);
     gDPLoadTLUT_pal256(gfx++, arg1);
+#ifdef ROGUELIKE
+    gDPLoadTextureTile(gfx++, rl_ci_frame(arg1, arg2, 3, D_81004BA0), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#else
     gDPLoadTextureTile(gfx++, (arg2 + ((D_862082A0[3] * 4) & ~0x1F) + ((D_81004BA0 & 3) << 0xB)), G_IM_FMT_CI, G_IM_SIZ_8b, 0x20, 0x40, 0, 0, 0x20 - 1, 0x40 - 1, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 6, G_TX_NOLOD, G_TX_NOLOD);
+#endif
     gSPEndDisplayList(gfx++);
 }
 

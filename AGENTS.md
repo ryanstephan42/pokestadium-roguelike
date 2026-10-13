@@ -31,3 +31,16 @@ Fork of the pret/pokestadium decomp (US N64). Goal: a new "Roguelike Run" mode. 
   fragment 54; Pokémon record/stat calc `src/22630.c`, `src/232C0.c`; RNG `src/math_util.c`;
   input `src/controller.c`; overlays `src/memmap.c`, `src/stage_loader.c`; roster formats
   `oldnotes/utils/extractrostertbltbl.c`.
+
+## Testing and review: keep it lean
+
+- Retire tests/runners that only cover superseded designs; list removals and
+  reasons in the commit. Keep coverage of contracts still used by the current path.
+- The real/emulator run is the main accuracy check, subject to the existing
+  execution authorization and exclusive-slot requirements. HOST is not native proof.
+- Run quick targeted gcc story suites per change. Run sanitizers, IDO and full
+  suites at milestones, before review handoffs or emulator proposals; avoid repeats.
+- Mutation tests cover core rules only: KO-time XP, ledger identity, loss discard,
+  quit-as-loss and checkpoint saves.
+- Review changed behavior only; do not re-audit unchanged or moot architecture.
+  Vanilla byte-matching and the required final `rl-gate.sh` remain mandatory.

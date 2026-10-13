@@ -57,6 +57,57 @@ PYTHON ?= $(VENV)/$(VENV_BIN_DIR)/python3
 N64_EMULATOR ?=
 # Roguelike mod build (use `make rl`; never set this for the matching build)
 ROGUELIKE ?= 0
+STORY_PROBE ?= 0
+STORY_KO_PROBE ?= 0
+STORY_EMBER_PROBE ?= 0
+STORY_SIX_PROBE ?= 0
+STORY_AI_PROTOTYPE ?= 0
+STORY_SERVICE_CANDIDATE ?= 0
+STORY_MOON_STONES ?= 0
+STORY_NATIVE_UI ?= 0
+ifeq ($(STORY_NATIVE_UI),1)
+  ifneq ($(STORY_PROBE),1)
+    $(error STORY_NATIVE_UI=1 requires STORY_PROBE=1)
+  endif
+  BUILD_DEFINES += -DSTORY_NATIVE_UI
+endif
+ifeq ($(STORY_SERVICE_CANDIDATE),1)
+  ifneq ($(STORY_SIX_PROBE),1)
+    $(error STORY_SERVICE_CANDIDATE=1 requires STORY_SIX_PROBE=1)
+  endif
+  ifeq ($(STORY_AI_PROTOTYPE),1)
+    $(error STORY_SERVICE_CANDIDATE excludes the legacy SELECT prototype)
+  endif
+  BUILD_DEFINES += -DSTORY_SERVICE_CANDIDATE
+endif
+ifeq ($(STORY_AI_PROTOTYPE),1)
+  ifneq ($(STORY_SIX_PROBE),1)
+    $(error STORY_AI_PROTOTYPE=1 requires STORY_SIX_PROBE=1)
+  endif
+endif
+ifeq ($(STORY_SIX_PROBE),1)
+  ifneq ($(STORY_KO_PROBE),1)
+    $(error STORY_SIX_PROBE=1 requires STORY_KO_PROBE=1)
+  endif
+  ifeq ($(STORY_EMBER_PROBE),1)
+    $(error STORY_SIX_PROBE and STORY_EMBER_PROBE are exclusive)
+  endif
+endif
+ifeq ($(STORY_EMBER_PROBE),1)
+  ifneq ($(STORY_KO_PROBE),1)
+    $(error STORY_EMBER_PROBE=1 requires STORY_KO_PROBE=1)
+  endif
+endif
+ifeq ($(STORY_KO_PROBE),1)
+  ifneq ($(STORY_PROBE),1)
+    $(error STORY_KO_PROBE=1 requires STORY_PROBE=1)
+  endif
+endif
+ifeq ($(STORY_PROBE),1)
+  ifneq ($(ROGUELIKE),1)
+    $(error STORY_PROBE=1 requires ROGUELIKE=1)
+  endif
+endif
 # Set prefix to mips binutils binaries (mips-linux-gnu-ld => 'mips-linux-gnu-') - Change at your own risk!
 # In nearly all cases, not having 'mips-linux-gnu-*' binaries on the PATH is indicative of missing dependencies
 MIPS_BINUTILS_PREFIX ?= mips-linux-gnu-
@@ -107,6 +158,21 @@ VANILLA_MAP       := $(VANILLA_BUILD_DIR)/$(TARGET)-$(VERSION).map
 
 ifeq ($(ROGUELIKE),1)
   BUILD_DIR := build_rl
+  ifeq ($(STORY_PROBE),1)
+    BUILD_DIR := build_story_probe
+    ifeq ($(STORY_KO_PROBE),1)
+      BUILD_DIR := build_story_ko_probe
+      ifeq ($(STORY_EMBER_PROBE),1)
+        BUILD_DIR := build_story_ember_probe
+      endif
+      ifeq ($(STORY_SIX_PROBE),1)
+        BUILD_DIR := build_story_six_probe
+        ifeq ($(STORY_AI_PROTOTYPE),1)
+          BUILD_DIR := build_story_ai_prototype
+        endif
+      endif
+    endif
+  endif
   ROM       := $(BUILD_DIR)/$(TARGET)-rl.z64
 else
   BUILD_DIR := build
@@ -136,6 +202,21 @@ endif
 ifeq ($(ROGUELIKE),1)
   COMPARE  := 0
   BUILD_DEFINES   += -DROGUELIKE
+  ifeq ($(STORY_PROBE),1)
+    BUILD_DEFINES += -DSTORY_NATIVE_PROBE
+    ifeq ($(STORY_KO_PROBE),1)
+      BUILD_DEFINES += -DSTORY_KO_PROBE
+      ifeq ($(STORY_EMBER_PROBE),1)
+        BUILD_DEFINES += -DSTORY_EMBER_PROBE
+      endif
+      ifeq ($(STORY_SIX_PROBE),1)
+        BUILD_DEFINES += -DSTORY_SIX_PROBE
+        ifeq ($(STORY_AI_PROTOTYPE),1)
+          BUILD_DEFINES += -DSTORY_AI_PROTOTYPE
+        endif
+      endif
+    endif
+  endif
   ifneq ($(wildcard src/fragments/rl/rl_ui.c),)
     BUILD_DEFINES += -DRL_HAVE_UI_DEMO
   endif
@@ -266,6 +347,10 @@ LIB_DIRS      := $(foreach f, $(LIBULTRA_DIR), $f)
 
 C_FILES       := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c))
 S_FILES       := $(foreach dir,$(ASM_DIRS) $(SRC_DIRS),$(wildcard $(dir)/*.s))
+
+# The story milestone is host-only until its graph and native bridge are reviewed.
+C_FILES       := $(filter-out src/story/%,$(C_FILES))
+S_FILES       := $(filter-out src/story/%,$(S_FILES))
 
 # Roguelike sources are only compiled and linked by the roguelike build.
 # `rl_rosters.o` is linked into fragmentRL with the scene to keep its large
@@ -414,6 +499,16 @@ rl:
 	$(V)$(MAKE) rom
 	$(V)$(MAKE) ROGUELIKE=1 NON_MATCHING=$(RL_NON_MATCHING) COMPARE=0 rlrom
 
+.PHONY: story-probe
+story-probe:
+	$(V)$(MAKE) rom
+	$(V)$(MAKE) ROGUELIKE=1 STORY_PROBE=1 NON_MATCHING=0 COMPARE=0 rlrom
+
+.PHONY: story-ko-probe
+story-ko-probe:
+	$(V)$(MAKE) rom
+	$(V)$(MAKE) ROGUELIKE=1 STORY_PROBE=1 STORY_KO_PROBE=1 NON_MATCHING=0 COMPARE=0 rlrom
+
 rlclean:
 	$(V)$(RM) -r build_rl
 
@@ -422,6 +517,7 @@ rlrom: $(ROM)
 	@$(PRINT) "$(GREEN)Roguelike ROM: $(BLUE)$(ROM)$(NO_COL)\n"
 	$(V)$(PYTHON) tools/rl/pad_rom.py $(ROM)
 	$(V)$(PYTHON) tools/rl/n64crc.py $(ROM) --check
+	$(V)$(if $(filter 31,$(RL_REGEN_FRAGMENTS)),$(PYTHON) tools/rl/check_installed_thunks.py $(ROM) $(ELF) $(MAP) $(BASEROM) $(VANILLA_MAP),true)
 else
 rlrom:
 	$(error rlrom must be built through `make rl`)

@@ -2,6 +2,10 @@
 #include "src/11BA0.h"
 #include "src/F420.h"
 #include "src/util.h"
+#ifdef ROGUELIKE
+#include "src/roguelike/rl_geo_guard.h"
+#include "src/memmap.h"
+#endif
 
 static GeoLayoutCommandProc GeoLayoutJumpTable[] = {
     geo_layout_cmd_branch_and_link,
@@ -54,6 +58,61 @@ static s16 gGeoLayoutStackIndex;
 static s16 D_800ABDFC;
 static s16 gGeoLayoutReturnIndex;
 static u8* gGeoLayoutCommand;
+
+#ifdef ROGUELIKE
+typedef char sRlGeoNodeBytesCheck[(sizeof(GraphNode) == RL_GEO_NODE_BYTES) ? 1 : -1];
+#define RL_OFFSETOF(t, f) ((u32) & ((t*)0)->f)
+typedef char sRlGeoTexDescCheck[(sizeof(RlGeoTexDesc) == sizeof(unk_D_86002F34_018) &&
+                                 sizeof(RlGeoTexDesc) == 12 &&
+                                 RL_OFFSETOF(RlGeoTexDesc, texels) == RL_OFFSETOF(unk_D_86002F34_018, num_texels) &&
+                                 RL_OFFSETOF(RlGeoTexDesc, texture) == RL_OFFSETOF(unk_D_86002F34_018, texture)) ? 1 : -1];
+typedef char sRlGeoPalDescCheck[(sizeof(RlGeoPalDesc) == sizeof(unk_D_86002F34_01C) &&
+                                 RL_OFFSETOF(RlGeoPalDesc, data) == RL_OFFSETOF(unk_D_86002F34_01C, unk_04)) ? 1 : -1];
+typedef char sRlGeoCmd17Check[(sizeof(unk_D_800ABE00_cmd17) == 20 && RL_OFFSETOF(unk_D_800ABE00_cmd17, unk_08) == 8 &&
+                               RL_OFFSETOF(unk_D_800ABE00_cmd17, unk_10) == 16) ? 1 : -1];
+
+static const u8 sRlGeoCommandSizes[RL_GEO_OPCODES] = {
+    sizeof(unk_D_800ABE00_cmd0),
+    sizeof(unk_D_800ABE00_cmd1),
+    sizeof(unk_D_800ABE00_cmd2),
+    sizeof(unk_D_800ABE00_cmd3),
+    sizeof(unk_D_800ABE00_cmd4),
+    sizeof(unk_D_800ABE00_cmd5),
+    sizeof(unk_D_800ABE00_cmd6),
+    sizeof(unk_D_800ABE00_cmd7),
+    sizeof(unk_D_800ABE00_cmd8),
+    sizeof(unk_D_800ABE00_cmd9),
+    sizeof(unk_D_800ABE00_cmdA),
+    sizeof(unk_D_800ABE00_cmdB),
+    sizeof(unk_D_800ABE00_cmdC),
+    sizeof(unk_D_800ABE00_cmdD),
+    sizeof(unk_D_800ABE00_cmdE),
+    sizeof(unk_D_800ABE00_cmdF),
+    sizeof(unk_D_800ABE00_cmd10),
+    sizeof(unk_D_800ABE00_cmd11),
+    0 /* func_80017F5C never advances */,
+    sizeof(unk_D_800ABE00_cmd13),
+    sizeof(unk_D_800ABE00_cmd14),
+    sizeof(unk_D_800ABE00_cmd15),
+    sizeof(unk_D_800ABE00_cmd16),
+    sizeof(unk_D_800ABE00_cmd17),
+    sizeof(unk_D_800ABE00_cmd18),
+    sizeof(unk_D_800ABE00_cmd19),
+    sizeof(unk_D_800ABE00_cmd1A),
+    sizeof(unk_D_800ABE00_cmd1B),
+    sizeof(unk_D_800ABE00_cmd1C),
+    sizeof(unk_D_800ABE00_cmd1D),
+    sizeof(unk_D_800ABE00_cmd1E),
+    sizeof(unk_D_800ABE00_cmd1F),
+    sizeof(unk_D_800ABE00_cmd20),
+    sizeof(unk_D_800ABE00_cmd21),
+    sizeof(unk_D_800ABE00_cmd22),
+    sizeof(unk_D_800ABE00_cmd23),
+    sizeof(unk_D_800ABE00_cmd24),
+    sizeof(unk_D_800ABE00_cmd25),
+    sizeof(unk_D_800ABE00_cmd26),
+};
+#endif
 
 /*
   0x00: Branch and store return address
@@ -441,6 +500,67 @@ void func_80018AD0(void) {
     gGeoLayoutCommand += sizeof(unk_D_800ABE00_cmd26);
 }
 
+#ifdef ROGUELIKE
+/* Loader image admitted for the battle model/record workers only (func_80019484/func_80019514 on the
+ * loader thread); other parser callers are unaffected. */
+static u32 sRlGeoImageLo;
+static u32 sRlGeoImageHi;
+extern OSThread* __osRunningThread;
+static OSThread* sRlGeoImageThread;
+
+void rl_loader_refuse_notify(void);
+
+/* Stops the parsing thread. On the battle loader thread the current job is first completed with a
+ * refusal marker (func_80019600), so its waiter stops visibly rather than waiting forever. */
+static void rl_geo_refuse(const char* what) {
+    osSyncPrintf("Unsupported geo layout %s\n", what);
+    rl_loader_refuse_notify();
+    osStopThread(NULL);
+}
+
+static s32 rl_geo_image_active(void) {
+    return sRlGeoImageHi != 0 && __osRunningThread == sRlGeoImageThread;
+}
+
+void rl_geo_image_set(Fragment* frag) {
+    sRlGeoImageLo = 0;
+    sRlGeoImageHi = 0;
+    sRlGeoImageThread = NULL;
+    if (frag == NULL) {
+        return;
+    }
+    if (((u32*)frag->magic)[0] != 'FRAG' || ((u32*)frag->magic)[1] != 'MENT' ||
+        !rl_geo_image_ok((u32)frag, frag->relocOffset, frag->sizeInRam, 0x80000000, 0x80000000 + osMemSize)) {
+        rl_geo_refuse("image");
+        return;
+    }
+    sRlGeoImageLo = (u32)frag;
+    sRlGeoImageHi = (u32)frag + frag->relocOffset;
+    sRlGeoImageThread = __osRunningThread;
+}
+
+void rl_geo_recolor_admit(unk_D_86002F34* node) {
+    if (rl_geo_image_active() &&
+        !rl_geo_recolor_ok((const RlGeoTexDesc*)node->unk_18, node->unk_24, (const RlGeoPalDesc*)node->unk_1C,
+                           node->unk_25, sRlGeoImageLo, sRlGeoImageHi)) {
+        rl_geo_refuse("recolor");
+    }
+}
+
+void rl_geo_layout_check(s32 dispatched) {
+    if (dispatched ? !rl_geo_state_ok(gGeoLayoutStackIndex, gGeoLayoutReturnIndex, gCurGraphNodeIndex)
+                   : !rl_geo_admit(gGeoLayoutCommand, (u8*)0x80000000, (u8*)(0x80000000 + osMemSize),
+                                   sRlGeoCommandSizes, gGeoLayoutStackIndex, gGeoLayoutReturnIndex,
+                                   gCurGraphNodeIndex)) {
+        rl_geo_refuse("command");
+    } else if (!dispatched && rl_geo_image_active() &&
+               !rl_geo_image_cmd_ok(gGeoLayoutCommand, (u32)gGeoLayoutCommand, sRlGeoImageLo, sRlGeoImageHi,
+                                    sRlGeoCommandSizes)) {
+        rl_geo_refuse("image command");
+    }
+}
+#endif
+
 GraphNode* process_geo_layout(MemoryBlock* pool, void* segptr) {
     // set by register_scene_graph_node when gCurGraphNodeIndex is 0
     // and gCurRootGraphNode is NULL
@@ -453,6 +573,11 @@ GraphNode* process_geo_layout(MemoryBlock* pool, void* segptr) {
     gGeoLayoutReturnIndex = 2; // stack index is often copied here?
 
     gGeoLayoutCommand = Util_ConvertAddrToVirtAddr(segptr);
+#ifdef ROGUELIKE
+    if (rl_geo_image_active() && gGeoLayoutCommand == NULL) {
+        rl_geo_refuse("image root");
+    }
+#endif
 
     gGraphNodePool = pool;
 
@@ -462,7 +587,13 @@ GraphNode* process_geo_layout(MemoryBlock* pool, void* segptr) {
     gGeoLayoutStack[1] = 0;
 
     while (gGeoLayoutCommand != NULL) {
+#ifdef ROGUELIKE
+        rl_geo_layout_check(0);
+#endif
         GeoLayoutJumpTable[gGeoLayoutCommand[0x00]]();
+#ifdef ROGUELIKE
+        rl_geo_layout_check(1);
+#endif
     }
 
     return gCurRootGraphNode;

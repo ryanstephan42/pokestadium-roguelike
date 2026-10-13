@@ -6,16 +6,32 @@
 #include "src/373A0.h"
 #include "src/memory.h"
 #include "rl_native_relics.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_native_probe.h"
+#include "src/story/sc_campaign_battle.h"
+#ifdef STORY_SIX_PROBE
+extern int sc_runtime_probe_mapping(const RlU8 indices[6], unsigned count);
+extern int sc_runtime_probe_terminal(const unk_D_800AE540_0004 *,
+                                     const unk_D_800AE540_0004 *, unsigned);
+#endif
+#endif
+
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+#include "src/story/sc_native_launch_hook.h"
+ScNativeLaunchHook *gScNativeLaunchHook;
+#endif
 
 RlLaunchResult gRlLastBattleResult;
 volatile unsigned int gRlBattleCount;
 int gRlBattleActive;
 volatile int gRlBattleTestRequest;
 const unsigned int gRlBattleTestMonSize = sizeof(RlMon);
+#ifndef STORY_SIX_PROBE
 RlMon gRlRelicTestParty[6], gRlRelicTestEnemy[6];
 RlBattleRules gRlRelicTestRules;
 unsigned int gRlRelicTestPartyCount, gRlRelicTestEnemyCount, gRlRelicTestMask;
 unsigned int gRlRelicTestConsumed;
+#endif
 volatile unsigned int gRlBattleLaunchStage;
 
 static int rl_valid_team(const RlMon* team, int count) {
@@ -56,7 +72,11 @@ static int rl_valid_team(const RlMon* team, int count) {
     return 1;
 }
 
+#ifdef STORY_NATIVE_PROBE
+static int rl_to_native(const RlMon* mon, unk_func_80026268_arg0* native, int use_state) {
+#else
 static void rl_to_native(const RlMon* mon, unk_func_80026268_arg0* native, int use_state) {
+#endif
     int i;
     int ups;
     int base;
@@ -104,6 +124,13 @@ static void rl_to_native(const RlMon* mon, unk_func_80026268_arg0* native, int u
         native->unk_30[i] = 0;
     }
     func_800228B0(native);
+#ifdef STORY_NATIVE_PROBE
+    if (SC_STORY_BATTLE && sc_native_record(mon, native) != SC_OK) {
+        osSyncPrintf("story probe: canonical native record rejected\n");
+        return -1;
+    }
+    return 0;
+#endif
 }
 
 static void rl_from_native(const unk_func_80026268_arg0* native, RlMon* mon) {
@@ -160,7 +187,11 @@ int rl_prepare_mon(RlMon* mon, int full_heal) {
         osSyncPrintf("rl_prepare_mon: invalid Pokemon\n");
         return -1;
     }
+#ifdef STORY_NATIVE_PROBE
+    if (rl_to_native(mon, &native, !full_heal) != 0) return -1;
+#else
     rl_to_native(mon, &native, !full_heal);
+#endif
     rl_from_native(&native, mon);
     switch (D_80070F84[mon->species].unk_13) {
         case 0: mon->growth = RL_MEDIUM_FAST; break;
@@ -211,11 +242,29 @@ int rl_battle_apply_pp_pouch(RunState* run) {
     return 1;
 }
 
-int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int enemy_n,
-                   const RlBattleRules* rules, int return_state, RlLaunchResult* out) {
+/* The native record is a launch-time temporary: keeping it in this callee
+   keeps it off the Game-thread stack while fragment62 renders the battle. */
+static int rl_add_native(unk_D_800AE540_0004* side, const RlMon* mon, int use_state) {
+    unk_func_80026268_arg0 native;
+
+#ifdef STORY_NATIVE_PROBE
+    if (rl_to_native(mon, &native, use_state) != 0) return -1;
+#else
+    rl_to_native(mon, &native, use_state);
+#endif
+    func_8002B888(side, &native);
+    return 0;
+}
+
+/* Validates the request and builds both native sides. Split from
+   rl_start_battle so that its temporaries are off the Game-thread stack while
+   fragment62 renders the battle; rl_start_battle runs only after it returns. */
+static unk_D_800AE540_0004* sRlLaunchSide[2];
+
+static int rl_prepare_sides(const RlMon* party, int party_n, const RlMon* enemy, int enemy_n,
+                            const RlBattleRules* rules) {
     unk_D_800AE540_0004* player;
     unk_D_800AE540_0004* opponent;
-    unk_func_80026268_arg0 native;
     RlLaunchResult* result = &gRlLastBattleResult;
     int i;
     int count;
@@ -255,14 +304,54 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
         }
         result->player_index[player->unk_002] = i;
         result->player[player->unk_002] = party[i];
-        rl_to_native(&party[i], &native, rules->use_state);
-        func_8002B888(player, &native);
+        if (rl_add_native(player, &party[i], rules->use_state) != 0) return -1;
     }
     for (i = 0; i < enemy_n; i++) {
         result->enemy[i] = enemy[i];
-        rl_to_native(&enemy[i], &native, 0);
-        func_8002B888(opponent, &native);
+        if (rl_add_native(opponent, &enemy[i], 0) != 0) return -1;
     }
+#ifdef STORY_SIX_PROBE
+    if (gScProbeActive && sc_runtime_probe_mapping(result->player_index, player->unk_002) != SC_OK) {
+        osSyncPrintf("story six probe: invalid launcher party mapping\n");
+        return -1;
+    }
+#endif
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (gScCampaignBattle &&
+        sc_campaign_battle_mapping(result->player_index, player->unk_002) != 0) {
+        osSyncPrintf("story campaign: invalid launcher party mapping\n");
+        return -1;
+    }
+#endif
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+    if (gScNativeLaunchHook != NULL &&
+#ifdef STORY_NATIVE_PROBE
+        (gScProbeActive || gScNativeLaunchHook->arm(gScNativeLaunchHook->context) != 0)
+#else
+        gScNativeLaunchHook->arm(gScNativeLaunchHook->context) != 0
+#endif
+        ) {
+        osSyncPrintf("story launch: terminal authority refused\n");
+        return -1;
+    }
+#endif
+    sRlLaunchSide[0] = player;
+    sRlLaunchSide[1] = opponent;
+    return 0;
+}
+
+int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int enemy_n,
+                   const RlBattleRules* rules, int return_state, RlLaunchResult* out) {
+    unk_D_800AE540_0004* player;
+    unk_D_800AE540_0004* opponent;
+    RlLaunchResult* result = &gRlLastBattleResult;
+    int i;
+
+    if (rl_prepare_sides(party, party_n, enemy, enemy_n, rules) != 0) {
+        return -1;
+    }
+    player = sRlLaunchSide[0];
+    opponent = sRlLaunchSide[1];
     gRlBattleActive = 1;
     rl_native_relics_reset(rules->relics);
     gRlBattleLaunchStage = 1;
@@ -275,21 +364,67 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
     gRlBattleLaunchStage = 3;
     FRAGMENT_LOAD(fragment34);
     gRlBattleLaunchStage = 4;
+#ifdef STORY_NATIVE_PROBE
+    if (FRAGMENT_LOAD_AND_CALL(fragment62, 0, (u32)&D_800AE540) < 0) {
+        main_pool_pop_state(0x524C4254);
+        gRlBattleActive = 0;
+        gCurrentGameState = return_state;
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+        if (gScNativeLaunchHook != NULL) gScNativeLaunchHook->abort(gScNativeLaunchHook->context);
+#endif
+        osSyncPrintf("story probe: native battle initialization failed\n");
+        return -1;
+    }
+#else
     FRAGMENT_LOAD_AND_CALL(fragment62, 0, (u32)&D_800AE540);
+#endif
     gRlBattleLaunchStage = 5;
+#ifdef STORY_SIX_PROBE
+    if (gScProbeActive && sc_runtime_probe_terminal(player, opponent,
+            D_800AE540.unk_1194[0].unk_1C && !D_800AE540.unk_1194[1].unk_1C ?
+            RL_BATTLE_WIN : RL_BATTLE_LOSS) != SC_OK) {
+        main_pool_pop_state(0x524C4254);
+        gRlBattleActive = 0;
+        gCurrentGameState = return_state;
+        osSyncPrintf("story six probe: terminal raw capture refused\n");
+        return -1;
+    }
+#endif
+#ifdef STORY_SIX_PROBE
+    if (!gScProbeActive)
+#endif
     main_pool_pop_state(0x524C4254);
     result->outcome = RL_LAUNCH_DRAW;
     if (D_800AE540.unk_1194[0].unk_1C != D_800AE540.unk_1194[1].unk_1C) {
         result->outcome = D_800AE540.unk_1194[0].unk_1C ? RL_BATTLE_WIN : RL_BATTLE_LOSS;
     }
+#if defined(STORY_NATIVE_UI) && defined(STORY_SERVICE_CANDIDATE)
+    if (gScNativeLaunchHook != NULL) {
+        gScNativeLaunchHook->drain(gScNativeLaunchHook->context, D_800AE540.unk_1194[0].unk_1C,
+                                   D_800AE540.unk_1194[1].unk_1C);
+    }
+#endif
     result->player_count = player->unk_002;
     result->enemy_count = opponent->unk_002;
     for (i = 0; i < player->unk_002; i++) {
         rl_from_native(&player->unk_01C[i], &result->player[i]);
+#ifdef STORY_SIX_PROBE
+        if (gScProbeActive &&
+            sc_native_return_identity(&result->player[i], &party[result->player_index[i]]) != SC_OK) {
+            main_pool_pop_state(0x524C4254);
+            gRlBattleActive = 0;
+            gCurrentGameState = return_state;
+            osSyncPrintf("story six probe: terminal launch identity mismatch\n");
+            return -1;
+        }
+#endif
     }
     for (i = 0; i < opponent->unk_002; i++) {
         rl_from_native(&opponent->unk_01C[i], &result->enemy[i]);
     }
+#ifdef STORY_SIX_PROBE
+    if (gScProbeActive) main_pool_pop_state(0x524C4254);
+#endif
     if (out != NULL) {
         *out = *result;
     }
@@ -300,6 +435,11 @@ int rl_start_battle(const RlMon* party, int party_n, const RlMon* enemy, int ene
 }
 
 void rl_battle_test_entry(void) {
+#ifdef STORY_SIX_PROBE
+    gRlBattleTestRequest = 0;
+    gCurrentGameState = STATE_TITLE_SCREEN;
+    osSyncPrintf("story six probe: RL relic/custom battle test payload unavailable\n");
+#else
     RlMon party[3];
     RlMon enemy[3];
     RlBattleRules rules;
@@ -380,5 +520,6 @@ void rl_battle_test_entry(void) {
     rules.use_state = 1;
     rules.player_count = 2;
     rl_start_battle(party, 3, enemy, 3, &rules, STATE_TITLE_SCREEN, NULL);
+#endif
 }
 #endif

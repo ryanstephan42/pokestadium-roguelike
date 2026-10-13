@@ -32,6 +32,9 @@ typedef s32 (*FragmentEntry)(s32, s32);
 
 void Memmap_SetSegmentMap(u32 id, uintptr_t vaddr, size_t size);
 uintptr_t Memmap_GetSegmentBaseVaddr(u32 id);
+#ifdef ROGUELIKE
+size_t Memmap_GetSegmentSize(u32 id);
+#endif
 uintptr_t Memmap_GetSegmentVaddr(u32 mask);
 u32 Memmap_GetSegmentVaddrMask(u32 i, uintptr_t addr);
 void Memmap_ClearSegmentMemmap(u32 id);
@@ -39,6 +42,9 @@ void Memmap_SetSegments(Gfx** gfxDl);
 void Memmap_RelocateFragment(u32 id, struct Fragment* fragment);
 void Memmap_SetFragmentMap(u32 id, uintptr_t vaddr, size_t size);
 uintptr_t Memmap_GetFragmentBaseVaddr(u32 id);
+#if defined(STORY_NATIVE_PROBE) || defined(STORY_SERVICE_CANDIDATE)
+size_t Memmap_GetFragmentSize(u32 id);
+#endif
 uintptr_t Memmap_GetFragmentVaddr(void* addr);
 u32 Memmap_GetFragmentVaddrMask(u32 i, uintptr_t addr);
 void Memmap_ClearFragmentMemmap(u32 id);

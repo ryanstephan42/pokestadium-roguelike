@@ -3,6 +3,9 @@
 #include "src/controller.h"
 #include "src/29BA0.h"
 #include "rl_save_probe.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_campaign_battle.h"
+#endif
 
 extern u8 fragmentRL_TEXT_START[];
 extern u8 fragmentRL_ROM_START[];
@@ -70,7 +73,8 @@ int rl_main_queue_battle(const RlMon* player, unsigned player_count,
 }
 
 static void rl_main_run_pending_battle(void) {
-    RlLaunchResult result;
+    /* Avoid a stack copy of the result: this frame sits under the battle stack. */
+    const RlLaunchResult* result = &gRlLastBattleResult;
     unsigned active_mask;
     unsigned i;
     int outcome;
@@ -81,7 +85,7 @@ static void rl_main_run_pending_battle(void) {
                               gRlPendingBattle.enemy,
                               gRlPendingBattle.enemy_count,
                               &gRlPendingBattle.rules, STATE_ROGUELIKE,
-                              &result);
+                              NULL);
     gRlPendingBattle.pending = 0;
     gRlPendingBattle.outcome = outcome < 0 ? 0xFF : (unsigned char)outcome;
     gRlPendingBattle.error = outcome < 0 ? 1 : 0;
@@ -94,17 +98,17 @@ static void rl_main_run_pending_battle(void) {
             }
             active_mask |= 1U << gRlPendingBattle.player_slots[i];
         }
-        for (i = 0; !gRlPendingBattle.error && i < result.player_count; i++) {
-            if (result.player_index[i] >= gRlPendingBattle.player_count) {
+        for (i = 0; !gRlPendingBattle.error && i < result->player_count; i++) {
+            if (result->player_index[i] >= gRlPendingBattle.player_count) {
                 gRlPendingBattle.error = 2;
                 break;
             }
         }
         if (!gRlPendingBattle.error) {
-            for (i = 0; i < result.player_count; i++) {
+            for (i = 0; i < result->player_count; i++) {
                 unsigned slot;
-                slot = gRlPendingBattle.player_slots[result.player_index[i]];
-                gRlRun.party[slot] = result.player[i];
+                slot = gRlPendingBattle.player_slots[result->player_index[i]];
+                gRlRun.party[slot] = result->player[i];
             }
             if (rl_run_on_battle_result(&gRlRun, outcome == RL_BATTLE_WIN,
                                         (RlU8)active_mask) != RL_OK) {
@@ -121,6 +125,15 @@ void rl_main_state_roguelike(void) {
 
     gRlMain.magic = RL_MAIN_MAGIC;
     gRlMain.visits++;
+#ifdef STORY_NATIVE_PROBE
+    {
+        extern int sc_runtime_probe_poll(void);
+        if (sc_runtime_probe_poll()) {
+            gCurrentGameState = STATE_MENU_SELECT;
+            return;
+        }
+    }
+#endif
     if (gRlMain.returnState == 0) {
         gRlMain.returnState = STATE_MENU_SELECT;
     }
@@ -155,5 +168,10 @@ s32 rl_main_menu_hook(s32 state) {
         gRlMain.returnState = STATE_MENU_SELECT;
         return STATE_ROGUELIKE;
     }
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    /* Consumes the visible fragment57 R request; candidate build only. */
+    return sc_campaign_menu_hook(state);
+#else
     return state;
+#endif
 }

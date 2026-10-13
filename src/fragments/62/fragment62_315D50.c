@@ -10,6 +10,18 @@
 #include "src/4F410.h"
 #include "src/F420.h"
 #include "src/math_util.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_runtime_probe.h"
+#endif
+#ifdef STORY_SERVICE_CANDIDATE
+#include "src/story/sc_batl_scope.h"
+#define SC_FX_REQUIRE(ok, code) \
+    do {                        \
+        if (!(ok)) {            \
+            sc_batl_job_fatal(code); \
+        }                       \
+    } while (0)
+#endif
 
 typedef struct unk_D_84392040 {
     /* 0x00 */ char unk00[0xC];
@@ -4829,6 +4841,9 @@ void func_8432C830(arg1_func_80019420* arg0) {
     if (arg0 != NULL) {
         do {
             if (arg0->unk_02 != 0) {
+#ifdef STORY_SERVICE_CANDIDATE
+                sc_batl_fx_note(arg0->unk_02, arg0->unk_00);
+#endif
                 D_843920C0[arg0->unk_02] = arg0->unk_04;
                 arg0++;
             }
@@ -4838,18 +4853,43 @@ void func_8432C830(arg1_func_80019420* arg0) {
 
 void func_8432C86C(void) {
     s32 i;
+#ifdef STORY_NATIVE_PROBE
+    arg1_func_80019420* animation;
+#endif
 
     // clang-format off
     for (i = 0; i < 256; i++) { D_843920C0[i] = NULL; }
     // clang-format on
+#ifdef STORY_SERVICE_CANDIDATE
+    sc_batl_fx_publish(1);
+#endif
 
+#ifdef STORY_NATIVE_PROBE
+    animation = func_80019EA0(0);
+    if (SC_STORY_BATTLE && animation == NULL) {
+        osSyncPrintf("story probe: required animation archive entry 0 unavailable\n");
+        gScProbe.stage = 13;
+#ifdef STORY_SERVICE_CANDIDATE
+        sc_batl_fx_publish(0);
+#endif
+        return;
+    }
+    func_8432C830(animation);
+#else
     func_8432C830(func_80019EA0(0));
+#endif
+#ifdef STORY_SERVICE_CANDIDATE
+    sc_batl_fx_publish(0);
+#endif
 }
 
 void func_8432C8BC(s16 arg0) {
     s32 var_v0 = 0;
     u8* temp_a1 = D_84386E08[arg0][3];
 
+#ifdef STORY_SERVICE_CANDIDATE
+    SC_FX_REQUIRE(sc_batl_fx_request(), SC_BATL_FX_REQUEST);
+#endif
     while (*temp_a1 != 0x3F) {
         D_843924C0[var_v0] = *temp_a1;
         temp_a1++;
@@ -4879,6 +4919,9 @@ void func_8432C9C0(unk_D_800AE540_1194* arg0, s16 arg1) {
     s32 var_v0 = 0;
     u8* var_v1 = D_84386D44[arg1][1];
 
+#ifdef STORY_SERVICE_CANDIDATE
+    SC_FX_REQUIRE(sc_batl_fx_request(), SC_BATL_FX_REQUEST);
+#endif
     while (*var_v1 != 0x3F) {
         D_843924C0[var_v0] = *var_v1;
         var_v1++;
@@ -4896,6 +4939,9 @@ void func_8432CA48(void) {
     arg1_func_80019420* var_v0;
     arg1_func_80019420** var_s1 = D_843924E0;
 
+#ifdef STORY_SERVICE_CANDIDATE
+    SC_FX_REQUIRE(sc_batl_fx_publish(2), SC_BATL_FX_PUBLISH);
+#endif
     while (*var_s1 != NULL) {
         var_v0 = *var_s1;
         if (i) {}
@@ -4903,6 +4949,9 @@ void func_8432CA48(void) {
         var_s1++;
         i++;
     }
+#ifdef STORY_SERVICE_CANDIDATE
+    sc_batl_fx_publish(0);
+#endif
 }
 
 void func_8432CAA8(unk_D_800AE540_1194* arg0) {
@@ -5004,6 +5053,9 @@ void func_8432CD14(unk_D_86002F58_004_000* arg0) {
 }
 
 void func_8432CD70(unk_D_86002F58_004_000* arg0, s16 arg1, s16 arg2) {
+#ifdef STORY_SERVICE_CANDIDATE
+    SC_FX_REQUIRE(sc_batl_fx_admit(arg1, 1) && sc_batl_fx_admit(arg2, 0), SC_BATL_FX_STALE);
+#endif
     func_8001BC34(arg0, 0, 0, D_843920C0[arg1]);
     func_800173DC(arg0, 0, D_843920C0[arg2], 0x10000);
 }
@@ -5013,14 +5065,23 @@ void func_8432CDD8(unk_D_86002F58_004_000* arg0, s16 arg1) {
 }
 
 void func_8432CE00(unk_D_86002F58_004_000* arg0, s16 arg1) {
+#ifdef STORY_SERVICE_CANDIDATE
+    SC_FX_REQUIRE(sc_batl_fx_admit(arg1, 1), SC_BATL_FX_STALE);
+#endif
     func_8001BC34(arg0, 0, 0, D_843920C0[arg1]);
 }
 
 void func_8432CE3C(unk_D_86002F58_004_000* arg0, s16 arg1) {
+#ifdef STORY_SERVICE_CANDIDATE
+    SC_FX_REQUIRE(sc_batl_fx_admit(arg1, 0), SC_BATL_FX_STALE);
+#endif
     func_800173DC(arg0, 0, D_843920C0[arg1], 0x10000);
 }
 
 void func_8432CE78(unk_D_86002F58_004_000* arg0, s16 arg1) {
+#ifdef STORY_SERVICE_CANDIDATE
+    SC_FX_REQUIRE(sc_batl_fx_admit(arg1, 0), SC_BATL_FX_STALE);
+#endif
     func_800173DC(arg0, 0, D_843920C0[arg1], -0x10000);
     func_80017464(arg0, arg0->unk_040.unk_04->unk_0A - 1);
 }

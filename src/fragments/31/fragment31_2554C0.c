@@ -67,12 +67,25 @@ void func_81000420(s32 arg0, DisplayListState* state) {
     DisplayListAddresses* addresses;
     u8 temp_v1;
 
+#ifndef ROGUELIKE
     temp_v1 = func_800325B4();
+#endif
     if (arg0 == 2) {
+#ifdef ROGUELIKE
+        /* Phase-0 geo import has no bound renderer actor; read it only when drawing. */
+        temp_v1 = func_800325B4();
+#endif
         addresses = state->addresses;
         gfx = func_80005F5C(0x140);
         state->gfx = gfx;
+#ifdef ROGUELIKE
+        /* Unsigned low-3-bit selection: equals the vanilla % 8 for every non-negative sum, but
+           can never go negative when the persistent counter wraps or D_800AF7B0 is negative. */
+        func_81000330(gfx, addresses, ((u32)D_800AF7B0[temp_v1 & 1] * 3 + (u32)D_81003FD0) & 7);
+        D_81003FD0 = (D_81003FD0 + 1) & 7;
+#else
         func_81000330(gfx, addresses, ((D_800AF7B0[temp_v1 & 1] * 3) + D_81003FD0) % 8);
         D_81003FD0 += 1;
+#endif
     }
 }

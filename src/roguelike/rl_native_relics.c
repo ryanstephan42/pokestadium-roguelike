@@ -2,7 +2,9 @@
 #include "rl_native_relics.h"
 #include "src/roguelike/rl_battle.h"
 
+#ifndef STORY_NATIVE_PROBE
 volatile RlRelicTrace gRlRelicTrace;
+#endif
 unsigned int gRlNativeRelics;
 
 static RlBattleSide* player_side;
@@ -20,6 +22,9 @@ static int player_mon(RlBattleMon* mon) {
 
 static void trace(unsigned int kind, unsigned int a, unsigned int b,
                   unsigned int c, unsigned int d, unsigned int e, unsigned int f) {
+#ifdef STORY_NATIVE_PROBE
+    (void)kind; (void)a; (void)b; (void)c; (void)d; (void)e; (void)f;
+#else
     volatile RlRelicTraceEvent* event;
     unsigned int index = gRlRelicTrace.count;
     if (index >= RL_RELIC_TRACE_CAPACITY) {
@@ -36,6 +41,7 @@ static void trace(unsigned int kind, unsigned int a, unsigned int b,
     event->e = e;
     event->f = f;
     gRlRelicTrace.count = index + 1;
+#endif
 }
 
 void rl_native_relics_reset(unsigned int relics) {
@@ -44,8 +50,10 @@ void rl_native_relics_reset(unsigned int relics) {
     completed_rounds = 0;
     round_open = 0;
     focus_used = 0;
+#ifndef STORY_NATIVE_PROBE
     gRlRelicTrace.count = 0;
     gRlRelicTrace.dropped = 0;
+#endif
 }
 
 void rl_native_relics_bind(RlBattleSide* player, RlBattleSide* enemy) {

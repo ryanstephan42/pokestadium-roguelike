@@ -6,6 +6,9 @@
 #include "crash_screen.h"
 #include "profiler.h"
 #include "memory.h"
+#ifdef STORY_NATIVE_UI
+#include "src/story/sc_core.h"
+#endif
 
 extern u64 F3DEX2_data_bin[]; // F3DEX2_data.bin
 
@@ -32,6 +35,118 @@ u64 D_80084760[0x100 / sizeof(u64)];
 u64 D_80084860[0x408 / sizeof(u64)];
 u64 D_80084C68[0xC08 / sizeof(u64)];
 u64 D_80085870[0x20000 / sizeof(u64)];
+
+#ifdef STORY_NATIVE_UI
+static void *sScDpControl;
+static ScDpToken *sScDpToken;
+static u32 sScDpGeneration;
+static int sScDpPending;
+
+static int sc_dp_valid(const ScDpToken *token) {
+    return token && token == sScDpToken && token->control && token->control == sScDpControl &&
+        token->generation && token->generation == sScDpGeneration && osGetThreadId(NULL) == 6;
+}
+
+static void sc_dp_normal_admission(void) {
+    if (sScDpControl) {
+        osSyncPrintf("Story retirement: unauthorized scheduler admission\n");
+        osStopThread(NULL);
+        for (;;) {}
+    }
+}
+
+int sc_dp_acquire(void *control, ScDpToken *token) {
+    u32 mask;
+    int status = SC_OK;
+    if (!control || !token || token->control || osGetThreadId(NULL) != 6) return SC_INVALID;
+    mask = __osDisableInt();
+    if (sScDpControl) status = SC_INVALID;
+    else if (sScDpGeneration == 0xFFFFFFFFU) status = SC_UNAVAILABLE;
+    else if (!D_80083CA0.unk_A8A || D_80083CA0.unk_9EC.validCount ||
+             D_80083CA0.unk_A04.validCount) status = SC_PENDING;
+    else {
+        sScDpGeneration++;
+        sScDpControl = control; sScDpToken = token; sScDpPending = 0;
+        token->control = control; token->generation = sScDpGeneration;
+    }
+    __osRestoreInt(mask);
+    return status;
+}
+
+int sc_dp_snapshot(const ScDpToken *token, ScDpSnapshot *snapshot) {
+    u32 mask;
+    if (!snapshot || !sc_dp_valid(token)) return SC_INVALID;
+    mask = __osDisableInt();
+    snapshot->frames[0] = D_80083CA0.unk_A8C;
+    snapshot->frames[1] = D_80083CA0.unk_A9C;
+    snapshot->frames[2] = D_80083CA0.unk_AAC;
+    snapshot->fallback = D_80083CA0.unk_9E0;
+    snapshot->vi_current = osViGetCurrentFramebuffer();
+    snapshot->vi_next = osViGetNextFramebuffer();
+    snapshot->crash_frame = gCrashScreen.frameBuf;
+    snapshot->waiting = D_80083CA0.unk_A8A;
+    snapshot->requests = D_80083CA0.unk_9EC.validCount;
+    snapshot->completions = D_80083CA0.unk_A04.validCount;
+    snapshot->events = D_80083CA0.unk_1C0.validCount;
+    snapshot->rsp_state = D_80083CA0.unk_A20.unk_1C;
+    snapshot->rdp_state = D_80083CA0.unk_A20.unk_1E;
+    snapshot->task_completions = D_80083CA0.unk_A20.queue.validCount;
+    __osRestoreInt(mask);
+    return SC_OK;
+}
+
+int sc_dp_enqueue_fallback(const ScDpToken *token) {
+    u32 mask;
+    int ready;
+    if (!sc_dp_valid(token) || sScDpPending) return SC_INVALID;
+    mask = __osDisableInt();
+    ready = D_80083CA0.unk_A8A && !D_80083CA0.unk_9EC.validCount &&
+        !D_80083CA0.unk_A04.validCount;
+    if (ready) sScDpPending = 1;
+    __osRestoreInt(mask);
+    if (!ready) return SC_PENDING;
+    /* NULL is the actual worker request path, not a NULL stage context. */
+    if (osSendMesg(&D_80083CA0.unk_9EC, NULL, OS_MESG_NOBLOCK) != 0) {
+        sScDpPending = 0;
+        return SC_PENDING;
+    }
+    return SC_OK;
+}
+
+int sc_dp_quiescent(const ScDpToken *token) {
+    u32 mask;
+    int status;
+    if (!sc_dp_valid(token)) return SC_INVALID;
+    mask = __osDisableInt();
+    status = !sScDpPending && D_80083CA0.unk_A8A &&
+        !D_80083CA0.unk_9EC.validCount && !D_80083CA0.unk_A04.validCount ?
+        SC_OK : SC_PENDING;
+    __osRestoreInt(mask);
+    return status;
+}
+
+int sc_dp_poll_done(const ScDpToken *token) {
+    if (!sc_dp_valid(token) || !sScDpPending) return SC_INVALID;
+    if (osRecvMesg(&D_80083CA0.unk_A04, NULL, OS_MESG_NOBLOCK) != 0) return SC_PENDING;
+    sScDpPending = 0;
+    return SC_OK;
+}
+
+int sc_dp_release(ScDpToken *token) {
+    u32 mask;
+    int status = SC_OK;
+    if (!sc_dp_valid(token)) return SC_INVALID;
+    mask = __osDisableInt();
+    if (sScDpPending || !D_80083CA0.unk_A8A || D_80083CA0.unk_9EC.validCount ||
+        D_80083CA0.unk_A04.validCount) status = SC_PENDING;
+    else {
+        sScDpControl = NULL; sScDpToken = NULL;
+        token->control = NULL; token->generation = 0;
+    }
+    __osRestoreInt(mask);
+    return status;
+}
+#endif
 
 // function prototypes
 void func_80001AD4(u16 color);
@@ -240,10 +355,16 @@ s32 func_80001B40(void) {
 }
 
 void func_80001B7C(void) {
+#ifdef STORY_NATIVE_UI
+    sc_dp_normal_admission();
+#endif
     osRecvMesg(&D_80083CA0.unk_A04, NULL, 1);
 }
 
 void func_80001BA8(void* arg0) {
+#ifdef STORY_NATIVE_UI
+    sc_dp_normal_admission();
+#endif
     osSendMesg(&D_80083CA0.unk_9EC, arg0, 0);
 }
 

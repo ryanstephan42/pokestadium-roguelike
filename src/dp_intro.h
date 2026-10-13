@@ -3,6 +3,29 @@
 
 #include "global.h"
 #include "3FB0.h"
+#ifdef STORY_NATIVE_UI
+#include "5580.h"
+#include "6BC0.h"
+typedef struct ScDpToken {
+    void *control;
+    u32 generation;
+} ScDpToken;
+typedef struct ScDpSnapshot {
+    UnkArray4 frames[3];
+    unk_D_80068BB0 *fallback;
+    void *vi_current, *vi_next, *crash_frame;
+    int waiting, requests, completions, events;
+    int rsp_state, rdp_state, task_completions;
+} ScDpSnapshot;
+int sc_dp_acquire(void *control, ScDpToken *token);
+int sc_dp_snapshot(const ScDpToken *token, ScDpSnapshot *snapshot);
+/* Caller may hold an outer IRQ fence across this check and an owner-only
+   nonblocking restore. Does not grant allocator or fallback authority. */
+int sc_dp_quiescent(const ScDpToken *token);
+int sc_dp_enqueue_fallback(const ScDpToken *token);
+int sc_dp_poll_done(const ScDpToken *token);
+int sc_dp_release(ScDpToken *token);
+#endif
 
 void func_80001380(UnkStruct80001380* arg0);
 void func_80001444(UnkStruct80001380* arg0, struct UnkArray4* arg1, s32 arg2);

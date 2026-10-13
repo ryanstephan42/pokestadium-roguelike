@@ -15,7 +15,9 @@ typedef struct RlRelicTrace {
     RlRelicTraceEvent events[RL_RELIC_TRACE_CAPACITY];
 } RlRelicTrace;
 
+#ifndef STORY_NATIVE_PROBE
 extern volatile RlRelicTrace gRlRelicTrace;
+#endif
 extern unsigned int gRlNativeRelics;
 
 void rl_native_relics_reset(unsigned int relics);

@@ -1,4 +1,10 @@
 #include "19840.h"
+#ifdef STORY_SERVICE_CANDIDATE
+#include "src/story/sc_batl_scope.h"
+#define LOADER_ALLOC(size) sc_batl_loader_alloc(size)
+#else
+#define LOADER_ALLOC(size) main_pool_alloc(size, 1)
+#endif
 #include "src/geo_layout.h"
 #include "src/dma.h"
 #include "src/memmap.h"
@@ -205,6 +211,9 @@ s32 func_80019328(MemoryBlock* arg0, Fragment* arg1, arg1_func_80010CA8 arg2) {
         if (temp_v0_2->unk_00.unk_00 == 0xE) {
             temp_v0_2->unk_28 = arg1;
             if (arg2.raw != 0) {
+#ifdef ROGUELIKE
+                rl_geo_recolor_admit(temp_v0_2);
+#endif
                 func_80018C40(temp_v0_2, arg2);
             }
         }
@@ -233,7 +242,16 @@ void func_80019484(unk_func_80019600* arg0) {
     sp24 = func_80019204(sp28, D_800ABE10.unk_A04.unk_00, arg0->unk_02, D_800ABE10.unk_A04.unk_08, 0x28000);
 
     if (sp24 != NULL) {
+#ifdef ROGUELIKE
+        rl_geo_image_set(sp24);
+#endif
         arg0->unk_08 = func_80019328(sp28, sp24, arg0->unk_18);
+#ifdef ROGUELIKE
+        rl_geo_image_set(NULL);
+#endif
+#ifdef STORY_SERVICE_CANDIDATE
+        sc_batl_model_loaded(arg0->queue, arg0, arg0->unk_02, sp24, arg0->unk_08);
+#endif
     } else {
         arg0->unk_08 = 0;
     }
@@ -260,7 +278,13 @@ void func_80019514(unk_func_80019600* arg0) {
         }
 
         temp_s6[var_s2] = temp_v0 + 1;
+#ifdef ROGUELIKE
+        rl_geo_image_set(temp_v0);
+#endif
         func_80019420(temp_s3, temp_v0 + 1);
+#ifdef ROGUELIKE
+        rl_geo_image_set(NULL);
+#endif
         var_s0++;
         var_s2++;
     }
@@ -269,6 +293,30 @@ void func_80019514(unk_func_80019600* arg0) {
     arg0->size = temp_s3->listHeadL + 1;
 }
 
+#ifdef ROGUELIKE
+/* Job the loader thread is executing; a parser refusal completes it with size 0 so the waiter
+ * reaches func_80019B48 and stops visibly instead of waiting on a stopped loader. */
+static unk_func_80019600* sRlLoaderJob;
+extern OSThread* __osRunningThread;
+
+void rl_loader_refuse_notify(void) {
+    unk_func_80019600* job = sRlLoaderJob;
+
+    if (job == NULL || __osRunningThread != &D_800ABE10.unk_000) {
+        return;
+    }
+    sRlLoaderJob = NULL;
+    rl_geo_image_set(NULL);
+    if (job->unk_00 == 1) {
+        job->unk_08 = NULL;
+    }
+    job->size = 0;
+    if (job->queue != NULL) {
+        osSendMesg(job->queue, job, OS_MESG_NOBLOCK);
+    }
+}
+#endif
+
 void func_80019600(UNUSED void* arg0) {
     unk_func_80019600* sp34;
 
@@ -276,6 +324,9 @@ void func_80019600(UNUSED void* arg0) {
 
     while (true) {
         osRecvMesg(&D_800ABE10.unk_9D0, &sp34, 1);
+#ifdef ROGUELIKE
+        sRlLoaderJob = sp34;
+#endif
 
         switch (sp34->unk_00) {
             case 1:
@@ -286,6 +337,9 @@ void func_80019600(UNUSED void* arg0) {
                 func_80019514(sp34);
                 break;
         }
+#ifdef ROGUELIKE
+        sRlLoaderJob = NULL;
+#endif
 
         if (sp34->queue != NULL) {
             osSendMesg(sp34->queue, sp34, 1);
@@ -314,18 +368,18 @@ unk_D_86002F58_004_000_010* func_80019760(u32 arg0) {
     temp_v0->unk_2C.raw = 0;
 
     if (arg0 & 1) {
-        temp_v0->unk_04[0] = main_pool_alloc(0x3C000, 1);
+        temp_v0->unk_04[0] = LOADER_ALLOC(0x3C000);
         if (arg0 & 4) {
-            temp_v0->unk_04[1] = main_pool_alloc(0x3C000, 1);
+            temp_v0->unk_04[1] = LOADER_ALLOC(0x3C000);
         } else if (arg0 & 8) {
             for (i = 1; i < 5; i++) {
-                temp_v0->unk_04[i] = main_pool_alloc(0x3C000, 1);
+                temp_v0->unk_04[i] = LOADER_ALLOC(0x3C000);
             }
         }
     }
 
     if (arg0 & 2) {
-        temp_v0->unk_18 = main_pool_alloc(0x18000, 1);
+        temp_v0->unk_18 = LOADER_ALLOC(0x18000);
     }
 
     osCreateMesgQueue(&temp_v0->unk_30, &temp_v0->unk_48, 2);
@@ -336,7 +390,7 @@ unk_D_86002F58_004_000_010* func_80019760(u32 arg0) {
 void func_8001987C(void) {
     D_800ABE10.unk_A04.unk_00 = func_800044F4(0x920000, NULL, 1, 1);
     D_800ABE10.unk_A04.unk_04 = func_800044F4(0x8CC000, NULL, 1, 1);
-    D_800ABE10.unk_A04.unk_08 = main_pool_alloc(0x28000, 1);
+    D_800ABE10.unk_A04.unk_08 = LOADER_ALLOC(0x28000);
 }
 
 s32 func_800198E4(unk_D_86002F58_004_000_010* arg0, u16 arg1, arg1_func_80010CA8 arg2) {
@@ -345,6 +399,12 @@ s32 func_800198E4(unk_D_86002F58_004_000_010* arg0, u16 arg1, arg1_func_80010CA8
     s32 var_v1;
 
     sp1C = 0;
+#ifdef STORY_SERVICE_CANDIDATE
+    if (!sc_batl_worker_admit(arg0) || !sc_batl_model_admit(arg0, arg1)) {
+        sc_batl_scope_require(0);
+        return 0;
+    }
+#endif
     if ((arg0->unk_00 & 1) && !(arg0->unk_01 & 1)) {
         sp18 = Util_Malloc(sizeof(sp18_func_800198E4));
         if (sp18 != NULL) {
@@ -363,6 +423,10 @@ s32 func_800198E4(unk_D_86002F58_004_000_010* arg0, u16 arg1, arg1_func_80010CA8
             sp18->unk_18 = arg2;
 
             if ((arg0->unk_24 != NULL) && (arg0->unk_24->unk_00 == arg1) && (arg0->unk_2C.raw == sp18->unk_18.raw)) {
+#ifdef STORY_SERVICE_CANDIDATE
+                /* explicit live-cache token; the loader thread never writes +0C of a model job */
+                sp18->unk_0C = (s32)arg0->unk_24;
+#endif
                 osSendMesg(sp18->unk_04, sp18, 1);
             } else {
                 osSendMesg(&D_800ABE10.unk_9D0, sp18, 1);
@@ -387,6 +451,12 @@ s32 func_80019A1C(unk_D_86002F58_004_000_010* arg0, u16 arg1, arg1_func_80010CA8
 s32 func_80019A7C(unk_D_86002F58_004_000_010* arg0, s32 arg1, s32 arg2) {
     s32 sp1C = 0;
     sp18_func_800198E4* temp_v0;
+#ifdef STORY_SERVICE_CANDIDATE
+    if (!sc_batl_worker_admit(arg0)) {
+        sc_batl_scope_require(0);
+        return 0;
+    }
+#endif
 
     if ((arg0->unk_00 & 2) && !(arg0->unk_01 & 2)) {
         temp_v0 = Util_Malloc(sizeof(sp18_func_800198E4));
@@ -398,6 +468,11 @@ s32 func_80019A7C(unk_D_86002F58_004_000_010* arg0, s32 arg1, s32 arg2) {
             temp_v0->unk_0C = arg1;
             temp_v0->unk_10 = arg0->unk_18;
             temp_v0->unk_14 = 0x18000;
+#ifdef STORY_SERVICE_CANDIDATE
+            if (!sc_batl_fx_send(arg0)) {
+                sc_batl_job_fatal(SC_BATL_FX_SEND);
+            }
+#endif
 
             osSendMesg(&D_800ABE10.unk_9D0, temp_v0, 1);
 
@@ -411,6 +486,23 @@ s32 func_80019A7C(unk_D_86002F58_004_000_010* arg0, s32 arg1, s32 arg2) {
 
 s32 func_80019B48(unk_D_86002F58_004_000_010* arg0, sp18_func_800198E4* arg1) {
     s32 sp1C = 0;
+
+#ifdef ROGUELIKE
+    if (arg1->unk_14 == 0) {
+#ifdef STORY_SERVICE_CANDIDATE
+        sc_batl_job_fatal(SC_BATL_JOB_REFUSED);
+#endif
+        osSyncPrintf("loader job %d refused\n", arg1->unk_00);
+        for (;;) {
+            osStopThread(NULL);
+        }
+    }
+#endif
+#ifdef STORY_SERVICE_CANDIDATE
+    if (!sc_batl_job_admit(arg0, arg1)) {
+        sc_batl_job_fatal(SC_BATL_JOB_UNPUBLISHED);
+    }
+#endif
 
     switch (arg1->unk_00) {
         case 1:

@@ -17,6 +17,15 @@ typedef struct RlPakLayout {
     unsigned free_pages, free_notes;
 } RlPakLayout;
 
+typedef struct RlPakIdentity {
+    const RlU8 *name, *extension;
+    RlU32 game;
+    unsigned company, pages;
+} RlPakIdentity;
+
+RlSaveStatus rl_pak_validate_note(const RlU8 metadata[RL_PAK_METADATA_SIZE],
+                                 const RlPakIdentity *identity, RlPakLayout *layout);
+
 /* Read-only validation of a standard one-bank Pak; no repair or format. */
 RlSaveStatus rl_pak_validate(const RlU8 metadata[RL_PAK_METADATA_SIZE],
                              RlPakLayout *layout);

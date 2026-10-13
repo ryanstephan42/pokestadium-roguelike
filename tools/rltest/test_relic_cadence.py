@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 from tools.rltest.frontend import Frontend, HarnessError
 from tools.rltest.test_custom_battle import Mon, Result
 from tools.rltest.test_native_relics import (
-    RELIC, BattleRules, _mon, _read_trace, default_paths,
+    RELIC, BattleRules, _mon, _read_trace, default_paths, require_relic_trace_build,
 )
 
 SWITCH_VOLUNTARY = 0x0F
@@ -225,6 +225,7 @@ CHECKS = {"enemy-replacement": check_enemy_replacement,
 
 
 def run_one(name, core, rom, map_path, output, timeout):
+    require_relic_trace_build(map_path)
     case = scenario(name)
     output = Path(output) / name
     output.mkdir(parents=True, exist_ok=True)

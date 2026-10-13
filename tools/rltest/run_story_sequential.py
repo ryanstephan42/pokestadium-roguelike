@@ -1,0 +1,143 @@
+"""Launch only a separately approved, exclusive sequential reservation.
+
+This command is not authorization. --help performs no native operation.
+"""
+
+import argparse
+import json
+import pathlib
+import sys
+
+from tools.rltest.frontend import HarnessError
+from tools.rltest.story_sequential_supervisor import CAPS, CONTROL_CAPS, supervise, scenario_caps
+from tools.rltest.story_sequential_worker import verify_candidate, write_json, digest, control_inputs
+
+
+def collect(directory, budget, elapsed, reaped):
+    scenarios = {}
+    for name in budget.per_scenario:
+        path = directory / name / "report.json"
+        if path.is_file():
+            row = json.loads(path.read_text())
+        else:
+            attempted = (directory / (name + ".attempted.json")).is_file()
+            row = dict(status="fail" if attempted else "untested",
+                       last_verified_boundary="no scenario observables; see stderr")
+        progress = directory / name / "progress.json"
+        if progress.is_file():
+            latest = json.loads(progress.read_text())
+            row["incremental_progress"] = latest
+            if "local_frames" not in row:
+                row["local_frames"] = latest["completed_frames"]
+                row["frame_completion_uncertain"] = True
+                row["last_verified_boundary"] = latest["boundary"]
+        if name == "transform":
+            observation = directory / name / "transform-observed.json"
+            if observation.is_file():
+                row["transform_observed"] = json.loads(observation.read_text())
+            if row["status"] == "pass" and not row.get("transform"):
+                row["status"] = "untested"
+                row["last_verified_boundary"] = "no actual Transform observation"
+        if name == "loss-terminal-reload" and row["status"] == "awaiting-terminal-reload":
+            cold = path.parent / "terminal-reload" / "report.json"
+            terminal = json.loads(cold.read_text()) if cold.is_file() else dict(status="untested")
+            cold_progress = path.parent / "terminal-reload/progress.json"
+            if cold_progress.is_file():
+                latest = json.loads(cold_progress.read_text())
+                terminal["incremental_progress"] = latest
+                terminal.setdefault("local_frames", latest["completed_frames"])
+                terminal.setdefault("last_verified_boundary", latest["boundary"])
+                if not cold.is_file():
+                    terminal["status"] = "fail"
+                    terminal["frame_completion_uncertain"] = True
+            row["terminal_reload"] = terminal
+            row["status"] = "pass" if terminal["status"] == "pass" else "fail"
+        scenarios[name] = row
+    hashes = {}
+    if directory.is_dir():
+        import hashlib
+        hashes = {str(path.relative_to(directory)): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in directory.rglob("*") if path.is_file()}
+    observed = 0
+    exact_frames = True
+    for row in scenarios.values():
+        if row["status"] != "untested" or "local_frames" in row:
+            if "local_frames" not in row or row.get("frame_completion_uncertain"):
+                exact_frames = False
+            observed += row.get("local_frames", 0)
+        if "terminal_reload" in row:
+            cold = row["terminal_reload"]
+            if "local_frames" not in cold or cold.get("frame_completion_uncertain"):
+                exact_frames = False
+            observed += cold.get("local_frames", 0)
+    return dict(scope="native scenario report; not gate or overall heap acceptance",
+                scenarios=scenarios, frames_reserved=budget.frames,
+                frames_observed=observed if exact_frames else None,
+                frames_completed_persisted=observed,
+                scenario_frames=budget.per_scenario, seconds=elapsed,
+                started_monotonic=budget.started, deadline_monotonic=budget.deadline,
+                exact_tree_reaped=reaped, no_orphans=reaped,
+                actual_carry_sha256=scenarios.get(
+                    "win", scenarios.get("carry-reload", {})).get("actual_carry_sha256"),
+                artifact_sha256=hashes)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("seal", "package", "binding", "core", "out"):
+        parser.add_argument("--" + name, type=pathlib.Path, required=True)
+    parser.add_argument("--exclusive-approved-reservation", action="store_true", required=True)
+    parser.add_argument("--seal-sha256", required=True)
+    parser.add_argument("--core-sha256", required=True)
+    parser.add_argument("--control", type=pathlib.Path)
+    parser.add_argument("--debug-exit", action="store_true")
+    parser.add_argument("--only-scenario", choices=tuple(CAPS))
+    parser.add_argument("--producer-run", type=pathlib.Path)
+    parser.add_argument("--producer-report-sha256")
+    args = parser.parse_args()
+    if args.only_scenario == "carry-reload":
+        if args.producer_run is None or args.producer_report_sha256 is None:
+            raise HarnessError("Separate carry reload requires pinned producer inputs")
+    elif args.producer_run is not None or args.producer_report_sha256 is not None:
+        raise HarnessError("Producer inputs belong only to separate carry reload")
+    seal, _, _ = verify_candidate(args.seal, args.package, args.binding, args.seal_sha256)
+    if args.control:
+        control_inputs(seal, args.control, args.core)
+    if digest(args.core.read_bytes()) != args.core_sha256:
+        raise HarnessError("Core differs from approved external pin")
+    if args.out.exists() or args.out.with_suffix(".report.json").exists():
+        raise HarnessError("Reservation outputs already exist; retry refused")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    command = [sys.executable, "-m", "tools.rltest.story_sequential_worker"]
+    for name in ("seal", "package", "binding", "core", "out"):
+        command += ["--" + name, str(getattr(args, name).resolve())]
+    command += ["--seal-sha256", args.seal_sha256]
+    command += ["--core-sha256", args.core_sha256]
+    if args.control:
+        command += ["--control", str(args.control.resolve())]
+    if args.debug_exit:
+        command += ["--debug-exit"]
+    for key in ("only_scenario", "producer_run", "producer_report_sha256"):
+        if getattr(args, key) is not None:
+            command += ["--" + key.replace("_", "-"), str(getattr(args, key))]
+
+    def report(budget, elapsed, reaped):
+        row = collect(args.out, budget, elapsed, reaped)
+        row["candidate_seal_sha256"] = args.seal_sha256
+        row["candidate_rom_sha256"] = digest(
+            (pathlib.Path(__file__).resolve().parents[2] / seal["configuration"]["ROM"]).read_bytes())
+        row["core_sha256"] = args.core_sha256
+        row["producer_report_sha256"] = args.producer_report_sha256
+        row["proposal_sha256"] = digest(
+            (pathlib.Path(__file__).resolve().parents[2] / "docs/story/SEQUENTIAL-PROPOSAL.md").read_bytes())
+        row["procedure"] = "separate-scenario-480s" if args.only_scenario else "legacy-aggregate-180s"
+        write_json(args.out.with_suffix(".report.json"), row)
+
+    with args.out.with_suffix(".stderr.log").open("x") as log:
+        caps = (scenario_caps(args.only_scenario, bool(args.control)) if args.only_scenario else
+                CONTROL_CAPS if args.control else CAPS)
+        supervise(command, log, on_exit=report, caps=caps, seconds=480 if args.only_scenario else 180)
+
+
+if __name__ == "__main__":
+    main()

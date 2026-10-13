@@ -37,6 +37,9 @@ unk_D_80068BB0* func_80006314(s32 fmt, s32 size, s32 width, s32 height, s32 side
 void func_80006414(unk_D_80068BB0* img, unk_D_80068BB0* depth);
 void func_80006450(void);
 unk_D_80068BB0* func_8000648C(void);
+#ifdef STORY_NATIVE_UI
+void func_8000648CRestoreStory(unk_D_80068BB0* image, const unk_D_800A7440* rect);
+#endif
 void func_80006498(Gfx** gfx_p, unk_D_80068BB0* arg1);
 void func_800065B4(Gfx** gfx_p, s32 arg1, s32 arg2, s32 arg3, s32 arg4, u16 fill_colour);
 void func_800067E4(Gfx** gfx_p, s32 arg1, s32 arg2, s32 arg3, s32 arg4);

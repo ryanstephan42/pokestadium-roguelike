@@ -44,6 +44,7 @@ typedef enum {
 #ifdef ROGUELIKE
     STATE_ROGUELIKE             = 0x30, // Roguelike Run mode hub (fragmentRL), see docs/roguelike/BUILD.md
     STATE_ROGUELIKE_BATTLE_TEST = 0x31, // Roguelike battle bridge test hook (W3)
+    STATE_STORY_CAMPAIGN        = 0x32, // Red/Blue story campaign (8 MiB candidate only), docs/story/NATIVE-UI.md
 #endif
 } GameState;
 

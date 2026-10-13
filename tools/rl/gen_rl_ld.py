@@ -22,6 +22,9 @@ Other transformations:
     after all fixed-address game data.
   * `ALIGN(__romPos, 0x7C0000)` becomes an assert + fixed position so the
     hard-coded ROM offsets used by the game (0x7C0000, 0x820000, ...) stay valid.
+  * Story persistent-image builds only (--story-header): the symbol-loaded
+    snap_mode_ui/copyright data blobs move from just below 0x7C0000 to the ROM
+    tail so the resident story code fits; ordinary RL layout is unchanged.
 """
 
 import argparse
@@ -39,6 +42,12 @@ SYM_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(0x[0-9A-Fa-f]+)\s*;(
 MAP_FULL_RE = re.compile(r"^ (\.[A-Za-z0-9_.]+)\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S+)\s*$")
 MAP_NAME_RE = re.compile(r"^ (\.[A-Za-z0-9_.]+)\s*$")
 MAP_CONT_RE = re.compile(r"^\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S+)\s*$")
+
+
+def remap_build_paths(text, build_dir):
+    return re.sub(r"(?<![A-Za-z0-9_/])build/",
+                  lambda match: match.group() if text.startswith(build_dir + "/", match.start())
+                  else build_dir + "/", text)
 
 
 def script_key(path, section):
@@ -90,20 +99,24 @@ def find_main_bounds(lines):
     return start, end
 
 
-def fragment_block(header_obj, frag_objs, relocs_obj):
+def fragment_block(header_obj, frag_objs, relocs_obj, name="fragmentRL", vram=RL_FRAGMENT_VRAM):
     objs = [header_obj] + frag_objs
     b = ["", "    /* ---- roguelike overlay fragment (ROGUELIKE build only) ---- */"]
     b += [
         "    fragmentRL_ROM_START = __romPos;",
         "    fragmentRL_VRAM = ADDR(.fragmentRL);",
-        f"    .fragmentRL 0x{RL_FRAGMENT_VRAM:08X} : AT(fragmentRL_ROM_START) SUBALIGN(16)",
+        f"    .fragmentRL 0x{vram:08X} : AT(fragmentRL_ROM_START) SUBALIGN(16)",
         "    {",
         "        FILL(0x00000000);",
         "        fragmentRL_TEXT_START = .;",
     ]
     b += [f"        {o}(.text);" for o in objs]
+    if name in ("fragmentAI", "fragmentSC"):
+        b += ["        . = ALIGN(32);"]
     b += ["        fragmentRL_TEXT_END = .;", "        fragmentRL_DATA_START = .;"]
     b += [f"        {o}(.data);" for o in objs]
+    if name == "fragmentSC":
+        b += ["        . = ALIGN(16);"]
     b += ["        fragmentRL_DATA_END = .;", "        fragmentRL_RODATA_START = .;"]
     for o in objs:
         b += [f"        {o}(.rodata);", f"        {o}(.rodata.*);"]
@@ -142,7 +155,13 @@ def fragment_block(header_obj, frag_objs, relocs_obj):
         '    __rl_assert_bss = ASSERT(fragmentRL_bss_VRAM == fragmentRL_VRAM + SIZEOF(.fragmentRL), "rl fragment bss must follow data");',
         "",
     ]
-    return b
+    return [line.replace("fragmentRL", name) for line in b]
+
+
+# Data-only segments loaded solely through their linker ROM symbols (ASSET_LOAD);
+# story persistent-image builds relocate them past the overlays.
+TAIL_SEGMENTS = ("transfer_pak_error_ui", "snap_mode_ui", "copyright", "_7820E0",
+                 "_6EB340", "_6EC4D0")
 
 
 def gen(args):
@@ -167,7 +186,18 @@ def gen(args):
     anchors = []
     in_main = False
     in_native = False
+    tail = []
+    deferring = None
     for idx, l in enumerate(lines):
+        if args.story_header:
+            m = re.match(r"^\s*(\w+)_ROM_START = __romPos;", l)
+            if m and m.group(1) in TAIL_SEGMENTS:
+                deferring = m.group(1)
+            if deferring:
+                tail.append(l)
+                if re.match(rf"^\s*{deferring}_VRAM_END = \.;", l):
+                    deferring = None
+                continue
         if idx == main_lo:
             in_main = True
         for number in args.regen_fragments:
@@ -208,6 +238,20 @@ def gen(args):
                         out.append("        . = ALIGN(8); /* rl_entry clears 8 bytes per iteration */")
         if idx == main_hi:
             in_main = False
+        if args.story_catalog and not args.story_header and re.match(r"^\s*text_VRAM_END = \.;", l):
+            out.extend([
+                "    /* Probe-only fixed resident data; leaves retail ROM anchors intact. */",
+                "    sc_probe_catalog_ROM_START = 0x02040000;",
+                "    .sc_probe_catalog : AT(sc_probe_catalog_ROM_START) SUBALIGN(16)",
+                "    {",
+                "        sc_probe_catalog_VRAM = .;",
+                f"        {args.story_catalog}(.data);",
+                f"        {args.story_catalog}(.rodata);",
+                "        . = ALIGN(16);",
+                "        sc_probe_catalog_VRAM_END = .;",
+                "    }",
+                "    sc_probe_catalog_ROM_END = sc_probe_catalog_ROM_START + SIZEOF(.sc_probe_catalog);",
+            ])
 
         if re.match(r"^\s*__romPos = ALIGN\(__romPos, 0x7C0000\);", l):
             out.append(f'    __rl_assert_rom = ASSERT(__romPos <= 0x{GB_TOWER_ROM:X}, "rl ROM overflowed into gb_tower_roms at 0x7C0000");')
@@ -216,10 +260,34 @@ def gen(args):
 
         if re.match(r"^\s*/DISCARD/\s*:", l):
             out.extend(fragment_block(args.frag_header, [o for o in args.frag_objs if o], args.frag_relocs))
+            if args.story_header:
+                out.append('    __sc_assert_rom = ASSERT(fragmentRL_relocs_ROM_END <= 0x02040000, "story overlay overlaps RL overlay ROM");')
+                out.append("    __romPos = 0x02040000;")
+                out.extend(fragment_block(args.story_header, args.story_objs, args.story_relocs,
+                                          "fragmentSC", 0x8F900000))
+                out.append('    __sc_assert_size = ASSERT(fragmentSC_HDR_SIZE_IN_RAM < 0x100000, "story overlay exceeds fragment address window");')
+                # Absolute image offsets for the resident persistent loader's
+                # rights spans (resident code may not import SC link addresses).
+                out.append("    fragmentSC_HDR_TEXT_SIZE = ABSOLUTE(fragmentSC_TEXT_END - fragmentSC_TEXT_START);")
+                out.append("    fragmentSC_HDR_DATA_END = ABSOLUTE(fragmentSC_DATA_END - fragmentSC_TEXT_START);")
+                out.append("    fragmentSC_HDR_RODATA_END = ABSOLUTE(fragmentSC_RODATA_END - fragmentSC_TEXT_START);")
+                if args.ai_header:
+                    out.extend(fragment_block(args.ai_header, args.ai_objs, args.ai_relocs,
+                                              "fragmentAI", 0x8F900000))
+                    out.append('    __ai_assert_size = ASSERT(fragmentAI_HDR_SIZE_IN_RAM < 0x100000, "AI overlay exceeds fragment address window");')
+                out.append("    /* Story build only: symbol-loaded data blobs relocated past the overlays. */")
+                out.append("    __romPos = ALIGN(__romPos, 16);")
+                out.extend(tail)
+            elif args.story_catalog:
+                out.append('    __sc_assert_rom = ASSERT(fragmentRL_relocs_ROM_END <= sc_probe_catalog_ROM_START, "story catalog overlaps RL overlay ROM");')
         out.append(l)
 
+    if args.story_header:
+        for name in TAIL_SEGMENTS:
+            if not any(re.match(rf"^\s*{name}_VRAM_END = \.;", t) for t in tail):
+                sys.exit(f"gen_rl_ld: tail segment {name} not relocated")
     text = "\n".join(out)
-    text = re.sub(r"(?<![A-Za-z0-9_/])build/", args.build_dir + "/", text)
+    text = remap_build_paths(text, args.build_dir)
     with open(args.out_ld, "w") as f:
         f.write(text)
 
@@ -270,6 +338,13 @@ def main():
     p.add_argument("--frag-header", required=True)
     p.add_argument("--frag-relocs", required=True)
     p.add_argument("--main-objs", nargs="*", default=[])
+    p.add_argument("--story-catalog", help="Opt-in probe catalog placed outside retail ROM range")
+    p.add_argument("--story-header")
+    p.add_argument("--story-relocs")
+    p.add_argument("--story-objs", nargs="*", default=[])
+    p.add_argument("--ai-header")
+    p.add_argument("--ai-relocs")
+    p.add_argument("--ai-objs", nargs="*", default=[])
     p.add_argument("--frag-objs", nargs="*", default=[])
     p.add_argument("--sym-files", nargs="*", default=[])
     p.add_argument("--regen-fragments", nargs="*", type=int, default=[])

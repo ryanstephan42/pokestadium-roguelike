@@ -1,5 +1,8 @@
 #include "global.h"
 #include "memmap.h"
+#ifdef STORY_AI_PROTOTYPE
+#include "src/story/sc_ai_runtime.h"
+#endif
 
 struct MemoryMap {
     uintptr_t vaddr;
@@ -8,6 +11,20 @@ struct MemoryMap {
 
 struct MemoryMap gSegments[16];
 struct MemoryMap gFragments[240];
+#ifdef STORY_SERVICE_CANDIDATE
+#include "src/story/sc_batl_scope.h"
+static u32 story_battle_map_generation;
+
+u32 Memmap_GetStoryBattleMapGeneration(void) {
+    return story_battle_map_generation;
+}
+
+static void story_map_fail_stop(void) {
+    sc_batl_scope_fail();
+    osSyncPrintf("story BATL map ownership failure\n");
+    for (;;) osStopThread(NULL);
+}
+#endif
 
 /*
  * Set the base virtual address and size of the specified segment memmap.
@@ -23,6 +40,11 @@ void Memmap_SetSegmentMap(u32 id, uintptr_t vaddr, size_t size) {
 uintptr_t Memmap_GetSegmentBaseVaddr(u32 id) {
     return gSegments[id].vaddr;
 }
+#ifdef ROGUELIKE
+size_t Memmap_GetSegmentSize(u32 id) {
+    return gSegments[id].size;
+}
+#endif
 
 /*
  * Return the current virtual address of a given offset into a segment. This is
@@ -97,6 +119,9 @@ void Memmap_RelocateFragment(u32 id, struct Fragment* fragment) {
     u32 i;
     u32* regValP;
     UNUSED s32 pad;
+#ifdef STORY_AI_PROTOTYPE
+    sc_ai_loader_admit(id);
+#endif
 
     relocOffset = fragment->relocOffset;
     relocSize = fragment->sizeInRam - fragment->relocOffset;
@@ -157,6 +182,16 @@ void Memmap_RelocateFragment(u32 id, struct Fragment* fragment) {
  * Set the base virtual address and size of the specified fragment memmap.
  */
 void Memmap_SetFragmentMap(u32 id, uintptr_t vaddr, size_t size) {
+#ifdef STORY_SERVICE_CANDIDATE
+    if (id == 0x33) {
+        if (!sc_batl_scope_map_change() || story_battle_map_generation == 0xffffffffU)
+            story_map_fail_stop();
+        ++story_battle_map_generation;
+    }
+#endif
+#ifdef STORY_AI_PROTOTYPE
+    sc_ai_map_set(id, vaddr, size);
+#endif
     gFragments[id].vaddr = vaddr;
     gFragments[id].size = size;
 }
@@ -167,6 +202,11 @@ void Memmap_SetFragmentMap(u32 id, uintptr_t vaddr, size_t size) {
 uintptr_t Memmap_GetFragmentBaseVaddr(u32 id) {
     return gFragments[id].vaddr;
 }
+#if defined(STORY_NATIVE_PROBE) || defined(STORY_SERVICE_CANDIDATE)
+size_t Memmap_GetFragmentSize(u32 id) {
+    return gFragments[id].size;
+}
+#endif
 
 /*
  * Return the current virtual address of a given offset into a fragment. This is
@@ -182,6 +222,9 @@ uintptr_t Memmap_GetFragmentVaddr(void* addr) {
     if (((u32)addr >= 0x81000000U) && ((u32)addr < 0x90000000U)) {
         u32 id = (((u32)addr & 0x0FF00000) >> 0x14) - 0x10;
         u32 value = (((u32)addr & 0x000FFFFF));
+#ifdef STORY_AI_PROTOTYPE
+        sc_ai_reference_admit(id);
+#endif
 
         if (gFragments[id].vaddr != NULL) {
             addr = gFragments[id].vaddr + value;
@@ -208,6 +251,12 @@ u32 Memmap_GetFragmentVaddrMask(u32 i, uintptr_t addr) {
  * Clear the memmap for the fragment ID specified.
  */
 void Memmap_ClearFragmentMemmap(u32 id) {
+#ifdef STORY_SERVICE_CANDIDATE
+    if (id == 0x33 && !sc_batl_scope_map_change()) story_map_fail_stop();
+#endif
+#ifdef STORY_AI_PROTOTYPE
+    sc_ai_map_clear(id);
+#endif
     gFragments[id].vaddr = NULL;
     gFragments[id].size = 0;
 }

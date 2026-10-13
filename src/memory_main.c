@@ -3,6 +3,14 @@
 #include "memory.h"
 
 static struct MainPool sMemPool;
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_runtime_probe.h"
+u32 gScPoolMinimum = 0xFFFFFFFF;
+u32 gScPoolAllocations;
+u32 gScPoolFailures;
+u32 gScPoolLargest;
+u32 gScPoolZero[10], gScPoolFailure[10];
+#endif
 
 /**
  * Initialize the main memory pool. This pool is conceptually a pair of stacks
@@ -36,9 +44,17 @@ void main_pool_init(void* start, void* end) {
  * specified side of the pool (MEMORY_POOL_LEFT or MEMORY_POOL_RIGHT).
  * If there is not enough space, return NULL.
  */
+#ifdef STORY_NATIVE_PROBE
+void* sc_pool_alloc_traced(u32 size, u32 side, u32 caller) {
+#else
 void* main_pool_alloc_from_pool(u32 size, u32 side) {
+#endif
     MainPoolBlock* newListHead;
     void* addr = NULL;
+#ifdef STORY_NATIVE_PROBE
+    u32 requested = size, before = sMemPool.available;
+    u32 *record = NULL;
+#endif
 
     size = ALIGN16(size) + sizeof(MainPoolBlock);
 
@@ -68,6 +84,20 @@ void* main_pool_alloc_from_pool(u32 size, u32 side) {
             addr = ((u8*)newListHead + sizeof(MainPoolBlock));
         }
     }
+#ifdef STORY_NATIVE_PROBE
+    if (!addr && !gScPoolFailures) record = gScPoolFailure;
+    else if (!sMemPool.available && gScPoolMinimum != 0) record = gScPoolZero;
+    if (record) {
+        record[0] = requested; record[1] = size; record[2] = side;
+        record[3] = before; record[4] = sMemPool.available; record[5] = caller;
+        record[6] = gScProbe.stage; record[7] = gScProbe.cold_busy;
+        record[8] = (u32)addr; record[9] = gScProbeActive;
+    }
+    if (sMemPool.available < gScPoolMinimum) gScPoolMinimum = sMemPool.available;
+    gScPoolAllocations++;
+    if (!addr) gScPoolFailures++;
+    if (size > gScPoolLargest) gScPoolLargest = size;
+#endif
     return addr;
 }
 
@@ -138,11 +168,19 @@ void* main_pool_alloc_with_func(u32 size, s32 side, s32 arg, AllocateFunc func) 
 /**
  * Same as above but no function/argument is set.
  */
+#ifdef STORY_NATIVE_PROBE
+void* sc_pool_alloc(u32 size, s32 side, u32 caller) {
+#else
 void* main_pool_alloc(u32 size, s32 side) {
+#endif
     MainPoolBlock* node;
 
     osRecvMesg(&sMemPool.queue, NULL, OS_MESG_BLOCK);
+#ifdef STORY_NATIVE_PROBE
+    node = sc_pool_alloc_traced(size, side, caller);
+#else
     node = main_pool_alloc_from_pool(size, side);
+#endif
     osSendMesg(&sMemPool.queue, NULL, OS_MESG_NOBLOCK);
 
     return node;

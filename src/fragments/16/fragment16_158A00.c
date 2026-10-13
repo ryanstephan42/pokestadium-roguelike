@@ -1527,7 +1527,7 @@ s32 func_86A01020(Color_RGBA8_u32* arg0, u16 arg1, u16 arg2, u8 arg3) {
 #ifdef NON_MATCHING
 // Needs the in-fucntion static but that breaks bss ordering
 void func_86A013C8(u8 arg0, u8 arg1, unk_D_86A03014* arg2) {
-    static char** D_86A06218;
+    static char** text_table;
 
     u16 i;
     u16 sp2C;
@@ -1535,10 +1535,10 @@ void func_86A013C8(u8 arg0, u8 arg1, unk_D_86A03014* arg2) {
 
     sp2C = func_86A018C0();
     func_8002D510();
-    D_86A06218 = func_8002D5AC(0x2D);
+    text_table = func_8002D5AC(0x2D);
 
     for (i = 0, ptr = D_86A02750; i < sp2C; i++, ptr++) {
-        ptr->unk_04[0] = func_8002D7C0(NULL, 0, D_86A06218, i);
+        ptr->unk_04[0] = func_8002D7C0(NULL, 0, text_table, i);
     }
 
     D_86A06210 = arg0;
@@ -1552,19 +1552,19 @@ void func_86A013C8(u8 arg0, u8 arg1, unk_D_86A03014* arg2) {
 
 #ifdef NON_MATCHING
 void func_86A01490(void) {
-    static u32 D_86A0621C;
+    static u32 previous_frame;
     s32 temp_v0 = D_800A62E0.unk_A34;
 
     if (D_86A06212 == 0) {
         D_86A06212 = 1;
-    } else if ((u32) D_86A0621C < (u32) temp_v0) {
-        D_86A06210 = temp_v0 - D_86A0621C;
+    } else if ((u32) previous_frame < (u32) temp_v0) {
+        D_86A06210 = temp_v0 - previous_frame;
     } else {
         temp_v0++;
         temp_v0--;
-        D_86A06210 = temp_v0 - D_86A0621C;
+        D_86A06210 = temp_v0 - previous_frame;
     }
-    D_86A0621C = temp_v0;
+    previous_frame = temp_v0;
 }
 #else
 #pragma GLOBAL_ASM("asm/us/nonmatchings/fragments/16/fragment16_158A00/func_86A01490.s")

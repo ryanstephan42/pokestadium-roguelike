@@ -1,5 +1,14 @@
 # Pokémon Stadium: Roguelike — Feature & Implementation Plan
 
+The separate opt-in 8 MiB story integration uses a **sequential shell**:
+close/retire the story UI before the standard battle, capture KO facts without
+progression mutation, and reopen to resolve all earned progression in order.
+Story battle loss discards that battle's earned progression. **Quitting or
+resetting after a story battle starts also counts as a loss**: the durable
+interrupted prebattle checkpoint reloads terminal, preserving prebattle party
+and progression with no retry. This user-directed anti-save-scumming rule is
+story-only; normal roguelike and vanilla save behavior are unchanged.
+
 ## 0. Ground truth (from recon)
 
 | Fact | Evidence | Implication |

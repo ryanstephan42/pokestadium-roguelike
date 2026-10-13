@@ -12,9 +12,127 @@ UI_TEST_BIN := ../build/host_tests/rl_ui_model_test
 UI_TEST_SOURCES := ../src/roguelike/rl_ui_model.c \
                    ../src/roguelike/rl_text.c rl_ui_model_test.c
 
-.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test clean
+.PHONY: test core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test confusion-effect29-test phase0-actor-getter-test ci8-strip-test shadow-slot-test shadow-seg1-test native-relic-test story-test clean
 
-test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test native-relic-test nodes-test scene-nodes-test
+STORY_UI_SOURCES = test_story_ui.c ../src/story/sc_ui.c \
+	../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+	../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+	../src/story/sc_crc.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
+	../src/roguelike/rl_ui_model.c ../src/story/sc_scene.c \
+	../src/fragments/rl/rl_ui_mon.c ../build/story/sc_data.c
+STORY_UI_FLAGS = -I.. -iquote ../include -Wno-endif-labels -include scene_nodes_stubs.h
+STORY_LOGIC_SOURCES = $(filter-out test_story_ui.c ../src/story/sc_scene.c \
+	../src/fragments/rl/rl_ui_mon.c ../build/story/sc_data.c,$(STORY_UI_SOURCES))
+
+.PHONY: story-stone-test story-core-test
+story-stone-test:
+	cd .. && python3 tools/story_data.py --moon-stones --out build/story/moon-data.json --c-out build/story/sc_moon_data.c
+	cd .. && bash host_tests/run_story_v1_fixture.sh
+	cd .. && python3 -m unittest host_tests.test_story_stones
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I.. test_story_stones.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_moon_data.c -o ../build/story/test_story_stones
+	../build/story/test_story_stones ../build/story/v1-fixture/original-v1.sc01
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -I.. test_story_stones.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_moon_data.c -o ../build/story/test_story_stones_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_stones_san ../build/story/v1-fixture/original-v1.sc01
+	@set -e; for source in sc_core sc_graph sc_save; do \
+		../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/$$source.c -o ../build/story/moon-$$source.o; \
+	done
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DSC_MOON_UI_FIXTURE $(STORY_UI_FLAGS) \
+		$(filter-out ../build/story/sc_data.c,$(STORY_UI_SOURCES)) ../build/story/sc_moon_data.c \
+		-o ../build/story/test_story_moon_ui
+	../build/story/test_story_moon_ui
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -DSC_MOON_UI_FIXTURE $(STORY_UI_FLAGS) \
+		$(filter-out ../build/story/sc_data.c,$(STORY_UI_SOURCES)) ../build/story/sc_moon_data.c \
+		-o ../build/story/test_story_moon_ui_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_moon_ui_san
+
+story-core-test:
+	cd .. && python3 tools/story_data.py
+	cd .. && python3 -m unittest host_tests.test_story_data
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I.. test_story.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_core
+	../build/story/test_story_core
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -I.. test_story.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_core_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_core_san
+
+.PHONY: story-scratch-test
+story-scratch-test:
+	cd .. && python3 tools/story_data.py
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DSC_SCRATCH_TEST -I.. test_story_scratch.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_scratch
+	../build/story/test_story_scratch
+	$(CC) $(CPPFLAGS) $(SANFLAGS) -DSC_SCRATCH_TEST -I.. test_story_scratch.c $(STORY_LOGIC_SOURCES) \
+		../build/story/sc_data.c -o ../build/story/test_story_scratch_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_scratch_san
+
+.PHONY: story-ui-test
+story-ui-test:
+	cd .. && python3 tools/story_data.py
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(STORY_UI_FLAGS) $(STORY_UI_SOURCES) -o ../build/story/test_story_ui
+	../build/story/test_story_ui
+	$(CC) $(CPPFLAGS) $(SANFLAGS) $(STORY_UI_FLAGS) $(STORY_UI_SOURCES) -o ../build/story/test_story_ui_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_ui_san
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -DROGUELIKE -I.. \
+		../src/story/sc_ui.c -o ../build/story/sc_ui.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -EB -G 0 -non_shared -Xcpluscomm -nostdinc \
+		-woff 624,649,838 -DROGUELIKE -D_MIPS_SZLONG=32 -DF3DEX_GBI_2 -DNDEBUG \
+		-D_FINALROM -DN_MICRO -DLANGUAGE_C -D_LANGUAGE_C -DBUILD_VERSION=VERSION_J \
+		-I../include -I../src -I../assets/us -I.. -I../build_rl \
+		-I../lib/ultralib/include -I../lib/ultralib/include/PR -I../lib/ultralib/include/ido \
+		../src/story/sc_scene.c -o ../build/story/sc_scene.o
+
+story-test:
+	cd .. && python3 tools/story_data.py
+	cd .. && python3 -m unittest host_tests.test_story_data
+	mkdir -p ../build/story
+	$(CC) $(CFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c ../src/story/sc_graph.c ../src/story/sc_progression.c \
+		../src/story/sc_save.c ../src/story/sc_crc.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
+		../build/story/sc_data.c -o ../build/story/test_story
+	../build/story/test_story
+	$(CC) $(CFLAGS) -I.. test_story_ember.c ../tools/rltest/story_ember_fixture.c \
+		../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+		../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+		../src/story/sc_crc.c ../src/story/sc_storage.c ../build/story/sc_data.c -o ../build/story/test_story_ember
+	../build/story/test_story_ember ../build/story/ember-checkpoint.sc01 > ../build/story/ember-host-proof.jsonl
+	$(CC) $(SANFLAGS) -I.. test_story_ember.c ../tools/rltest/story_ember_fixture.c \
+		../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+		../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+		../src/story/sc_crc.c ../src/story/sc_storage.c ../build/story/sc_data.c -o ../build/story/test_story_ember_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_ember_san > ../build/story/ember-host-proof-san.jsonl
+	$(CC) $(CFLAGS) -I.. test_story_six.c ../tools/rltest/story_six_fixture.c \
+		../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+		../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+		../src/story/sc_crc.c ../build/story/sc_data.c -o ../build/story/test_story_six
+	../build/story/test_story_six ../build/story/six-checkpoint.sc01 > ../build/story/six-host-proof.jsonl
+	$(CC) $(SANFLAGS) -I.. test_story_six.c ../tools/rltest/story_six_fixture.c \
+		../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c \
+		../src/story/sc_graph.c ../src/story/sc_progression.c ../src/story/sc_save.c \
+		../src/story/sc_crc.c ../build/story/sc_data.c -o ../build/story/test_story_six_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_six_san > ../build/story/six-host-proof-san.jsonl
+	$(CC) $(SANFLAGS) -I.. test_story.c ../src/story/sc_core.c ../src/story/sc_combat.c ../src/story/sc_make.c ../src/story/sc_graph.c ../src/story/sc_progression.c \
+		../src/story/sc_save.c ../src/story/sc_crc.c ../src/story/sc_storage.c ../src/story/sc_bridge.c \
+		../build/story/sc_data.c -o ../build/story/test_story_san
+	ASAN_OPTIONS=detect_leaks=1 ../build/story/test_story_san
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_core.c -o ../build/story/sc_core.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_graph.c -o ../build/story/sc_graph.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_save.c -o ../build/story/sc_save.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_storage.c -o ../build/story/sc_storage.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_bridge.c -o ../build/story/sc_bridge.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_progression.c -o ../build/story/sc_progression.o
+	../tools/ido/linux/7.1/cc -c -O2 -mips2 -G 0 -non_shared -I.. \
+		../src/story/sc_combat.c -o ../build/story/sc_combat.o
+	cd .. && bash host_tests/run_story_native.sh
+
+test: core-test content-test meta-test meta-content-test ido-test battle-adapter-test ui-test save-test native-import-test geo-guard-test confusion-effect29-test phase0-actor-getter-test ci8-strip-test shadow-slot-test shadow-seg1-test native-relic-test nodes-test scene-nodes-test
 	cd .. && python3 -m unittest host_tests.test_roster_extract host_tests.test_balance host_tests.test_progression_probes
 
 ido-test:
@@ -94,6 +212,25 @@ native-import-test:
 	$(CC) $(CFLAGS) test_native_imports.c ../src/roguelike/rl_native_imports.c -o ../build/host_tests/native-imports
 	../build/host_tests/native-imports
 	cd .. && python3 -m unittest host_tests.test_archive_import_generator
+confusion-effect29-test:
+	python3 test_confusion_effect29.py
+phase0-actor-getter-test:
+	python3 test_phase0_actor_getter.py
+ci8-strip-test:
+	python3 test_ci8_strip.py
+shadow-slot-test:
+	python3 test_shadow_slot.py
+
+shadow-seg1-test:
+	python3 test_shadow_seg1.py
+
+geo-guard-test:
+	mkdir -p ../build/host_tests
+	$(CC) $(CFLAGS) -I../src/roguelike test_geo_guard.c ../src/roguelike/rl_geo_guard.c -o ../build/host_tests/geo-guard
+	$(CC) $(SANFLAGS) -I../src/roguelike test_geo_guard.c ../src/roguelike/rl_geo_guard.c -o ../build/host_tests/geo-guard-san
+	../build/host_tests/geo-guard
+	../build/host_tests/geo-guard-san
+
 save-test:
 	@set -e; trap 'rm -f test_save test_save_san' EXIT; \
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(INCLUDES) test_save.c $(CORE) \

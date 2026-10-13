@@ -1,9 +1,17 @@
 #include "fragment62.h"
+#ifdef STORY_SERVICE_CANDIDATE
+#include "src/story/sc_batl_scope.h"
+#include "src/story/sc_battle_service.h"
+#endif
 #ifdef ROGUELIKE
 #include "src/roguelike/rl_native_relics.h"
+#include "src/roguelike/rl_geo_guard.h"
 #endif
 #ifdef ROGUELIKE
 #include "include/rl_battle.h"
+#endif
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_runtime_probe.h"
 #endif
 #include "src/11BA0.h"
 #include "src/12D80.h"
@@ -21,6 +29,9 @@
 #include "src/geo_layout.h"
 #include "src/memmap.h"
 #include "src/memory.h"
+#ifdef STORY_AI_PROTOTYPE
+#include "src/story/sc_ai_runtime.h"
+#endif
 
 static unk_D_86002F34_00C D_8438E440;
 static unk_D_8690A610 D_8438E530;
@@ -334,15 +345,42 @@ void func_84300E80(void) {
 
 s32 func_84300E88(s32 arg0) {
     s32 sp1C;
+#ifdef STORY_NATIVE_PROBE
+    s32 story_gate;
+#endif
 
     func_80015348();
     func_80032570();
+#ifdef STORY_NATIVE_PROBE
+    story_gate = sc_runtime_probe_gate(D_84390010[0], D_84390010[1], &sp1C);
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (!story_gate) story_gate = sc_campaign_battle_gate(D_84390010[0], D_84390010[1], &sp1C);
+#endif
+    if (story_gate == 1) goto story_render;
+    if (story_gate == 2) goto story_after_logic;
+    if (gScProbeActive) gScProbe.presentation_steps++;
+#endif
     func_84307394(2, D_8438E798);
     func_84307A50(2, &D_8438E598, &D_8438E688);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.logic_steps++;
+#endif
     sp1C = func_8432AEE4(2, &D_8438E440);
+#ifdef STORY_NATIVE_PROBE
+    sp1C = sc_runtime_probe_after(D_84390010[0], D_84390010[1], sp1C);
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    sp1C = sc_campaign_battle_after(D_84390010[0], D_84390010[1], sp1C);
+    if (sc_campaign_battle_paused()) goto story_render;
+#endif
+    if (sc_runtime_probe_paused()) goto story_render;
+story_after_logic:
+#endif
     func_8432D0D8(2, &D_8438E440);
     func_84300750(D_8438E788, D_8438E790);
     func_84300750(D_8438E78C, D_8438E794);
+#ifdef STORY_NATIVE_PROBE
+story_render:
+#endif
     func_800079C4();
     func_84300340();
     func_80015094(D_8438E784);
@@ -431,6 +469,30 @@ s32 func_843010EC(s32 arg0) {
     return 0;
 }
 
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+static unsigned sc_service_wait_frames;
+static int sc_service_wait_stopping;
+
+static s32 sc_service_wait_frame(u8 arg0) {
+    int result;
+    (void)arg0;
+    func_80007304();
+    sc_service_wait_frames++;
+    sc_service_require(sc_service_wait_frames <= 300);
+    result = sc_service_wait_stopping ? sc_service_stop_poll() :
+        sc_service_poll(sc_service_wait_frames == 300);
+    sc_service_require(result >= 0);
+    return result == 1;
+}
+
+static void sc_service_wait(int stopping) {
+    sc_service_wait_frames = 0;
+    sc_service_wait_stopping = stopping;
+    /* Scheduler frame wait; no choice callback or worker producer. */
+    sc_service_require(func_80007820(300, sc_service_wait_frame) == 1);
+}
+#endif
+
 void func_8430123C(u8* arg0, s32 arg1) {
     s32 i;
     s32 j;
@@ -514,6 +576,15 @@ void func_84301430(unk_func_80007444* arg0) {
     s16 sp32;
     unk_D_80068BB0* sp2C;
     unk_D_86002F30* sp28;
+#ifdef STORY_NATIVE_PROBE
+    BinArchive* story_archive;
+    BinArchiveFile* story_file;
+    u32 story_rom_size;
+    static union {
+        u64 alignment;
+        PERSSZP header;
+    } story_header;
+#endif
 
     func_84300184(0xFF, 0xFF, 0xFF);
     func_843001FC(1.0f);
@@ -526,9 +597,16 @@ void func_84301430(unk_func_80007444* arg0) {
         func_8001E94C(3, 0);
     }
 
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (gScCampaignBattle) sc_batl_scope_require(sc_batl_loader_arm());
+#endif
     D_8438E798[0].unk_10 = func_80019760(3);
     D_8438E798[1].unk_10 = func_80019760(3);
     func_8001987C();
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+    if (gScCampaignBattle)
+        sc_batl_scope_require(sc_batl_loader_disarm(D_8438E798[0].unk_10, D_8438E798[1].unk_10));
+#endif
 
     sp2C = main_pool_alloc(0x10, 0);
     func_800062E4(sp2C, 0, 2, 0x4C, 0x4C, arg0->unk_18[0]->depth_p->img_p);
@@ -542,7 +620,25 @@ void func_84301430(unk_func_80007444* arg0) {
     D_8438E77C = D_8438E794->img_p;
 
     FRAGMENT_LOAD(fragment31);
+#ifdef ROGUELIKE
+    {
+        /* the segment-1 shadow DLs need this battle's load, not a stale earlier registration */
+        u32 seg1 = (u32)ASSET_LOAD(D_1000000, common_menu1_ui, 0);
+
+        if (!rl_geo_seg_load_ok(seg1, Memmap_GetSegmentBaseVaddr(1), Memmap_GetSegmentSize(1), 0x2590)) {
+            Memmap_ClearSegmentMemmap(1);
+#ifdef STORY_SERVICE_CANDIDATE
+            sc_batl_scope_fail();
+#endif
+            osSyncPrintf("battle segment 1 load refused\n");
+            for (;;) {
+                osStopThread(NULL);
+            }
+        }
+    }
+#else
     ASSET_LOAD(D_1000000, common_menu1_ui, 0);
+#endif
     ASSET_LOAD(D_3000000, battle_ui, 0);
 
     if ((D_800AE540.unk_0000 == 0x10) || (D_800AE540.unk_0000 == 0xA)) {
@@ -557,8 +653,68 @@ void func_84301430(unk_func_80007444* arg0) {
         }
     }
 
+#ifdef STORY_NATIVE_PROBE
+    story_archive = ASSET_LOAD2(stadium_models, 1, 1);
+    gScProbe.arena_archive = (u32)story_archive;
+    gScProbe.arena_count = story_archive ? story_archive->num_files : 0;
+    gScProbe.arena_index = sp32;
+    gScProbe.pool_free = main_pool_get_available();
+    if (story_archive == NULL) {
+        osSyncPrintf("story probe: stadium archive allocation failed\n");
+        gScProbe.stage = 13;
+        return;
+    }
+    if (SC_STORY_BATTLE) {
+        story_rom_size = stadium_models_ROM_END - stadium_models_ROM_START;
+        if (sp32 < 0 || sp32 >= story_archive->num_files) {
+            osSyncPrintf("story probe: invalid stadium model index\n");
+            gScProbe.stage = 13;
+            return;
+        }
+        story_file = (BinArchiveFile*)(story_archive + 1) + sp32;
+        if (story_file->size < sizeof(PERSSZP) || story_file->offset > story_rom_size ||
+            story_file->size > story_rom_size - story_file->offset) {
+            osSyncPrintf("story probe: invalid stadium model ROM bounds\n");
+            gScProbe.stage = 13;
+            return;
+        }
+        func_80003B30(&story_header, stadium_models_ROM_START + story_file->offset,
+                     stadium_models_ROM_START + story_file->offset + sizeof(PERSSZP), 0);
+        if (((u32*)story_header.header.magic)[0] != 'PERS' ||
+            ((u32*)story_header.header.magic)[1] != '-SZP' ||
+            story_header.header.decompressed_size2 > 0x400000) {
+            osSyncPrintf("story probe: unsupported stadium model header\n");
+            gScProbe.stage = 13;
+            return;
+        }
+        /* The loader retains header and compressed blocks during decompression. */
+        gScProbe.arena_required = ALIGN16(sizeof(PERSSZP)) + sizeof(MainPoolBlock) +
+            ALIGN16(story_file->size) + sizeof(MainPoolBlock) +
+            ALIGN16(story_header.header.decompressed_size2);
+        if (gScProbe.arena_required > gScProbe.pool_free) {
+            osSyncPrintf("story probe: stadium model requires %u bytes; pool free %u\n",
+                         gScProbe.arena_required, gScProbe.pool_free);
+            gScProbe.stage = 13;
+            return;
+        }
+    }
+    sp3C = func_8000484C(story_archive, sp32);
+#else
     sp3C = func_8000484C(ASSET_LOAD2(stadium_models, 1, 1), sp32);
+#endif
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 10;
+    if (sp3C == NULL) {
+        osSyncPrintf("story probe: stadium model %d allocation failed; pool free %u\n",
+                     sp32, gScProbe.pool_free);
+        gScProbe.stage = 13;
+        return;
+    }
+#endif
     D_8438E780 = sp3C(2, 0);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 11;
+#endif
 
     sp28 = func_80019D18(0x9A);
     func_8430128C();
@@ -576,9 +732,15 @@ void func_84301430(unk_func_80007444* arg0) {
     func_80011E68(&D_8438E440, 30.0f, 192.0f, 24576.0f);
     func_8001BB20();
     func_84307394(0, D_8438E798);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 12;
+#endif
     func_84307A50(0, &D_8438E598, &D_8438E688);
     func_8432AEE4(0, &D_8438E440);
     func_8432D0D8(0, &D_8438E440);
+#ifdef STORY_NATIVE_PROBE
+    if (SC_STORY_BATTLE && gScProbe.stage == 13) return;
+#endif
 
     sp44 = func_80002D10(main_pool_get_available(), 0);
     D_8438E784 = process_geo_layout(sp44, D_84384364);
@@ -627,6 +789,9 @@ void func_84301A24(void) {
 
 s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     unk_func_80007444* sp24;
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbeActive) gScProbe.stage = 7;
+#endif
 
     D_8438E798 = D_800AE540.unk_1194;
     D_8438E7AC = -2;
@@ -635,10 +800,39 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
 
     func_80005E40(0x20000, 0);
     sp24 = func_80007444(0, 1, 3, 1, 2, 1);
+#ifdef STORY_NATIVE_PROBE
+    gScProbe.stage = 8;
+#endif
     func_84301430(sp24);
+#ifdef STORY_NATIVE_PROBE
+    if (gScProbe.stage == 13) {
+        func_80005EAC();
+        main_pool_pop_state('BATL');
+        return -1;
+    }
+    if (gScProbeActive) gScProbe.stage = 9;
+#endif
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_battle_load();
+#endif
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+    if (SC_STORY_BATTLE) sc_batl_scope_require(sc_batl_scope_open());
+#endif
     func_80007678(sp24);
     func_800077B4(1);
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+    if (SC_STORY_BATTLE) {
+        sc_service_require(sc_service_bootstrap());
+        sc_service_wait(0);
+    }
+#endif
     func_800078D4(func_843010EC, 0x20, 0x10);
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+    if (SC_STORY_BATTLE) {
+        sc_service_wait(1);
+        sc_batl_scope_require(sc_batl_scope_close());
+    }
+#endif
 #ifdef ROGUELIKE
     {
         extern int gRlBattleActive;
@@ -659,7 +853,13 @@ s32 func_84301A2C(s32 arg0, unk_D_800AE540* arg1) {
     func_800076C0();
     func_80005EAC();
 
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_battle_unload();
+#endif
     main_pool_pop_state('BATL');
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_battle_popped();
+#endif
 
     return 0;
 }

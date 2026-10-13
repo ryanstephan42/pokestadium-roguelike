@@ -1343,7 +1343,7 @@ void func_87802E1C(void) {
 void func_87802E58(void) {
     static u32 D_8780FE38;
 
-    u32 v0 = D_800A6CF4.unk_20;
+    u32 v0 = D_800A62E0.unk_A34;
 
     if (D_8780FCA1 == 0) {
         D_8780FCA1 = 1;

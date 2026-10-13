@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "scope": "source-derived-direct-menu-policy-not-native-core-calibration-proof",
+  "core": "mupen64plus_next",
+  "shared_frame_limit": 18000,
+  "shared_seconds_limit": 180,
+  "controller": 1,
+  "press_frames": 1,
+  "release_frames": 1,
+  "native_button_masks": {"N64_A": 32768, "N64_B": 16384, "C_UP": 8, "C_RIGHT": 1, "C_DOWN": 4, "C_LEFT": 2, "L": 32, "R": 16, "UP": 2048, "DOWN": 1024, "START": 4096},
+  "move_slots": ["C_UP", "C_RIGHT", "C_DOWN", "C_LEFT"],
+  "six_party_slots": ["C_UP", "C_LEFT", "N64_B", "C_RIGHT", "C_DOWN", "N64_A"],
+  "native_acknowledgement": "unlocked actual menu mode1 move/action1 or mode2 party; after edge/release require mode3 and selected native slot; never assume a press succeeded",
+  "core_calibration": "observe this exact core's N64 buttonPressed bits; no guessed RetroPad C aliases; verify all six slot buttons before scenario input",
+  "supervisor": "one dedicated Linux subreaper; deadline starts before worker/core boot; every fresh frontend binds counted step before first frame; reserve frame batches before stepping; carry counters across reloads; pidfd kill/reap detached descendants on every exit",
+  "checkpoint_scope": "legal-pure-HOST-prehistory-not-native-wins",
+  "entry": [
+    {"when": "Menu Select top page with source-bound gScCampaignMenuReady == 1", "button": "R"},
+    {"when": "SC_UI_MENU cursor New", "button": "DOWN"},
+    {"when": "SC_UI_MENU cursor Continue", "button": "N64_A"},
+    {"when": "SC_UI_REGIONS", "select_id": "PewterGym"},
+    {"when": "SC_UI_ENCOUNTERS", "select_id": "PewterGym/TEXT_PEWTERGYM_BROCK"},
+    {"when": "SC_UI_CONFIRM operation SC_UI_START", "button": "N64_A"}
+  ],
+  "scenarios": {
+    "win": {
+      "frame_limit": 7000,
+      "checkpoint": "normal-route.sc01",
+      "battle_policy": "select living Charmander story slot 0 via verified native mapping and Ember move 52 in move slot 3 with C_LEFT at unlocked move menu; use other legal damaging moves if it faints; no writes to battle memory",
+      "required_outcome": "SC_WIN",
+      "earned_policy": "decline learning and skip evolution through explicit UI rows; inspect earned XP before reward; decline recruit/transfer to preserve carry"
+    },
+    "carry_reload": {
+      "frame_limit": 2000,
+      "checkpoint": "actual win journal from the same reservation, not a fabricated HOST win",
+      "input_policy": "save/menu, fresh Continue, inspect every party slot; no heal",
+      "required_state": "exact actually committed party, reward and completion state"
+    },
+    "loss": {
+      "frame_limit": 5000,
+      "checkpoint": "normal-route.sc01 in a separate isolated story save",
+      "battle_policy": "prefer Charmander story slot 0 via the observed native mapping; use Growl45 or other actual non-damaging moves (Tail Whip39, Leer43, Sand Attack28, String Shot81, Splash150); if none is available, use the first actually legal move slot (the pinned Diglett only knows Scratch). A natural win/draw refuses this loss scenario; no forced outcome",
+      "required_outcome": "SC_LOSS then fresh Continue SC_LOST",
+      "required_state": "normal-interrupted.sc01 prebattle party and progression, terminal; no earned mutation"
+    },
+    "transform": {
+      "frame_limit": 4000,
+      "checkpoint": "transform-route.sc01",
+      "battle_policy": "select Ditto story slot 0 via verified native mapping and Transform move 144 in move slot 0 with C_UP at unlocked move menu; observe original-species carry on result",
+      "required_outcome": "actual Transform observed; win or loss recorded explicitly",
+      "optional": true
+    }
+  },
+  "pre_execution_blockers": [
+    "native ELF binding of HOST-derived layout and all checkpoint/data/source hashes",
+    "native core calibration and actual acknowledgement of source-derived button mapping",
+    "native acceptance of converted isolated formatted Pak template",
+    "exclusive slot and explicit user execution grant"
+  ],
+  "failure_policy": "abort and reap exact owned process tree; never retry, force outcomes, enlarge budgets or mark unobserved cases passed"
+}

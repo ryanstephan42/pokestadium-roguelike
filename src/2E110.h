@@ -4,6 +4,9 @@
 #include "global.h"
 
 void func_8002D510(void);
+#ifdef STORY_NATIVE_UI
+s32 func_8002D510Checked(void);
+#endif
 char** func_8002D5AC(s32 file_number);
 void func_8002D5D4(u32 arg0, u32 arg1);
 void func_8002D600(u32 arg0, u32 arg1);

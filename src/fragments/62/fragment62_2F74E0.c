@@ -1,4 +1,13 @@
 #include "fragment62.h"
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_AI_PROTOTYPE)
+#error The qualified service cannot compose with the legacy SELECT prototype
+#endif
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+#include "src/story/sc_service_native_calls.h"
+#endif
+#ifdef STORY_AI_PROTOTYPE
+#include "src/story/sc_ai_native.c"
+#endif
 #ifdef ROGUELIKE
 #include "src/roguelike/rl_native_relics.h"
 #endif
@@ -8,6 +17,11 @@
 #include "src/4BDC0.h"
 
 static f32 D_84390120;
+#ifdef STORY_SERVICE_CANDIDATE
+const f32 *sc_batl_clock_source(void) {
+    return &D_84390120;
+}
+#endif
 f32 D_84390124;
 f32 D_84390128;
 static f32 D_8439012C;
@@ -422,6 +436,13 @@ s32 func_8430D9EC(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     UNUSED s32 pad[2];
     unk_D_84390010_654* sp1C = &arg0->unk_654;
     unk_D_84390010_654* temp_v0 = &arg1->unk_654;
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive && sp1C->unk_2D == 0x10 && D_84390120 == 20.0f) {
+        s32 choice = sc_ai_native_choose(arg0, 1);
+        sc_ai_native_validate(arg0, choice, 1);
+        D_84390138 = choice;
+    }
+#endif
 
     if ((arg0->unk_654.unk_2D == 0x10) && (arg1->unk_654.unk_2D == 0x10)) {
         if (sp1C->unk_10 == 3) {
@@ -434,7 +455,18 @@ s32 func_8430D9EC(unk_D_84390010* arg0, unk_D_84390010* arg1) {
 
         if (D_84390120 == 20.0f) {
             func_8432B4B0();
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+            if (SC_STORY_BATTLE) {
+                D_84390138 = sc_service_native_prepare(arg0, SC_AI_D9EC);
+                sc_service_native_accept(arg0, SC_AI_D9EC_STORE);
+                return 1;
+            }
+#endif
+#ifdef STORY_AI_PROTOTYPE
+            if (!gScProbeActive) D_84390138 = func_84383B5C(0);
+#else
             D_84390138 = func_84383B5C(0);
+#endif
             sp1C->unk_1C = 0;
             sp1C->unk_18 = D_84390138 - 4;
             sp1C->unk_1E = 0;
@@ -445,6 +477,9 @@ s32 func_8430D9EC(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     }
 
     if (sp1C->unk_2D == 0x10) {
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+        if (SC_STORY_BATTLE && sp1C->unk_10 == 3) return 1;
+#endif
         sp1C->unk_04 = 2;
         sp1C->unk_10 = 2;
         temp_v0->unk_10 = 3;
@@ -452,7 +487,18 @@ s32 func_8430D9EC(unk_D_84390010* arg0, unk_D_84390010* arg1) {
 
         if (D_84390120 == 20.0f) {
             func_8432B4B0();
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+            if (SC_STORY_BATTLE) {
+                D_84390138 = sc_service_native_prepare(arg0, SC_AI_D9EC);
+                sc_service_native_accept(arg0, SC_AI_D9EC_STORE);
+                return 1;
+            }
+#endif
+#ifdef STORY_AI_PROTOTYPE
+            if (!gScProbeActive) D_84390138 = func_84383B5C(0);
+#else
             D_84390138 = func_84383B5C(0);
+#endif
             sp1C->unk_1C = 0;
             sp1C->unk_18 = D_84390138 - 4;
             sp1C->unk_1E = 0;
@@ -478,6 +524,22 @@ void func_8430DB58(unk_D_84390010* arg0, UNUSED unk_D_84390010* arg1) {
 void func_8430DBA0(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     unk_D_84390010_654* sp20 = &arg1->unk_654;
     unk_D_84390010_654* sp1C = &arg0->unk_654;
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+    if (SC_STORY_BATTLE) {
+        if (D_8439013C != 2) {
+            sc_service_require(D_8439013C == 1 && sc_service_pending());
+            sc_service_require(sc_service_reject(arg0,
+                D_84390138 >= 4 ? SC_AI_DE20 : SC_AI_DCD4));
+            /* Forced frames repeat until the native frame-zero cycle reset. */
+            D_8439013C = 2;
+        } else {
+            sc_service_require(!sc_service_pending());
+        }
+    }
+#endif
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_native_validate(arg0, D_84390138, 0);
+#endif
 
     func_8430D334(arg0);
     sp1C->unk_2A = 1;
@@ -506,6 +568,9 @@ void func_8430DCD4(unk_D_84390010* arg0, unk_D_84390010* arg1) {
 
     sp18 = &arg0->unk_654;
     sp14 = &arg1->unk_654;
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_native_validate(arg0, D_84390138, 0);
+#endif
 
     if ((D_84390120 == 30.0f) && (D_84390138 < 4)) {
         func_8432B4B0();
@@ -521,6 +586,12 @@ void func_8430DCD4(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     if ((D_84390120 >= 90.0f) || ((sp14->unk_10 == 3) && (D_84390120 >= 10.0f))) {
         if (D_84390138 < 4) {
             func_8432B4B0();
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+            if (SC_STORY_BATTLE) {
+                sc_service_native_accept(arg0, SC_AI_DCD4);
+                return;
+            }
+#endif
             sp18->unk_04 = 1;
             sp18->unk_10 = 3;
             if (func_8430D8C4(arg0) != 0) {
@@ -538,6 +609,9 @@ void func_8430DCD4(unk_D_84390010* arg0, unk_D_84390010* arg1) {
 s32 func_8430DE20(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     unk_D_84390010_654* sp1C = &arg0->unk_654;
     unk_D_84390010_654* sp18 = &arg1->unk_654;
+#ifdef STORY_AI_PROTOTYPE
+    if (gScProbeActive) sc_ai_native_validate(arg0, D_84390138, 0);
+#endif
 
     if ((D_84390120 == 30.0f) && (D_84390138 >= 4)) {
         func_8432B4B0();
@@ -553,6 +627,12 @@ s32 func_8430DE20(unk_D_84390010* arg0, unk_D_84390010* arg1) {
     if ((D_84390120 >= 90.0f) || ((sp18->unk_10 == 3) && (D_84390120 >= 10.0f))) {
         if (D_84390138 >= 4) {
             func_8432B4B0();
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+            if (SC_STORY_BATTLE) {
+                sc_service_native_accept(arg0, SC_AI_DE20);
+                return 1;
+            }
+#endif
             sp1C->unk_1C = 0;
             sp1C->unk_18 = D_84390138 - 4;
             sp1C->unk_1E = 0;
@@ -570,6 +650,24 @@ s32 func_8430DE20(unk_D_84390010* arg0, unk_D_84390010* arg1) {
 void func_8430DF60(UNUSED unk_D_800FCB18* arg0, UNUSED unk_D_800FCB18* arg1, UNUSED unk_D_84390010_654* arg2,
                    UNUSED unk_D_84390010_654* arg3, UNUSED unk_D_84390010* arg4) {
     if ((D_84390120 == 1.0f) && (D_8439013C == 0)) {
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+        if (SC_STORY_BATTLE) {
+            sc_service_require(arg4 == D_84390010[0] || arg4 == D_84390010[1]);
+            D_84390138 = sc_service_native_prepare(
+                D_84390010[arg4 == D_84390010[0]], SC_AI_DF60);
+            D_8439013C = 1;
+            return;
+        }
+#endif
+#ifdef STORY_AI_PROTOTYPE
+        if (gScProbeActive) {
+            s32 choice = sc_ai_native_choose(D_84390010[arg4 == D_84390010[0]], 0);
+            sc_ai_native_validate(D_84390010[arg4 == D_84390010[0]], choice, 0);
+            D_84390138 = choice;
+            D_8439013C = 1;
+            return;
+        }
+#endif
         D_8439013C = 1;
         D_84390138 = func_84383B5C(0);
     }
@@ -851,12 +949,19 @@ void func_8430EB1C(unk_D_84390010* arg0) {
             temp_v1->unk_5A = temp_v1->unk_1F[temp_v0->unk_0C];
         }
     } else {
-        if (temp_v1->unk_4C & 0x20) {
-            temp_v0->unk_0C = temp_v0->unk_14;
-        } else {
-            temp_v0->unk_14 = 0;
-            temp_v0->unk_0C = 0;
-            temp_v1->unk_5A = 0xA5;
+#if defined(STORY_SERVICE_CANDIDATE) && defined(STORY_NATIVE_PROBE)
+        if (gScProbeActive || (SC_STORY_BATTLE && (arg0->unk_724->unk_000 & 2))) {
+            sc_service_require(sc_service_struggle(arg0));
+        } else
+#endif
+        {
+            if (temp_v1->unk_4C & 0x20) {
+                temp_v0->unk_0C = temp_v0->unk_14;
+            } else {
+                temp_v0->unk_14 = 0;
+                temp_v0->unk_0C = 0;
+                temp_v1->unk_5A = 0xA5;
+            }
         }
     }
 

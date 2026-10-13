@@ -5,7 +5,7 @@ import ctypes
 import json
 from pathlib import Path
 
-from tools.rltest.frontend import Frontend, HarnessError
+from tools.rltest.frontend import Frontend, HarnessError, Symbols
 
 
 class Mon(ctypes.BigEndianStructure):
@@ -54,6 +54,7 @@ def persistent(mon):
 
 
 def run(core, rom, map_path, output):
+    require_battle_test_profile(map_path)
     with Frontend(core, rom, map_path, output=output, timeout=600) as emu:
         emu.wait_state(2, frames=2400)
         emu.step(120)
@@ -68,6 +69,10 @@ def run(core, rom, map_path, output):
         Path(output).mkdir(parents=True, exist_ok=True)
         (Path(output) / "custom-battle.json").write_text(json.dumps(evidence, indent=2) + "\n")
         print("CUSTOM BATTLE PASSED", json.dumps(evidence))
+
+def require_battle_test_profile(map_path):
+    if "gScProbeSixMapping" in Symbols(map_path).addresses:
+        raise HarnessError("Custom/relic battle test payload is unavailable in STORY_SIX_PROBE")
 
 
 def battle(emu, request, count):

@@ -550,7 +550,14 @@ void func_843703BC(void) {
                 func_843179F4(D_843901A0->unk_208, 0x2C);
 
                 if ((D_8438AC60[0] == 1) && (D_843C5238->unk_44.unk_01 == 0x1D)) {
+#ifdef ROGUELIKE
+                    /* The gate tested D_843C5238's effect; the confusion self-hit swaps D_843C5238
+                     * without flipping the current actor, so dispatching the current actor's effect
+                     * could run another handler. Run the tested effect-0x1D handler (slot 0x1C). */
+                    func_84374E08();
+#else
                     func_84376768();
+#endif
                     D_843C5238->unk_4F = 1;
                 }
 
@@ -571,7 +578,14 @@ void func_843703BC(void) {
                 func_843179F4(D_843901A0->unk_208, 0x2C);
 
                 if ((D_8438AC60[0] == 1) && (D_843C5238->unk_44.unk_01 == 0x1D)) {
+#ifdef ROGUELIKE
+                    /* The gate tested D_843C5238's effect; the confusion self-hit swaps D_843C5238
+                     * without flipping the current actor, so dispatching the current actor's effect
+                     * could run another handler. Run the tested effect-0x1D handler (slot 0x1C). */
+                    func_84374E08();
+#else
                     func_84376768();
+#endif
                     D_843C5238->unk_4F = 1;
                 }
 

@@ -49,6 +49,42 @@ static MtxBuffer D_800AF7C8[2];
 static StadiumModelSlot D_800AFFC8[2][3];
 static unk_D_800B2EA8 D_800B2EA8[1];
 
+#ifdef ROGUELIKE
+/*
+ * D_800AF7B0[row] is an s16 slot counter that increments on every func_80032F94 call and is
+ * only reset on the func_80032670 draw path, so nothing bounds it to the three slots of
+ * D_800AFFC8[row]. A slot is populated only by func_80033B2C, which sets modelSegment to the
+ * slot's own unkSegment. Refuse out-of-range counters, and unpopulated slots for consumers.
+ * An out-of-range counter latches the row dead until the func_80032670 reset (rl_shadow_slot_reset),
+ * so the s16 counter wrapping back to 0..2 cannot re-admit a slot from before the refusal.
+ */
+static u8 rl_shadow_dead[2];
+
+void rl_shadow_slot_reset(u32 row) {
+    rl_shadow_dead[row & 1] = 0;
+}
+
+static StadiumModel* rl_shadow_slot(s32 row, s16 counter, s32 requirePopulated) {
+    StadiumModel* model;
+
+    if ((u32)row >= 2) {
+        return NULL;
+    }
+    if ((u16)counter >= 3) {
+        rl_shadow_dead[row] = 1;
+        return NULL;
+    }
+    if (rl_shadow_dead[row]) {
+        return NULL;
+    }
+    model = &D_800AFFC8[row][counter].model;
+    if (requirePopulated && (model->modelSegment != (u32)&model->unkSegment)) {
+        return NULL;
+    }
+    return model;
+}
+#endif
+
 void func_800328D0(s32 arg0) {
 
 }
@@ -136,6 +172,11 @@ void func_80032BD4(void) {
         func_80032990(index);
         func_80032940(index);
 
+#ifdef ROGUELIKE
+        if (rl_shadow_slot(index, D_800AF7B0[index & 1], 0) == NULL) {
+            return;
+        }
+#endif
         if (D_8006F09C->unk_01A == 0x92) {
             func_80033B2C(&D_800AFFC8[index][D_800AF7B0[index & 1]].model, D_800B2EA8, D_800AF7C8[index].mtx, &D_80077950);
             return;
@@ -154,6 +195,11 @@ void func_80032D28(void) {
         func_800328E4(index);
         func_80032990(index);
         func_80032940(index);
+#ifdef ROGUELIKE
+        if (rl_shadow_slot(index, D_800AF7B0[index & 1], 1) == NULL) {
+            return;
+        }
+#endif
         func_800361C4(&D_800AFFC8[index][D_800AF7B0[index & 1]].model, &D_800AF7C8[index].mtx);
     }
 }
@@ -213,6 +259,12 @@ Gfx* func_80032F94(Gfx* gfx) {
         mode &= 1;
         if (D_800AF7C0[mode] >= 2) {
             func_80005F5C(0xA0);
+#ifdef ROGUELIKE
+            if (rl_shadow_slot(mode, D_800AF7B0[mode & 1], 1) == NULL) {
+                D_800AF7B0[mode & 1] += 1;
+                return gfx;
+            }
+#endif
             gfx = func_80032A7C(gfx);
             var_v1 = &D_800AF7B0[mode & 1];
             {
@@ -236,6 +288,12 @@ Gfx* func_80032F94(Gfx* gfx) {
         case 2:
         case 3:
             vtx = func_80005F5C(0xA0);
+#ifdef ROGUELIKE
+            if ((vtx == NULL) || (rl_shadow_slot(mode, D_800AF7B0[mode & 1], 1) == NULL)) {
+                var_v1 = &D_800AF7B0[mode & 1];
+                break;
+            }
+#endif
             {    Gfx *_gfx = (Gfx *)(gfx++);    _gfx->words.w0 = 0xDA380002;    _gfx->words.w1 = &D_80076270;    }
             gfx = func_80032A7C(gfx);
             var_v1 = &D_800AF7B0[mode & 1];

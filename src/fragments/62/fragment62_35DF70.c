@@ -1,5 +1,8 @@
 #include "fragment62.h"
 #include "src/2E110.h"
+#ifdef STORY_NATIVE_PROBE
+#include "src/story/sc_campaign_battle.h"
+#endif
 #ifdef ROGUELIKE
 #include "src/roguelike/rl_native_relics.h"
 
@@ -1164,6 +1167,16 @@ void func_8437670C(void) {
     unk_D_800FCB18* ptr = &D_84390010[D_84390240.unk_00->unk_2C]->unk_654.unk_38;
     s32 idx = ptr->unk_44.unk_01;
 
+#ifdef ROGUELIKE
+    /* Refuse an effect outside the table instead of calling D_8438AE54[-1]
+       (data); a story campaign battle pauses fail-closed. */
+    if (idx < 1 || idx > ARRAY_COUNT(D_8438AE54)) {
+#ifdef SC_CAMPAIGN_BATTLE_WIRED
+        sc_campaign_battle_fault();
+#endif
+        return;
+    }
+#endif
     if (D_8438AE54[idx - 1] != NULL) {
         D_8438AE54[idx - 1]();
     }
